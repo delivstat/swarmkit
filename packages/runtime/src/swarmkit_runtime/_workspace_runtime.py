@@ -939,6 +939,7 @@ class WorkspaceRuntime:
         previous_plan: dict | None = None,  # type: ignore[type-arg]
         labels: dict[str, str] | None = None,
         attachments: list[Any] | None = None,
+        budget_override: dict[str, Any] | None = None,
     ) -> RunResult:
         """Execute a topology end-to-end and return the result.
 
@@ -988,7 +989,7 @@ class WorkspaceRuntime:
 
         trace = RunTrace()
         trace.start(run_thread, topology_name)
-        _run_scope_token = self._begin_run(trace, labels, topology_name)
+        _run_scope_token = self._begin_run(trace, labels, topology_name, budget_override)
         await self._audit_attachments(resolved_attachments, topology_name, run_thread, labels)
         # Opt-in read-side context compression for this run. Resolved from the workspace
         # `context_compression:` block (default backend + per-surface overrides), with env
@@ -1265,18 +1266,28 @@ class WorkspaceRuntime:
         return await self._end_run(token, topology_name, trace.run_id)
 
     def _begin_run(
-        self, trace: Any, labels: dict[str, str] | None = None, topology_name: str = ""
+        self,
+        trace: Any,
+        labels: dict[str, str] | None = None,
+        topology_name: str = "",
+        budget_override: dict[str, Any] | None = None,
     ) -> Any:
         """Enter a run: make the trace active and stamp this task with the run id and labels.
 
         One call because it is one fact — every AuditEvent constructed from here on belongs to this
         run, and `_end_run` relies on that to tell it apart from a concurrent job's events.
+
+        *budget_override* is a forwarded A2A budget (a2a-federation.md); it tightens this run's
+        circuit-breaker limits (never loosens them) so a federated caller's remaining allowance
+        caps the child run.
         """
+        from swarmkit_runtime.governance._limits import apply_budget_override  # noqa: PLC0415
         from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
             set_active_trace,
         )
 
         set_active_trace(trace)
+        limits = apply_budget_override(limits_from_workspace(self._workspace.raw), budget_override)
         # Nodes ask `stop_requested()`; the runtime is what knows where the store is and which run
         # this is, so it installs the checker here rather than threading a database through the
         # compiler (design/details/stopping-a-run.md).
@@ -1285,7 +1296,7 @@ class WorkspaceRuntime:
             set_current_labels(labels),
             set_stop_checker(self._stop_checker(trace.run_id)),
             set_agent_context(self._agent_context(topology_name)),
-            set_run_tracker(CircuitBreakerTracker(limits_from_workspace(self._workspace.raw))),
+            set_run_tracker(CircuitBreakerTracker(limits)),
             set_run_governed_memory(self._governed_memory_store),
             set_run_gap_log(self._gap_log),
             set_current_topology(topology_name),

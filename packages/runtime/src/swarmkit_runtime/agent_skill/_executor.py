@@ -261,12 +261,19 @@ async def _call_remote(  # noqa: PLR0911, PLR0912 — one branch per policy and 
             if not user_input.strip():
                 return f"[skill:{skill.id}] `input` is required"
             _progress(f"  [{agent_id}] → {card.name} ({card.url})")
+            # Forward our remaining budget so a SwarmKit callee caps the child run
+            # (a2a-federation.md). None outside a run or on an unbounded run — then nothing is sent.
+            from swarmkit_runtime.governance._limits import current_tracker  # noqa: PLC0415
+
+            tracker = current_tracker()
+            budget = tracker.remaining_budget() if tracker is not None else {}
             task = await client.send(
                 card.url,
                 user_input,
                 skill_id=skill_id,
                 context_id=run_id or None,
                 data=args.get("context") if isinstance(args.get("context"), dict) else None,
+                budget=budget or None,
             )
         task = await client.wait(card.url, task, timeout_s=spec.timeout_s, on_state=_state)
 

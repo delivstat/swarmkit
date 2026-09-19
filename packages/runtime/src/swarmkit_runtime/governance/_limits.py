@@ -134,6 +134,18 @@ class CircuitBreakerTracker:
         """Return current step count for an agent."""
         return self._steps_per_agent.get(agent_id, 0)
 
+    def remaining_budget(self) -> dict[str, float | int]:
+        """What is left of this run's budget — its envelope minus what it has spent — as an A2A
+        forward payload (a2a-federation.md). Only dimensions with a configured limit appear; an
+        unbounded run forwards nothing. Floored at zero so an already-overspent run forwards 0
+        (the callee then does nothing), never a negative."""
+        out: dict[str, float | int] = {}
+        if self._limits.max_cost_per_run_usd is not None:
+            out["max_cost_usd"] = max(0.0, self._limits.max_cost_per_run_usd - self._total_cost_usd)
+        if self._limits.max_steps_per_run is not None:
+            out["max_turns"] = max(0, self._limits.max_steps_per_run - self._total_steps)
+        return out
+
 
 #: The tracker for the run on this task — installed by ``WorkspaceRuntime.run`` for the run's
 #: duration, read by the compiler at every node entry, the same scoping the run id and the stop
@@ -172,4 +184,33 @@ def limits_from_workspace(raw_workspace: Any) -> GovernanceLimits:
         max_steps_per_agent=get("max_steps_per_agent"),
         max_steps_per_run=per_run if per_run is not None else GovernanceLimits().max_steps_per_run,
         max_cost_per_run_usd=get("max_cost_per_run_usd"),
+    )
+
+
+def apply_budget_override(
+    base: GovernanceLimits, budget: dict[str, Any] | None
+) -> GovernanceLimits:
+    """Tighten *base* with a forwarded A2A budget (a2a-federation.md), taking the **stricter** of
+    the two per dimension so a forwarded allowance can only cap the callee's run, never loosen its
+    own configured limit. ``max_cost_usd`` → ``max_cost_per_run_usd``, ``max_turns`` →
+    ``max_steps_per_run``. Returns *base* unchanged when no budget was forwarded."""
+    if not budget:
+        return base
+    from dataclasses import replace  # noqa: PLC0415
+
+    def _tighter(current: float | None, forwarded: Any) -> float | None:
+        if forwarded is None:
+            return current
+        try:
+            f = float(forwarded)
+        except (TypeError, ValueError):
+            return current
+        return f if current is None else min(current, f)
+
+    cost = _tighter(base.max_cost_per_run_usd, budget.get("max_cost_usd"))
+    turns = _tighter(base.max_steps_per_run, budget.get("max_turns"))
+    return replace(
+        base,
+        max_cost_per_run_usd=cost,
+        max_steps_per_run=int(turns) if turns is not None else None,
     )

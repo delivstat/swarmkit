@@ -114,6 +114,38 @@ def _wait_terminal(client: TestClient, task_id: str, timeout: float = 20.0) -> A
     raise AssertionError(f"task {task_id} did not finish")
 
 
+# ---- budget forwarding (a2a-federation.md slice 2) ----------------------------------------------
+
+
+def test_message_send_installs_a_forwarded_budget_as_the_run_limit(client: TestClient) -> None:
+    """A forwarded budget of max_turns=0 caps the callee run to zero steps, so it trips the
+    circuit breaker on its first step and the task ends `failed` — proving the callee installs and
+    enforces the budget from message.metadata.swarmkit.budget."""
+    message = {
+        "kind": "message",
+        "role": "user",
+        "messageId": "mb",
+        "parts": [{"kind": "text", "text": "hi"}],
+        "metadata": {"skill": "hello", "swarmkit": {"budget": {"max_turns": 0}}},
+    }
+    body = _rpc(client, "message/send", {"message": message})
+    result = _wait_terminal(client, body["result"]["id"])
+    assert result["status"]["state"] == "failed"
+
+
+def test_message_send_without_budget_completes(client: TestClient) -> None:
+    """Control: the same call with no forwarded budget runs to completion."""
+    body = _send(client, "hi")
+    result = _wait_terminal(client, body["result"]["id"])
+    assert result["status"]["state"] == "completed"
+
+
+def test_card_advertises_honors_budget(client: TestClient) -> None:
+    card = client.get("/.well-known/agent-card.json").json()
+    ext = card["capabilities"]["extensions"][0]
+    assert ext["params"]["honors_budget"] is True
+
+
 # ---- unit: mapping ------------------------------------------------------------------------------
 
 

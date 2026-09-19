@@ -141,6 +141,7 @@ class JobService:
         source: str = "serve",
         enqueue_only: bool = False,
         queue_max_depth: int = 0,
+        budget_override: dict[str, Any] | None = None,
     ) -> Job:
         """Resolve, gate on capacity, create + persist the job, and start it in the background.
 
@@ -250,6 +251,7 @@ class JobService:
             store=store,
             labels=labels,
             attachments=resolved_attachments,
+            budget_override=budget_override,
         )
         return job
 
