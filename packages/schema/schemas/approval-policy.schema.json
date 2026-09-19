@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/approval-policy.schema.json",
+  "$id": "urn:swarmkit:schema:v1:approval-policy",
   "title": "SwarmKitApprovalPolicy",
   "description": "Per-gate multi-party approval policy: the rules (a governance scope + a group of roles + a quorum mode) that must ALL be satisfied for the gate to advance, plus segregation-of-duties controls. Embedded config consumed by approval gates — not a standalone artifact (no apiVersion/kind). See design/details/multi-party-approval.md.",
   "type": "object",

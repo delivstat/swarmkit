@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/archetype.schema.json",
+  "$id": "urn:swarmkit:schema:v1:archetype",
   "title": "SwarmKit Archetype",
   "description": "A kind of agent (noun). See design §6.6, §13 and design/details/archetype-schema-v1.md.",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/workspace.schema.json",
+  "$id": "urn:swarmkit:schema:v1:workspace",
   "title": "SwarmKit Workspace",
   "description": "Deployment-level config: identity, governance, model providers, MCP registry, storage. See design \u00a79.3 and design/details/workspace-schema-v1.md.",
   "type": "object",

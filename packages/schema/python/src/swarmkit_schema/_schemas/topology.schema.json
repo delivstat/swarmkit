@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/topology.schema.json",
+  "$id": "urn:swarmkit:schema:v1:topology",
   "title": "SwarmKit Topology",
   "description": "A complete swarm definition. See design \u00a710 and design/details/topology-schema-v1.md.",
   "type": "object",

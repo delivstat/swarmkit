@@ -30,7 +30,7 @@ class RemoteAgentError(RuntimeError):
 
 
 #: URI of the SwarmKit A2A federation extension a card advertises (a2a-federation.md).
-SWARMKIT_A2A_EXTENSION = "https://swarmkit.dev/a2a/federation/v1"
+SWARMKIT_A2A_EXTENSION = "urn:swarmkit:a2a:federation:v1"
 
 
 @dataclass(frozen=True)

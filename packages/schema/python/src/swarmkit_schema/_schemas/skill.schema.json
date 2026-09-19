@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/skill.schema.json",
+  "$id": "urn:swarmkit:schema:v1:skill",
   "title": "SwarmKit Skill",
   "description": "A discrete capability an agent can exercise. See design §6 and design/details/skill-schema-v1.md.",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/executor-adapter.schema.json",
+  "$id": "urn:swarmkit:schema:v1:executor-adapter",
   "title": "SwarmKit ExecutorAdapter",
   "description": "A declarative harness adapter (design/details/executor-declarative-adapters-plan.md). Defines how to launch an external agentic harness as a subprocess and map its line-delimited JSON output into the normalized ExecEvent vocabulary \u2014 so a new harness is added as data (this artifact), with no Python and no runtime release. The DSL is deliberately minimal (RFC executor-abstraction.md decision 1a): JSONL streams only, literal-equality matching, dotted-path/for_each extraction, a named map for enum translation; anything past that ceiling declares `requires: code` and graduates to a Tier-1 Python Executor.",
   "type": "object",

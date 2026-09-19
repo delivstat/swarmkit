@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/protocol/join-request.schema.json",
+  "$id": "urn:swarmkit:schema:v1:protocol:join-request",
   "title": "SwarmKit Fleet Join Request",
   "description": "Mode B (instance → panel) join request body for panel `POST /fleet/join`. A NAT'd instance the panel can't reach presents a one-time join code (the auth) plus its identity and full state, in one outbound call. See design details/control-plane/19-fleet-enrollment-protocol.md (§Mode B).",
   "type": "object",
@@ -21,7 +21,7 @@
       }
     },
     "instance_state": {
-      "$ref": "https://schemas.swarmkit.dev/v1/protocol/instance-state.schema.json",
+      "$ref": "urn:swarmkit:schema:v1:protocol:instance-state",
       "description": "The instance's full observed state, cached by the panel at join."
     }
   }

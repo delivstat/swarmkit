@@ -50,7 +50,7 @@ WELL_KNOWN_PATH = "/.well-known/agent-card.json"
 SOURCE = "a2a"
 #: The A2A capability extension a SwarmKit instance advertises so a SwarmKit caller can identify
 #: it and expect the federation round-trip (a2a-federation.md).
-SWARMKIT_A2A_EXTENSION = "https://swarmkit.dev/a2a/federation/v1"
+SWARMKIT_A2A_EXTENSION = "urn:swarmkit:a2a:federation:v1"
 
 #: The A2A `contextId` rides on `jobs.correlation_id` (the generic "same ticket" grouping); the
 #: label keeps the exact string a client sent, since a correlation id may be set by other callers.
