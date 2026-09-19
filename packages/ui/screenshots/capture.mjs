@@ -65,19 +65,23 @@ const AUDIT = [
 ];
 
 async function mock(page) {
-	const json = (data) => ({
-		status: 200,
-		contentType: "application/json",
-		body: JSON.stringify(data),
-	});
-	await page.route("**/queue/stats", (r) => r.fulfill(json(QUEUE_STATS)));
-	await page.route(/\/audit(\?.*)?$/, (r) => r.fulfill(json(AUDIT)));
-	await page.route("**/jobs", (r) => r.fulfill(json([])));
-	await page.route(/\/jobs\/history(\?.*)?$/, (r) => r.fulfill(json([])));
+	// BASE is "" so the app fetches the same paths as its pages (/jobs, /audit). A route must
+	// therefore only answer the app's fetch/xhr calls and let the top-level document navigation
+	// (the Next page HTML) through — otherwise navigating to /jobs is served the fixture JSON.
+	const api = (data) => (r) =>
+		r.request().resourceType() === "document"
+			? r.continue()
+			: r.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(data),
+				});
+	await page.route("**/queue/stats", api(QUEUE_STATS));
+	await page.route(/\/audit(\?.*)?$/, api(AUDIT));
+	await page.route(/\/jobs$/, api([]));
+	await page.route(/\/jobs\/history(\?.*)?$/, api([]));
 	// Anything else the layout probes (health, capabilities…) — answer empty so nothing hangs.
-	await page.route(/\/(health|capabilities|auth-info)$/, (r) =>
-		r.fulfill(json({})),
-	);
+	await page.route(/\/(health|capabilities|auth-info)$/, api({}));
 }
 
 async function main() {
