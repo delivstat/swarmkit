@@ -9,6 +9,7 @@ Guardrails that hold because the runtime enforces them — not because a prompt 
 - Structured output (`output_schema`)
 - A **funnel** on an agent: judge → revise → a human approval nobody can prompt around
 - Role registries, quorum, and resolving a gate as a named person
+- **Prerequisite skills** (`requires:`): the runtime refuses a skill until the ones it depends on have run
 - What the mock governance provider enforces and what it does not
 
 The finished workspace is `examples/tutorials/07-governance/`. The transcripts are real runs on
@@ -278,6 +279,45 @@ the run `deferred` with the gate it waits on and a **Resume** button for when it
 ![A run parked on its gate](../img/tutorials/07-job-deferred.png)
 
 Under `swarmkit serve`, a satisfied gate resumes its run on its own — nothing has to call resume.
+
+### 8. Ordering: prerequisite skills (`requires:`)
+
+Some gates are not "who approves" but "what has to happen first." A skill can depend on other
+skills: an agent may not post a verdict before it has gathered the evidence, may not deploy before
+it has run the tests. That ordering is declared as data — `requires:` on the **agent** — and the
+runtime enforces it, so it holds no matter what the model decides to call.
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: ordered-review
+  version: 0.1.0
+  description: The reviewer may not post a verdict before it has gathered the evidence.
+agents:
+  root:
+    id: reviewer
+    role: root
+    skills: [gather-evidence, post-verdict]
+    requires:
+      # `post-verdict` is refused until `gather-evidence` has returned successfully in this run.
+      post-verdict: [gather-evidence]
+```
+
+`requires` is a map of `{guarded_skill: [prerequisite, ...]}`. If the model calls `post-verdict`
+before `gather-evidence` has returned successfully in the same run, the runtime **refuses the call
+and the refusal names what to call first** — so the agent recovers inside its own loop instead of
+producing an out-of-order result. Both sides must be skills the agent holds, and a cycle is a
+resolution error caught at load.
+
+Two things worth knowing:
+
+- **It lives on the agent, not the skill.** Despite the name "skill prerequisites," `requires:` is a
+  grant-scoped ordering rule on the agent node — the same skill can be a prerequisite in one agent
+  and unguarded in another. (Reference: the [agent `requires` field](../reference/topology.md).)
+- **Enforced at the permission seam, on both executors.** It is checked where every skill call is
+  authorised, so a model node and a [harness node](17-harness-executors.md) obey it identically —
+  it is structural, not a line in a prompt.
 
 ## What the mock provider enforces
 
