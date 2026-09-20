@@ -1636,6 +1636,38 @@ provenance:
   version: 1.0.0
 ```
 
+## Prerequisites — one skill must run before another (`requires:`)
+
+A skill can be gated behind other skills: the runtime refuses to run it until its prerequisites have
+returned successfully in the same run. Use it for real ordering constraints — gather the evidence
+before posting a verdict, run the tests before deploying — that must hold regardless of what the
+model decides to call.
+
+The rule is **grant-scoped: it lives on the agent node** (`requires:` in the topology), not on the
+skill artifact — so the same skill can be a prerequisite for one agent and unguarded for another.
+That is why there is no `requires` field in the `kind: Skill` schema above; it is an agent field
+(full reference: the [agent `requires` field](topology.md)).
+
+```yaml
+# topologies/<name>.yaml — on the agent, not the skill
+agents:
+  root:
+    id: reviewer
+    role: root
+    skills: [gather-evidence, post-verdict]
+    requires:
+      post-verdict: [gather-evidence]   # post-verdict refused until gather-evidence has returned
+```
+
+- **Shape:** `{guarded_skill: [prerequisite, ...]}`. Both sides must be skills the agent holds.
+- **Enforcement:** at the same permission seam every skill call passes through, so a **model node
+  and a harness node obey it identically** — it is structural, not a prompt instruction.
+- **Recovery:** the refusal **names what to call first**, so the agent fixes the order inside its own
+  loop rather than failing the run.
+- **Cycles** (`a` requires `b` requires `a`) are a resolution error caught at load.
+
+Taught with a worked example in [Level 7: Governance](../tutorials/07-governance.md).
+
 ## Another agent as a skill (`implementation.type: agent`)
 
 One skill type, two resolutions — a topology in this workspace, or a remote agent reached through

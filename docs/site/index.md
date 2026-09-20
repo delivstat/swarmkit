@@ -108,7 +108,7 @@ Which agent fired, what each cost, the span waterfall, the exact prompt a model 
 <div class="shot"><img src="img/tutorials/07-gates.png" alt="The gates inbox"></div>
 <div class="body" markdown>
 ### Gates that hold
-Decision skills run before an agent sees input and after it answers. A funnel judges the artifact, then two named people approve — quorum enforced by the runtime, not the prompt.
+Decision skills run before an agent sees input and after it answers. A skill can require other skills to have run first (`requires:`), and a funnel judges the artifact, then two named people approve — quorum and ordering enforced by the runtime, not the prompt.
 <a class="more" href="tutorials/07-governance/">Governance →</a>
 </div>
 </div>
