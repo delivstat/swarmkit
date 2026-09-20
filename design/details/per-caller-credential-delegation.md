@@ -484,6 +484,38 @@ with a link that works.
 the second user changes nothing about the first — and that the developer's own token, sitting in the
 same store, is not what either of them got.
 
+## Delivery
+
+Three slices. The middle one is deliberately not split further.
+
+**Slice 1 — resolution.** The `identity` field on `credential_ref` with `global` as the default, the
+`supports_per_user` provider property, load-time validation (per-user on a source that cannot key by
+owner, per-user with a literal `config.owner`, per-user under auth `none`, `identity_claim` changed
+with tokens stored), the principal `ContextVar`, `serve` setting and clearing it, the resolver
+branch, the mismatch diagnosis, and the audit `mode` field. Ships with the full resolution matrix —
+including both no-fallback rows — the validation tests, the principal-isolation test and the
+owner-key agreement tests.
+
+Nothing user-visible changes in this slice: every existing workspace is `global` by omission and
+resolves exactly as before. That is the point of landing it alone — the security property gets its
+own review, and its tests are green before anything depends on them.
+
+**Slice 2 — dispatch: session keying *and* bounding, together.** Keying sessions by
+`(server_id, owner)` without a ceiling would be strictly worse than today: it multiplies live
+sessions by the user population while removing the single-session assumption that currently keeps
+that number at one per server. A keyed-but-unbounded cache is not an intermediate state worth
+existing, even briefly on `main`, so the LRU ceiling, the idle TTL, the refcounting that stops a
+running job's session being evicted, the lower `stdio` ceiling and the eviction counters land in the
+same change as the key. The unit tests for keying and for bounding are one suite for the same reason.
+
+**Slice 3 — portal.** `GET /api/oauth/my-credentials` (no owner parameter), the admin listing
+narrowed, the `/connect` route, mode on the row, per-viewer status for per-user rows only, and the
+Connect wording. Carries the roster tamper tests and the TypeScript suite.
+
+**Before it is called done:** one manual pass against a real tenant (Google, and an Entra or Okta
+org), because consent screens, scope drift, refresh-token lifetimes and admin-consent policies are
+exactly what a stub cannot model. Findings come back into this note.
+
 ## Open questions
 
 1. **Revocation at the organisation level.** An employee leaves; their rows should go. Deleting by
