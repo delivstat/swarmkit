@@ -150,8 +150,9 @@ Being honest about the rough edges:
 - **Output quality varies between runs.** Same prompt, same model,
   different tool call order. Temperature 0.3 means the model samples
   differently each time. Some runs are excellent, some miss things.
-- **`swarmkit eject` doesn't exist yet.** The design says you should
-  be able to export standalone LangGraph code. Not implemented.
+- **There's no code-export command.** A `swarmkit eject` (export to
+  standalone LangGraph code) was once planned but dropped — no-lock-in
+  comes from the portable, open topology data plus the OSS runtime.
 - **No web UI.** CLI only right now. Works for developers, not great
   for everyone else.
 - **Large files overwhelm the model.** A 2,000-line source file as

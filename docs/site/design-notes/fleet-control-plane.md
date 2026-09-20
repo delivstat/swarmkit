@@ -141,8 +141,9 @@ Gemini-first defaults (ModelProvider abstraction already covers multi-provider).
 - **No central SPOF for execution:** the control plane is for evolution/observation
   only. Instances run fully with it down — buffer telemetry, apply no new approved
   changes. It is never a runtime dependency.
-- **Invariant #7 (eject intact):** additive observability/evolution; an ejected swarm
-  still runs standalone. The control plane never participates in execution.
+- **Invariant #7 (portability intact):** additive observability/evolution; a topology
+  stays portable, open data that any conformant runtime can run. The control plane never
+  participates in execution.
 - **§8 governance unchanged:** approval flows through the same reserved-scope human
   gates; audit stays append-only; distribution artifacts are signed + provenance-
   verified.

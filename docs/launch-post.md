@@ -108,7 +108,7 @@ The verbose mode shows the full agent flow in real time — which model is calle
 
 ## What's next
 
-The web UI is the main v1.1 item — a visual topology editor and runtime dashboard over the HTTP server. `swarmkit eject` (exporting standalone LangGraph code from a topology) is designed but not yet implemented — the architectural constraint it imposes is real though, since every runtime feature must have an ejection story.
+The web UI is the main v1.1 item — a visual topology editor and runtime dashboard over the HTTP server. (A `swarmkit eject` code-export command was once planned as an escape hatch but has been dropped — no-lock-in comes from the portability of the open topology data plus the OSS runtime, not from exporting generated code.)
 
 I'm also working on a content creation workspace for [rynko.dev](https://rynko.dev) with automated blog and LinkedIn post generation using the same multi-agent pattern, and a trade document intelligence workspace for [klervex.com](https://klervex.com).
 

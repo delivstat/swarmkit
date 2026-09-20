@@ -140,5 +140,5 @@ call was governed (not a direct, unaudited call).
   started.
 - Container: an `allowlist` harness reaches the gateway via `host.docker.internal` (auto-allowlisted);
   `deny` runs tool-less, documented.
-- Eject: the generated MCP config + `--mcp-config` arg are derivable from the adapter + workspace, so
-  an ejected node can reproduce them.
+- Portability: the generated MCP config + `--mcp-config` arg are derived from the adapter + workspace
+  — they live in the open artifacts, so any conformant runtime can reproduce them (invariant #7).

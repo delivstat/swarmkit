@@ -6,7 +6,7 @@ Python runtime for SwarmKit. Interprets topology files, compiles them into LangG
 
 ```
 src/swarmkit_runtime/
-├── cli/                 # Typer-based CLI: init, author, run, serve, eject
+├── cli/                 # Typer-based CLI: init, author, run, serve
 ├── topology/            # Topology loader, validator, resolver (archetype + skill refs)
 ├── skills/              # Skill registry, category-specific semantics, composition
 ├── archetypes/          # Archetype registry and instantiation
@@ -18,7 +18,7 @@ src/swarmkit_runtime/
 
 ## Design references
 
-- §7 Architectural Principles — `topology as data`, `eject, never lock-in`
+- §7 Architectural Principles — `topology as data`, `portability, never lock-in`
 - §8 Separation of Powers — `governance/` module is the SwarmKit side; AGT is the implementation
 - §9 System Architecture — this package is component #1 of 3
 - §14 Runtime Architecture — three execution modes (one-shot, persistent, scheduled)
@@ -33,7 +33,6 @@ src/swarmkit_runtime/
 | `swarmkit author archetype [name]` | Launch Archetype Authoring variant |
 | `swarmkit run topology.yaml` | One-shot execution |
 | `swarmkit serve workspace/` | Persistent / scheduled mode |
-| `swarmkit eject topology.yaml` | Export LangGraph code |
 
 ## Development
 
