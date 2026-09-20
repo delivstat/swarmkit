@@ -288,12 +288,27 @@ by crashing, so the policy ships with the feature:
   closed session is simply reopened on next use, and a call already in flight holds its own session
   object and finishes on it. The ceiling therefore closes the least-recently-used rather than
   refusing, because refusing would fail a run for being unlucky in the ordering.
-- **Eviction had to be made real first.** *(Also found in implementation, and the more important
-  correction.)* Every session entered **one shared `AsyncExitStack`**, closed only at shutdown, so
-  dropping a session forgot it while its transport stayed open — reopening *added* a connection
-  rather than replacing one. An LRU over that would have reclaimed nothing. Each session now owns
-  its stack, entered and exited on the owner task, which is what the ceiling and the idle sweep
-  actually act on.
+- **Eviction had to be made real first.** *(Also found in implementation.)* Every session entered
+  **one shared `AsyncExitStack`**, closed only at shutdown, so dropping a session forgot it while
+  its transport stayed open — reopening *added* a connection rather than replacing one. An LRU over
+  that would have reclaimed nothing.
+- **The unit of lifetime is a task, not a stack.** *(The correction that actually mattered, and the
+  one this note got most wrong. CI found it; the suites run locally did not cover opening sessions
+  and then tearing the manager down.)* Giving each session its own exit stack is **not** sufficient
+  while every stack is entered on the one owner task: anyio cancel scopes form a per-task stack
+  that must unwind in **LIFO order**, and closing the least-recently-used session is out of order by
+  definition. Doing it corrupts the nesting and cancels unrelated sessions —
+  `CancelledError: Cancelled via cancel scope ... by <Task name='mcp-owner'>`.
+
+  So each session owns a **task** that enters its contexts, hands back the session, waits to be told
+  to close, and exits those contexts itself. Every cancel scope is then entered and exited by the
+  same task, in order, and sessions become independently closable — which is what the ceiling and
+  the idle sweep needed all along. `close_all` closes those tasks rather than leaving them to the
+  owner, for the same reason.
+
+  The general lesson is worth keeping: the constraint here was never reference counting, it was
+  **task affinity**. A resource whose teardown is scoped to a task cannot be torn down out of band,
+  and any cache that evicts in an order of its own choosing needs one task per entry.
 - **Eviction is observable.** It is logged and counted; a deployment whose ceiling is wrong should be
   able to see that it is thrashing rather than infer it from latency.
 - **`stdio` per-user is the expensive case and is treated as one.** A remote `http` server keeps a
