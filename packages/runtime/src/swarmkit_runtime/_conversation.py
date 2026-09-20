@@ -80,9 +80,20 @@ class ConversationManager:
     in a conversation — it just sees a longer input.
     """
 
-    def __init__(self, runtime: WorkspaceRuntime, workspace_root: Path) -> None:
+    def __init__(
+        self,
+        runtime: WorkspaceRuntime,
+        workspace_root: Path,
+        *,
+        canary: Any = None,
+    ) -> None:
         self._runtime = runtime
         self._workspace_root = workspace_root
+        #: The server's canary router, when a turn is being served by one. A turn resolves its
+        #: topology through `JobService` like every other interface, so a topology under canary is
+        #: routed for chat too — it previously ran the base topology always, which meant a chat
+        #: turn and a `POST /run` of the same name could execute different versions.
+        self._canary = canary
         # Pre-1.227 conversations. Read, never written: the store is where conversations live.
         self._legacy_dir = workspace_root / ".swarmkit" / "conversations"
 
@@ -197,9 +208,14 @@ class ConversationManager:
         run_id = turn_run_id(
             conversation.id, sum(1 for t in conversation.turns if t.role == "human")
         )
-        self._record_turn_job(run_id, conversation, user_message)
+        # Resolve through the service rather than running the name as written: canary routing and
+        # the version stamp are decisions about *which* topology runs, and they must not depend on
+        # which door the caller came through. The run itself stays here — a turn is awaited inline
+        # so Ctrl-C still reaches the caller and a failed row still never costs the answer.
+        topology_to_run, version = self._resolve_topology(conversation.topology_name)
+        self._record_turn_job(run_id, conversation, user_message, version=version)
         try:
-            result = await self._runtime.run(conversation.topology_name, context, thread_id=run_id)
+            result = await self._runtime.run(topology_to_run, context, thread_id=run_id)
         except BaseException as exc:
             self._finish_turn_job(run_id, "failed", error=f"{type(exc).__name__}: {exc}")
             raise
@@ -241,7 +257,33 @@ class ConversationManager:
             logger.warning("this conversation will not appear in jobs: the store did not open")
             return None
 
-    def _record_turn_job(self, run_id: str, conversation: Conversation, message: str) -> None:
+    def _resolve_topology(self, topology_name: str) -> tuple[str, str | None]:
+        """The topology this turn should run, and the canary version if it was routed.
+
+        `JobService.resolve_topology` is the one place that answers this, and it is pure — no
+        store, no execution — so a turn can ask it without adopting the rest of the run lifecycle.
+        Best-effort in the same direction as everything else here: if the service cannot answer,
+        the turn runs the name as written rather than failing on a routing question.
+        """
+        try:
+            from swarmkit_runtime.server._jobs import JobStore  # noqa: PLC0415
+            from swarmkit_runtime.server._services import JobService  # noqa: PLC0415
+
+            return JobService(JobStore()).resolve_topology(
+                self._runtime, self._canary, topology_name
+            )
+        except Exception:
+            logger.debug("canary routing unavailable for %r", topology_name, exc_info=True)
+            return topology_name, None
+
+    def _record_turn_job(
+        self,
+        run_id: str,
+        conversation: Conversation,
+        message: str,
+        *,
+        version: str | None = None,
+    ) -> None:
         """Open a job row for this turn, linked to the conversation by ``correlation_id``.
 
         Best-effort in one direction only, as everywhere else: a store that will not open loses the
@@ -252,6 +294,10 @@ class ConversationManager:
             return
         try:
             store.create_job(run_id, conversation.topology_name, message, conversation.id, "chat")
+            if version:
+                # The same stamp `POST /run` writes, so "which version answered this" is readable
+                # from the row rather than inferred from when the turn happened.
+                store.update_job(run_id, version=version)
         # A conversation must continue whether or not it can be recorded.
         except Exception:
             logger.warning("turn %s will not appear in jobs: could not create its row", run_id)

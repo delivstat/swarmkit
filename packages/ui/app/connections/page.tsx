@@ -52,6 +52,11 @@ const STATUS: Record<ConnectionStatus, { label: string; className: string }> = {
 		className: "text-destructive",
 	},
 	unresolved: { label: "Not resolving", className: "text-warning" },
+	// The viewer's to fix, and a healthy state — so not destructive, and not an operator problem.
+	"needs-your-login": {
+		label: "Connect as you",
+		className: "text-muted-foreground",
+	},
 };
 
 /**

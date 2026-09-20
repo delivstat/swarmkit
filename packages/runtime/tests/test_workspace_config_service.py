@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 from fastapi.testclient import TestClient
+from swarmkit_runtime.oauth import TokenStore
 from swarmkit_runtime.server import create_app
 from swarmkit_runtime.server._services import NotFoundError
 from swarmkit_runtime.server._workspace_config import ConfigError, WorkspaceConfigService
@@ -199,3 +200,79 @@ def test_put_then_delete_round_trip(client) -> None:  # type: ignore[no-untyped-
 def test_put_a_forbidden_section_is_a_400(client) -> None:  # type: ignore[no-untyped-def]
     resp = client.put("/api/workspace/config/governance/provider", json={"provider": "allow_all"})
     assert resp.status_code == 400
+
+
+# ---- an OAuth credential is not broken just because it is not an env var ----------------------
+
+
+def test_an_oauth_credential_is_not_reported_broken(tmp_path: Path) -> None:
+    """Every OAuth credential used to read as `resolves: false` on the settings page.
+
+    `_resolves` asked the env/file resolver, which handles `env` and `file` and *raises* on
+    anything else — and the caller's `except Exception: return False` turned that raise into a
+    verdict. A token refreshed seconds ago was shown as not resolving: the exact "looks broken
+    when it is fine" failure the method exists to prevent, reached from the other side.
+
+    An OAuth credential also cannot be resolved the way an env var can — doing it properly means a
+    refresh, which is I/O and belongs at the point of use. What a setup screen needs is whether a
+    login exists, which the store answers offline.
+    """
+    service = WorkspaceConfigService(tmp_path)
+    credentials = {
+        "shared": {"source": "oauth", "config": {"endpoint": "https://x", "owner": "bob"}},
+    }
+
+    assert service._resolves("shared", credentials) is False, "nobody has connected it yet"
+
+    TokenStore(tmp_path).save(
+        credential_id="shared",
+        owner="bob",
+        provider="stub",
+        endpoint="https://x",
+        token_response={"access_token": "t", "refresh_token": "r", "expires_in": 9999},
+    )
+    assert service._resolves("shared", credentials) is True, (
+        "a stored login for the designated owner is exactly what makes this one resolve"
+    )
+
+
+def test_a_per_user_credential_has_no_workspace_level_verdict(tmp_path: Path) -> None:
+    """Its token belongs to whoever is asking, and this read has no viewer.
+
+    Answering `false` would mark every per-user connection broken for everybody — including the
+    operator, who may be the one person who has connected it. The page shows per-viewer state from
+    `/api/oauth/my-credentials` instead.
+    """
+    service = WorkspaceConfigService(tmp_path)
+    credentials = {
+        "calendar": {
+            "source": "oauth",
+            "identity": "per-user",
+            "config": {"endpoint": "https://x"},
+        },
+    }
+    assert service._resolves("calendar", credentials) is True
+
+
+def test_the_read_says_whose_each_connection_is(tmp_path: Path) -> None:
+    (tmp_path / "workspace.yaml").write_text(
+        "apiVersion: swarmkit/v1\n"
+        "kind: Workspace\n"
+        "metadata:\n"
+        "  id: w\n"
+        "  name: W\n"
+        "credentials:\n"
+        "  github:\n"
+        "    source: env\n"
+        "    config:\n"
+        "      env: GITHUB_TOKEN\n"
+        "  calendar:\n"
+        "    source: oauth\n"
+        "    identity: per-user\n"
+        "    config:\n"
+        "      endpoint: https://x\n",
+        encoding="utf-8",
+    )
+    rows = {c["id"]: c for c in WorkspaceConfigService(tmp_path).read()["credentials"]}
+    assert rows["github"]["identity"] == "global"
+    assert rows["calendar"]["identity"] == "per-user"

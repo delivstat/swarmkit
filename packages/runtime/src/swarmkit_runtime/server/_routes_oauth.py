@@ -55,6 +55,36 @@ def _owner_of(request: Request) -> str:
     return str(getattr(identity, "client_id", "") or "local")
 
 
+def _declared_credentials(request: Request) -> dict[str, Any]:
+    """The workspace's `credentials` block, or empty when no workspace is loaded."""
+    runtime = getattr(request.app.state, "runtime", None)
+    workspace = getattr(runtime, "workspace", None)
+    raw = getattr(getattr(workspace, "raw", None), "credentials", None) or {}
+    if not hasattr(raw, "items"):
+        return {}
+    return {str(key): _as_mapping(value) for key, value in dict(raw).items()}
+
+
+def _as_mapping(entry: Any) -> dict[str, Any]:
+    """A credential entry as a plain dict.
+
+    The resolved workspace holds these as generated pydantic models, not dicts — reading them as
+    mappings silently yields nothing, which renders every connection as an unconfigured `global`
+    one. Enum members (`identity`) are flattened to their values so the JSON says `per-user`
+    rather than a Python repr.
+    """
+    if hasattr(entry, "model_dump"):
+        data = dict(entry.model_dump(mode="json"))
+    elif hasattr(entry, "keys"):
+        data = dict(entry)
+    else:
+        return {}
+    identity = data.get("identity")
+    if identity is not None:
+        data["identity"] = getattr(identity, "value", identity)
+    return data
+
+
 def _close_window(message: str, *, ok: bool) -> HTMLResponse:
     """The callback lands in a popup. Say what happened, then close.
 
@@ -156,6 +186,51 @@ def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:
                 for m in service.store.list_metadata()
             ]
         }
+
+    @app.get("/api/oauth/my-credentials")
+    async def my_credentials(request: Request) -> dict[str, Any]:
+        """What *this caller* has connected — and nothing about anybody else.
+
+        A deliberately separate route from ``/api/oauth/credentials`` rather than that listing
+        filtered for non-admins. The operator inventory answers "who has connected what", which in
+        a multi-user deployment is a roster: in some organisations more sensitive than any single
+        connection. Filtering it in the browser would not help — the data is disclosed the moment
+        it is serialised, and `view-source` is the whole exploit.
+
+        **This handler takes no owner parameter.** The owner comes from the authenticated identity,
+        there is no argument to tamper with, and no query it can express that names anyone else —
+        not *permitted* to read another owner's rows, structurally unable to ask. A query string
+        that tries is ignored, because nothing reads one.
+
+        Declared connections are listed whether or not the caller has connected them, so the page
+        can show what the agent will use as them. A `global` connection carries no personal state:
+        its token belongs to whoever the operator designated, so `connected` is null rather than a
+        misleading false. See design/details/per-caller-credential-delegation.md.
+        """
+        owner = _owner_of(request)
+        declared = _declared_credentials(request)
+        mine = {m.credential_id: m for m in service.store.list_metadata() if m.owner == owner}
+
+        rows: list[dict[str, Any]] = []
+        for credential_id, entry in sorted(declared.items()):
+            config = entry.get("config") or {}
+            identity = str(entry.get("identity") or "global")
+            token = mine.get(credential_id) if identity == "per-user" else None
+            rows.append(
+                {
+                    "credential_id": credential_id,
+                    "source": str(entry.get("source", "")),
+                    "identity": identity,
+                    "endpoint": config.get("endpoint"),
+                    # null for a global connection: it is not this person's to connect.
+                    "connected": (token is not None) if identity == "per-user" else None,
+                    "scopes": token.scopes if token else [],
+                    "expires_at": token.expires_at if token else None,
+                    "seconds_remaining": token.seconds_remaining if token else None,
+                    "expired": token.expired if token else None,
+                }
+            )
+        return {"owner": owner, "credentials": rows}
 
     @app.post("/api/oauth/login")
     async def start_login(request: Request) -> dict[str, Any]:

@@ -180,6 +180,18 @@ def _required_action(method: str, path: str) -> str | None:  # noqa: PLR0911
     # Delta-sync body fetch is a content read; it uses POST only to carry the ref list.
     if path == "/fleet/state/artifacts":
         return "read"
+    # The operator inventory of stored tokens answers "who has connected what" — a roster, and in
+    # a multi-user deployment that list is sometimes more sensitive than any single connection.
+    # Admin only. A caller's own connection state lives at /api/oauth/my-credentials, which derives
+    # the owner from the authenticated identity and can name nobody else
+    # (per-caller-credential-delegation.md).
+    if method.upper() == "GET" and path == "/api/oauth/credentials":
+        return "admin"
+    # Disconnecting is owner-scoped in the handler: it can only remove the caller's own token. A
+    # person revoking their own access is ordinary authenticated work, not an administrative act,
+    # and requiring admin would mean nobody could disconnect the account they connected.
+    if method.upper() == "DELETE" and path.startswith("/api/oauth/credentials/"):
+        return "run"
     if method.upper() == "GET":
         return "read"
     if path.startswith("/api/"):

@@ -3181,7 +3181,7 @@ docker run -v ./workspace:/workspace \
 
 # HTTP API
 
-Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 101 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
+Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 102 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
 
 Paths are relative to the server root. `{...}` segments are path parameters.
 
@@ -3323,6 +3323,7 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 | `GET` | `/api/oauth/credentials` | Stored tokens, as metadata. Never bytes. |
 | `DELETE` | `/api/oauth/credentials/{credential_id}` | Forget a token, and revoke it upstream where the provider supports revocation. |
 | `POST` | `/api/oauth/login` | Begin a login. Returns the URL the portal should open in a popup. |
+| `GET` | `/api/oauth/my-credentials` | What *this caller* has connected — and nothing about anybody else. |
 | `POST` | `/api/reload` | Re-read the workspace from disk and return its validation report. |
 | `GET` | `/api/schema/{artifact_type}` | The canonical JSON Schema for an artifact type — drives the UI's schema-generated |
 | `GET` | `/api/skill-catalogue` | The catalogue's bundles and skills — filtered by *q* when given. |

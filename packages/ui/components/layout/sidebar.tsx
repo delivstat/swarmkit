@@ -21,6 +21,7 @@ import {
 	RefreshCw,
 	ScrollText,
 	Timer,
+	UserCheck,
 	Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -54,6 +55,10 @@ const NAV = [
 	{ href: "/canary", label: "Canary", icon: ListChecks },
 	{ href: "/triggers", label: "Triggers", icon: Timer },
 	{ href: "/connections", label: "Connections", icon: Plug },
+	// The inventory above answers "what does this workspace talk to". This answers the other
+	// question — "which accounts does it use as me" — and is a separate route because it reads
+	// a separate, caller-scoped endpoint that can name nobody else.
+	{ href: "/connect", label: "Connect as you", icon: UserCheck },
 	{ href: "/system", label: "System", icon: Database },
 ] as const;
 

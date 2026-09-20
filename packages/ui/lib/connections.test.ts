@@ -337,3 +337,109 @@ describe("remoteAgentSkillYaml", () => {
 		expect(yaml).not.toContain("credentials_ref");
 	});
 });
+
+/**
+ * Per-user connections: the same row says different things to different people.
+ *
+ * A `global` connection is a property of the workspace — one status for everybody. A `per-user`
+ * one is a property of the viewer, because the token belongs to whoever is looking
+ * (`design/details/per-caller-credential-delegation.md`).
+ */
+const PER_USER: CredentialEntry = {
+	id: "calendar",
+	source: "oauth",
+	config: {},
+	// `resolves` describes whether *some* owner has a token. For a per-user connection that says
+	// nothing about the person reading the page, which is the whole point of these tests.
+	resolves: true,
+	identity: "per-user",
+};
+
+const CALENDAR_SERVER = {
+	id: "calendar",
+	transport: "http" as const,
+	endpoint: "https://stub.example/mcp",
+	credentials_ref: "calendar",
+};
+
+describe("per-user connections", () => {
+	it("says the same row differently to two people", () => {
+		const alice = serverRow(CALENDAR_SERVER, [PER_USER], { calendar: true });
+		const bob = serverRow(CALENDAR_SERVER, [PER_USER], { calendar: false });
+
+		expect(alice.status).toBe("ready");
+		expect(bob.status).toBe("needs-your-login");
+		expect(bob.detail).toContain("your own account");
+	});
+
+	it("keeps a global row identical for everybody", () => {
+		const server = {
+			id: "tg",
+			transport: "http" as const,
+			endpoint: "https://api.telegram.org",
+			credentials_ref: "tg",
+		};
+		const alice = serverRow(server, [RESOLVING], { tg: true });
+		const bob = serverRow(server, [RESOLVING], { tg: false });
+
+		// A global credential's token is not the viewer's, so the viewer map must not reach it.
+		expect(alice.status).toBe(bob.status);
+		expect(alice.status).toBe("ready");
+		expect(alice.identity).toBe("global");
+	});
+
+	it("keeps the three not-ready states distinct", () => {
+		// One is the operator's bug, one the operator's environment, one the viewer's to fix. A
+		// person sent to an operator for their own login gets stuck, and a workspace that looks
+		// broken because nobody has logged in yet gets "fixed" by someone changing config.
+		const missing = serverRow(
+			{ ...CALENDAR_SERVER, credentials_ref: "absent" },
+			[PER_USER],
+			{},
+		);
+		const broken = serverRow(
+			{ ...CALENDAR_SERVER, credentials_ref: "linear" },
+			[BROKEN],
+			{},
+		);
+		const mine = serverRow(CALENDAR_SERVER, [PER_USER], { calendar: false });
+
+		expect(missing.status).toBe("needs-credential");
+		expect(broken.status).toBe("unresolved");
+		expect(mine.status).toBe("needs-your-login");
+	});
+
+	it("marks the row per-user so a page can say whose it is", () => {
+		expect(serverRow(CALENDAR_SERVER, [PER_USER], {}).identity).toBe(
+			"per-user",
+		);
+	});
+
+	it("does not claim a per-user connection is ready when nobody asked the viewer", () => {
+		// An operator view has no viewer state. It must not assert "connected as you" — it says
+		// how the connection works instead.
+		const row = serverRow(CALENDAR_SERVER, [PER_USER]);
+		expect(row.status).toBe("ready");
+		expect(row.detail).toContain("as themselves");
+	});
+});
+
+describe("needsAttention with per-user connections", () => {
+	it("does not call an unconnected per-user row broken", () => {
+		// This list is the operator's "what is wrong here". A per-user connection nobody has
+		// logged into is the normal state of a workspace with users in it; listing it would make
+		// a healthy deployment look worse the more people use it.
+		const rows = [
+			serverRow(CALENDAR_SERVER, [PER_USER], { calendar: false }),
+			serverRow(
+				{ ...CALENDAR_SERVER, credentials_ref: "linear" },
+				[BROKEN],
+				{},
+			),
+		];
+		const attention = needsAttention(rows);
+
+		expect(attention).toHaveLength(1);
+		expect(attention[0]?.status).toBe("unresolved");
+	});
+});

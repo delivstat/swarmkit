@@ -7,7 +7,14 @@
  * of these answers.
  *
  * Design: `design/details/mcp-oauth.md` — a connection binds to the `mcp_servers` entry, not to a
- * skill, archetype or topology, and its credential has one owner fixed at setup.
+ * skill, archetype or topology.
+ *
+ * A connection's credential is either `global` — one owner fixed at setup, used by every run — or
+ * `per-user`, resolving to the token of whoever authenticated the run
+ * (`design/details/per-caller-credential-delegation.md`). That distinction reaches this file
+ * because it changes what a row can say: a global row has one status for the whole workspace, and
+ * a per-user row has a status *for the person looking at it*. The same row is ready for Alice and
+ * not-yet-connected for Bob, and only one of them can do anything about it.
  */
 
 import type {
@@ -23,7 +30,18 @@ export type ConnectionStatus =
 	| "ready"
 	| "needs-credential"
 	| "unresolved"
-	| "no-auth";
+	| "no-auth"
+	/**
+	 * A `per-user` connection the signed-in person has not connected yet.
+	 *
+	 * Deliberately distinct from `needs-credential` (the workspace is misconfigured — the
+	 * operator's bug) and `unresolved` (configured, but the source returned nothing — the
+	 * operator's environment). This one is the viewer's to fix, and it is a perfectly healthy
+	 * state: every per-user connection looks like this to every person until they connect it.
+	 * Collapsing the three would send people to an operator for something they can do themselves,
+	 * or make a working workspace look broken to everyone who has not logged in yet.
+	 */
+	| "needs-your-login";
 
 export interface ConnectionRow {
 	id: string;
@@ -32,6 +50,8 @@ export interface ConnectionRow {
 	target: string;
 	credentialId: string | null;
 	credentialSource: string | null;
+	/** `per-user` rows are per-viewer; `global` rows are the same for everybody. */
+	identity: "global" | "per-user";
 	status: ConnectionStatus;
 	/** One sentence a person can act on. Never "error". */
 	detail: string;
@@ -59,11 +79,36 @@ function serverNeedsCredential(server: McpServerEntry): boolean {
 	);
 }
 
+/**
+ * @param viewerConnected For a `per-user` credential, whether the signed-in person has connected
+ * it — `undefined` when that is unknown (an operator view that has not asked, or a global row).
+ */
 function statusFor(
 	needsCredential: boolean,
 	credential: CredentialEntry | null,
 	ref: string | undefined,
+	viewerConnected?: boolean,
 ): { status: ConnectionStatus; detail: string } {
+	// A per-user connection is answered by the viewer, not by the workspace: `resolves` describes
+	// whether *some* owner has a token, which says nothing about whether this person does.
+	if (credential && credential.identity === "per-user") {
+		if (viewerConnected === false) {
+			return {
+				status: "needs-your-login",
+				detail: `Connect your own account for "${credential.id}" — this agent uses it as you.`,
+			};
+		}
+		if (viewerConnected === true) {
+			return {
+				status: "ready",
+				detail: `Connected as you, through "${credential.id}".`,
+			};
+		}
+		return {
+			status: "ready",
+			detail: `Each person connects "${credential.id}" as themselves.`,
+		};
+	}
 	if (ref && !credential) {
 		return {
 			status: "needs-credential",
@@ -93,15 +138,23 @@ function statusFor(
 	return { status: "no-auth", detail: "Local process, no credential needed." };
 }
 
+/** `global` unless the credential says otherwise — the default everywhere, including when a row
+ * references no credential at all. */
+function identityOf(credential: CredentialEntry | null): "global" | "per-user" {
+	return credential?.identity === "per-user" ? "per-user" : "global";
+}
+
 export function serverRow(
 	server: McpServerEntry,
 	credentials: CredentialEntry[],
+	viewerConnected?: Record<string, boolean>,
 ): ConnectionRow {
 	const credential = credentialOf(server.credentials_ref, credentials);
 	const { status, detail } = statusFor(
 		serverNeedsCredential(server),
 		credential,
 		server.credentials_ref,
+		credential ? viewerConnected?.[credential.id] : undefined,
 	);
 	return {
 		id: server.id,
@@ -109,6 +162,7 @@ export function serverRow(
 		target: server.endpoint ?? (server.command ?? []).join(" "),
 		credentialId: credential?.id ?? server.credentials_ref ?? null,
 		credentialSource: credential?.source ?? null,
+		identity: identityOf(credential),
 		status,
 		detail,
 		permission: server.permission,
@@ -138,14 +192,20 @@ export function sinkRow(
 		target: sink.url ?? sink.sink,
 		credentialId: credential?.id ?? sink.credentials_ref ?? null,
 		credentialSource: credential?.source ?? null,
+		identity: identityOf(credential),
 		status,
 		detail,
 	};
 }
 
-export function connectionRows(config: WorkspaceConfig): ConnectionRow[] {
+export function connectionRows(
+	config: WorkspaceConfig,
+	viewerConnected?: Record<string, boolean>,
+): ConnectionRow[] {
 	return [
-		...config.mcp_servers.map((s) => serverRow(s, config.credentials)),
+		...config.mcp_servers.map((s) =>
+			serverRow(s, config.credentials, viewerConnected),
+		),
 		...(config.events ?? []).map((e, i) => sinkRow(e, i, config.credentials)),
 	];
 }
@@ -201,6 +261,7 @@ export function remoteAgentRow(
 		target: agent.card_url,
 		credentialId: credential?.id ?? agent.credentials_ref ?? null,
 		credentialSource: credential?.source ?? null,
+		identity: identityOf(credential),
 		status,
 		detail:
 			status === "needs-credential" && !agent.credentials_ref
@@ -275,9 +336,14 @@ export function needsAttention(rows: ConnectionRow[]): ConnectionRow[] {
 	const rank: Record<ConnectionStatus, number> = {
 		"needs-credential": 0,
 		unresolved: 1,
-		ready: 2,
-		"no-auth": 3,
+		"needs-your-login": 2,
+		ready: 3,
+		"no-auth": 4,
 	};
+	// `needs-your-login` is deliberately absent: this list is the operator's "what is broken here",
+	// and a per-user connection nobody has logged into yet is not broken — it is the normal state
+	// of a workspace with users in it. Listing it would make a healthy deployment look unhealthy
+	// in proportion to how many people use it.
 	return rows
 		.filter((r) => r.status === "needs-credential" || r.status === "unresolved")
 		.sort((a, b) => rank[a.status] - rank[b.status]);

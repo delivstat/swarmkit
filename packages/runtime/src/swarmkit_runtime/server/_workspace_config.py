@@ -84,6 +84,9 @@ class WorkspaceConfigService:
                     "id": cid,
                     "source": (entry or {}).get("source", ""),
                     "config": _redact_config(entry or {}),
+                    # Whose connection this is, so a page can say that a per-user row's state is
+                    # a property of the viewer rather than of the workspace.
+                    "identity": str((entry or {}).get("identity") or "global"),
                     "resolves": self._resolves(cid, credentials),
                 }
                 for cid, entry in credentials.items()
@@ -99,12 +102,52 @@ class WorkspaceConfigService:
         nobody exported looks identical to a working credential in every other view, and the
         failure surfaces much later as a platform auth error.
         """
+        entry = credentials.get(credential_id) or {}
+        source = str(entry.get("source", ""))
+
+        if source == "oauth":
+            return self._oauth_resolves(credential_id, entry)
+
         from swarmkit_runtime.mcp._credentials import substitute  # noqa: PLC0415
 
         try:
             return bool(substitute(f"{{credential.{credential_id}}}", credentials))
         except Exception:
             return False
+
+    def _oauth_resolves(self, credential_id: str, entry: dict[str, Any]) -> bool:
+        """An OAuth credential's health, which the env/file resolver cannot answer.
+
+        That resolver handles `env` and `file` and raises on anything else, and the caller's
+        `except Exception: return False` turned the raise into a verdict — so **every** OAuth
+        credential, including one refreshed seconds ago, was reported to the settings page as not
+        resolving. Exactly the "looks broken when it is fine" failure this method exists to prevent,
+        arrived at from the other direction.
+
+        An OAuth token also cannot be resolved the way an env var can: doing it properly means a
+        refresh, which is I/O and belongs in `CredentialService` at the point of use, not in a
+        settings read. What a setup screen needs is whether a login exists, which the store answers
+        without touching the network.
+        """
+        if str(entry.get("identity") or "global") == "per-user":
+            # There is no workspace-level answer: the token belongs to whoever is asking, and this
+            # read has no viewer. Saying "does not resolve" would mark every per-user connection
+            # broken for everyone; the page shows per-viewer state from `my-credentials` instead.
+            return True
+
+        try:
+            from swarmkit_runtime.oauth import TokenStore  # noqa: PLC0415
+
+            owners = [
+                m.owner
+                for m in TokenStore(self.workspace_path).list_metadata()
+                if m.credential_id == credential_id
+            ]
+        except Exception:
+            return False
+
+        designated = str((entry.get("config") or {}).get("owner", ""))
+        return designated in owners if designated else bool(owners)
 
     # ---- writing -------------------------------------------------------------------------
 

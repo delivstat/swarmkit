@@ -21,14 +21,13 @@ from swarmkit_runtime._principal import reset_current_principal, set_current_pri
 from swarmkit_runtime._workspace_runtime import MissingMCPServerError, WorkspaceRuntime
 from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
 from swarmkit_runtime.auth import AuthRequest as AuthReq
-from swarmkit_runtime.canary import CanaryRouter
+from swarmkit_runtime.canary import router_for_workspace
 from swarmkit_runtime.errors import ResolutionErrors
 from swarmkit_runtime.oauth import PendingLogins, TokenStore
 from swarmkit_runtime.persistence import storage_for_workspace
 from swarmkit_runtime.telemetry import configure_telemetry, load_telemetry_config
 
 from ._config import (
-    _parse_canary_routes,
     _parse_server_config,
     _parse_trigger_configs,
 )
@@ -277,18 +276,8 @@ def create_app(  # noqa: PLR0915
         app.state.scheduler = scheduler
 
         # Initialize canary router if configured
-        canary_routes = _parse_canary_routes(runtime.workspace)
-        if canary_routes:
-            available: dict[str, set[str]] = {
-                name.split("@")[0]: set() for name in runtime.workspace.topologies
-            }
-            for name in runtime.workspace.topologies:
-                base = name.split("@")[0]
-                topo = runtime.workspace.topologies[name]
-                available[base].add(topo.raw.metadata.version)
-            app.state.canary_router = CanaryRouter(canary_routes, available)
-        else:
-            app.state.canary_router = None
+        # One definition, shared with `swarmkit run` — see canary.router_for_workspace.
+        app.state.canary_router = router_for_workspace(runtime.workspace)
 
         # The MCP transport's session manager lives exactly as long as the app does.
         async with mcp_session_lifespan(app):
