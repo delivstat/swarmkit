@@ -131,7 +131,7 @@ SwarmKit ships a comprehensive CLI that covers the full lifecycle from workspace
 
 **Production:** `swarmkit serve . --port 8000` runs a FastAPI HTTP server that accepts tasks via REST.
 
-**Eject:** `swarmkit eject` is designed to export standalone LangGraph code from a topology — a clean ownership transfer if you ever want to leave the framework. It's not yet implemented, but the architectural constraint it imposes is real: every runtime feature must have an ejection story. If a feature can't be expressed in generated LangGraph code, we reconsider whether it belongs in the framework.
+**No lock-in:** a topology is portable, open YAML/JSON that any conformant runtime can interpret, and the runtime is open source — so leaving the framework means keeping your artifacts, not exporting them. (An earlier `swarmkit eject` code-export command was planned as a second escape hatch but dropped: as the runtime grew, features stopped being expressible as standalone generated code, and the portability of the data is the durable guarantee.)
 
 ## Use cases
 

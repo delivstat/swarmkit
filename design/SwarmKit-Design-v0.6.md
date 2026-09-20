@@ -38,7 +38,7 @@ v0.4 positioned SwarmKit as building its own policy engine, identity model, obse
 To avoid vendor lock-in to AGT specifically, SwarmKit introduces a GovernanceProvider abstraction — a narrow, stable interface covering policy evaluation, identity verification, and event recording. AGT is the v1.0 implementation. If AGT is deprecated, forked, or if a competing toolkit emerges, a new GovernanceProvider implementation replaces it without changes to the topology schema, runtime, or other components. This is the same pattern Terraform uses for cloud providers — narrow interface, multiple implementations, genuine portability at a stable boundary.
 
 ## [Heading3] 3. Execution engine remains LangGraph-native
-After thorough investigation, v0.5 is explicit that v1.0 does not attempt to abstract over the execution engine. LangGraph's surface (StateGraph, channels, reducers, Pregel execution, checkpointing) is too broad and evolving to wrap cleanly. The topology-as-data schema is already the portability layer — if a future version needs to target Microsoft Agent Framework or another engine, a second runtime compiler is written rather than a thin wrapper. The eject command remains the user-facing escape hatch.
+After thorough investigation, v0.5 is explicit that v1.0 does not attempt to abstract over the execution engine. LangGraph's surface (StateGraph, channels, reducers, Pregel execution, checkpointing) is too broad and evolving to wrap cleanly. The topology-as-data schema is already the portability layer — if a future version needs to target Microsoft Agent Framework or another engine, a second runtime compiler is written rather than a thin wrapper. (A code-export "eject" command was originally imagined as a second escape hatch but was dropped — see "Portability, never lock in" below and §14.4.)
 
 ## [Heading3] 4. Phase 1 scope and effort adjusted
 With AGT handling policy engine, identity, sandboxing, telemetry, and compliance mapping, Phase 1 effort drops from 14-16 weeks in v0.4 to 11-13 weeks in v0.5. What remains SwarmKit-specific is the topology schema, the skill and archetype abstractions, the conversational authoring, the reference topologies, and the LangGraph integration. This is materially less infrastructure and materially more distinctive value.
@@ -380,8 +380,8 @@ Swarms can identify their own capability gaps and author new skills to address t
 ## [Heading3] Ergonomics determine adoption
 Following OpenClaw's example, the first-run experience matters more than feature breadth. Ship reference topologies that work immediately. Make skill authoring conversational and forgiving. Document by example, not by abstraction.
 
-## [Heading3] Eject, never lock in
-At any point, a user must be able to export the LangGraph code that the runtime would execute, take ownership of it, and run it independently of SwarmKit.
+## [Heading3] Portability, never lock in
+No-lock-in is guaranteed by the openness of the artifacts plus the OSS runtime: a topology is portable, open YAML/JSON that any conformant runtime can interpret, and the runtime itself is open source. (An earlier plan added a `swarmkit eject` code-export command as a second escape hatch; it was dropped — as the runtime grew, features stopped being expressible as standalone generated code, and the portability of the data is the durable guarantee. See §14.4 and CLAUDE.md invariant #7.)
 
 ## [Heading1] 8. The Separation of Powers Model
 CHANGED FROM v0.1 — This entire section is new in v0.4. It replaces the lighter governance treatment of v0.3 with a structural model based on the separation-of-powers principle from real-world governance. The key claim is that governance must be architecturally enforced, not prompt-suggested.
@@ -767,10 +767,8 @@ Wire in persistence-skill invocations for audit, knowledge base writes, and skil
 Configure checkpointing, retries, and HITL interrupts
 Compile the graph
 
-## [Heading2] 14.4 The eject command
-Users can export the LangGraph code that the runtime would execute:
-swarmkit eject topology.yaml --output ./generated/# Produces:#   ./generated/swarm.py        - LangGraph graph definition#   ./generated/agents.py       - Agent function implementations#   ./generated/skills.py       - Skill implementations#   ./generated/requirements.txt#   ./generated/README.md
-After ejection, the user owns the generated code. SwarmKit becomes optional. This is both a user freedom and a forcing function for the abstraction.
+## [Heading2] 14.4 Eject (dropped)
+A `swarmkit eject` command — exporting the LangGraph code the runtime would execute, so a user could take ownership of it and run it independently — was planned here. It is **no longer built**. As the runtime grew, features stopped being expressible as standalone generated code, so a faithful export became impossible to guarantee. The no-lock-in property does not depend on it: a topology is portable, open YAML/JSON any conformant runtime can interpret, and the runtime is open source (CLAUDE.md invariant #7). There is no eject command in the CLI.
 
 ## [Heading2] 14.5 State, checkpointing, and the skill gap log
 LangGraph's checkpointing primitives are exposed through the topology schema. Checkpoints persist to SQLite in the workspace by default, with Postgres supported for production. Skill gap logs use the same storage configuration as audit logs.

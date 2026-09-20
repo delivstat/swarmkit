@@ -281,6 +281,6 @@ with the one-line notice. Skips with a clear message when no container runtime i
   runtime; the derived image is built once and reused; the credential reaches it only via `-e`.
 - `sandbox.mounts` makes a knowledge-base dir readable inside the container; an HTTP/SSE MCP server
   on the `allow` list is reachable; a container + stdio-only MCP pairing warns at load.
-- Eject story: the container flags (run args, mounts, build ref) are derivable from the adapter's
-  `sandbox` block, so an ejected LangGraph node can reproduce the `docker build`/`docker run`
-  wrapper (invariant #7).
+- Portability: the container flags (run args, mounts, build ref) are derivable from the adapter's
+  `sandbox` block — they live in the open artifact, not hidden in runtime code, so any conformant
+  runtime can reproduce the `docker build`/`docker run` wrapper (invariant #7).
