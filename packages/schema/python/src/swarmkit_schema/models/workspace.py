@@ -203,6 +203,15 @@ class Source(StrEnum):
     plugin = "plugin"
 
 
+class Identity1(StrEnum):
+    """
+    Whose connection this is. `global` (the default) is set up once and used by every run — a machine token, a fileshare credential. `per-user` resolves to the token belonging to the authenticated caller of each run, so one deployed agent serves a whole organisation against per-person services. `per-user` requires a source that can key a secret by owner (today: `oauth`), an authenticated caller (so not `auth: none`, not the CLI, not a trigger), and no literal `config.owner`. See design/details/per-caller-credential-delegation.md.
+    """
+
+    global_ = "global"
+    per_user = "per-user"
+
+
 class CredentialRef(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -211,6 +220,10 @@ class CredentialRef(BaseModel):
     source: Source = Field(
         ...,
         description="Which SecretsProvider resolves this credential. `oauth` resolves through the runtime's token store: the value is obtained by logging in once from the portal or CLI, and refreshed automatically at the point of use — see design/details/mcp-oauth.md and credential-service.md.",
+    )
+    identity: Identity1 | None = Field(
+        "global",
+        description="Whose connection this is. `global` (the default) is set up once and used by every run — a machine token, a fileshare credential. `per-user` resolves to the token belonging to the authenticated caller of each run, so one deployed agent serves a whole organisation against per-person services. `per-user` requires a source that can key a secret by owner (today: `oauth`), an authenticated caller (so not `auth: none`, not the CLI, not a trigger), and no literal `config.owner`. See design/details/per-caller-credential-delegation.md.",
     )
     provider_id: str | None = Field(
         None,
@@ -640,7 +653,7 @@ class Mcp(BaseModel):
     )
 
 
-class Identity1(BaseModel):
+class Identity2(BaseModel):
     """
     What the Agent Card says about this instance. Defaults come from the workspace name.
     """
@@ -679,7 +692,7 @@ class A2a(BaseModel):
         False,
         description="Whether to publish the Agent Card and serve the A2A task API.",
     )
-    identity: Identity1 | None = Field(
+    identity: Identity2 | None = Field(
         None,
         description="What the Agent Card says about this instance. Defaults come from the workspace name.",
     )

@@ -40,6 +40,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import CallToolResult
 from swarmkit_schema.models.workspace import McpServer
 
+from swarmkit_runtime._principal import current_principal
 from swarmkit_runtime.mcp._credentials import resolve_env, resolve_headers
 from swarmkit_runtime.mcp._sdk_compat import tool_input_schema, tool_read_only_hint
 
@@ -194,6 +195,23 @@ class MCPClientManager:
         self._credential_service: Any = credential_service
         #: What secret each open session was opened with, so a changed one can be detected.
         self._session_credentials: dict[str, str] = {}
+        #: One task per session, so a single session can be closed without disturbing the others.
+        #:
+        #: Two constraints meet here. A shared exit stack made eviction a lie — dropping a session
+        #: forgot it while its transport (for stdio, a subprocess) stayed open until shutdown, so
+        #: reopening *added* a connection rather than replacing one; harmless at one session per
+        #: server, an exhaustion at one per user. But giving each session its own stack on the one
+        #: owner task is not enough either: anyio cancel scopes form a per-task stack that must
+        #: unwind in LIFO order, and closing the least-recently-used session is by definition out
+        #: of order. Doing that corrupts the nesting and cancels unrelated sessions.
+        #:
+        #: So each session owns a task that enters its contexts, hands back the session, waits to
+        #: be told to close, and exits those contexts itself. Every cancel scope is then entered
+        #: and exited by the same task, in order, and sessions are independently closable.
+        #: ``{key: (task, close_event)}``.
+        self._session_closers: dict[str, tuple[asyncio.Task[None], asyncio.Event]] = {}
+        #: Monotonic timestamp of each session's last use, for idle eviction and LRU.
+        self._session_last_used: dict[str, float] = {}
 
     @property
     def configs(self) -> dict[str, MCPServerConfig]:
@@ -263,6 +281,32 @@ class MCPClientManager:
         resolved: str = await self._credential_service.resolve(config.credentials_ref)
         return resolved
 
+    def _session_key(self, server_id: str) -> str:
+        """The cache key a session for this server may be stored under.
+
+        A `global` connection presents the same secret to everyone, so one session per server is
+        correct and stays keyed by the server id alone — today's behaviour, unchanged.
+
+        A `per-user` connection does not. Its session carries one person's bearer, and the cache
+        is consulted before any credential is resolved, so keying it by server id would hand
+        Alice's open session to Bob's run and let Bob act as Alice. The resolver cannot prevent
+        that: it already returned the right token for each of them. The leak is here, one layer
+        below, which is why this is a keying problem and not a resolution one.
+        """
+        config = self._configs.get(server_id)
+        ref = getattr(config, "credentials_ref", "") if config is not None else ""
+        if not ref or self._credential_service is None:
+            return server_id
+        try:
+            per_user = bool(self._credential_service.is_per_user(ref))
+        except Exception:  # a service that cannot answer is treated as shared: see is_per_user
+            per_user = False
+        if not per_user:
+            return server_id
+        # NUL cannot appear in a server id (the schema's identifier pattern) or in an identity
+        # string that survived auth, so it cannot be forged into a collision between two owners.
+        return f"{server_id}\x00{current_principal() or ''}"
+
     async def _credential_changed(self, server_id: str) -> bool:
         """Would this server now present a different secret than its open session carries?"""
         config = self._configs.get(server_id)
@@ -274,12 +318,124 @@ class MCPClientManager:
             current = await self._resolved_credential(server_id)
         except Exception:
             return False
-        return current is not None and current != self._session_credentials.get(server_id)
+        return current is not None and current != self._session_credentials.get(
+            self._session_key(server_id)
+        )
 
     async def _drop_session(self, server_id: str) -> None:
-        """Forget a session so the next call reopens it. The exit stack closes the transport."""
-        self._sessions.pop(server_id, None)
-        self._session_credentials.pop(server_id, None)
+        """Close one session and forget it, so the next call reopens it."""
+        await self._close_key(self._session_key(server_id))
+
+    async def _close_key(self, key: str) -> None:
+        """Close the session stored under *key* and release its transport.
+
+        Dropping a session used to mean forgetting it: the transport stayed open until the manager
+        shut down, because every session shared one exit stack. Reopening therefore added a
+        connection rather than replacing one — invisible with one session per server, an
+        exhaustion once the population is users x servers.
+
+        Closing is recoverable by construction: every consumer calls `get_session` per tool call,
+        so a closed session is simply reopened on next use, and a call already in flight holds its
+        own session object and finishes on it.
+        """
+        self._sessions.pop(key, None)
+        self._session_credentials.pop(key, None)
+        self._session_last_used.pop(key, None)
+        closer = self._session_closers.pop(key, None)
+        if closer is None:
+            return
+        task, closing = closer
+        closing.set()
+        try:
+            await task
+        except Exception:
+            _logger.debug("closing MCP session %r raised", key, exc_info=True)
+
+    async def _spawn_session(self, config: MCPServerConfig) -> ClientSession:
+        """Open a session on a task of its own, and leave that task parked until it is closed.
+
+        The task is the unit of lifetime, not the exit stack: anyio requires the cancel scopes a
+        transport opens to be exited by the task that entered them, in the order they were entered.
+        One task per session satisfies both halves, which a shared owner task cannot once sessions
+        are closed out of order.
+        """
+        loop = asyncio.get_running_loop()
+        ready: asyncio.Future[ClientSession] = loop.create_future()
+        closing = asyncio.Event()
+        opener = self._start_http if config.transport == "http" else self._start_stdio
+
+        async def _hold() -> None:
+            try:
+                async with AsyncExitStack() as stack:
+                    session = await opener(config, stack)
+                    if not ready.done():
+                        ready.set_result(session)
+                    await closing.wait()
+            except BaseException as exc:
+                if not ready.done():
+                    ready.set_exception(exc)
+                elif not isinstance(exc, asyncio.CancelledError):
+                    _logger.debug("MCP session for %r ended with an error", config.server_id)
+
+        task = loop.create_task(_hold(), name=f"mcp-session:{config.server_id}")
+        try:
+            session = await ready
+        except BaseException:
+            closing.set()
+            raise
+        self._session_closers[self._session_key(config.server_id)] = (task, closing)
+        return session
+
+    def _per_user_keys(self, *, stdio_only: bool = False) -> list[str]:
+        """Open per-user session keys, least-recently-used first."""
+        keys = [k for k in self._sessions if _is_per_user_key(k)]
+        if stdio_only:
+            keys = [k for k in keys if self._transport_of(k) == "stdio"]
+        return sorted(keys, key=lambda k: self._session_last_used.get(k, 0.0))
+
+    def _transport_of(self, key: str) -> str:
+        config = self._configs.get(_server_of_key(key))
+        return str(getattr(config, "transport", "")) if config is not None else ""
+
+    async def _evict_idle(self) -> None:
+        """Close per-user sessions nobody has used for a while.
+
+        Only per-user ones: a global session is one per server and is meant to stay warm. A
+        per-user session held open because one person ran one thing this morning is pure cost, and
+        for stdio it is a parked subprocess.
+        """
+        ttl = _idle_ttl_s()
+        if ttl <= 0:
+            return
+        now = time.monotonic()
+        for key in self._per_user_keys():
+            if now - self._session_last_used.get(key, now) > ttl:
+                _logger.info("closing idle per-user MCP session %r", key.split("\x00")[0])
+                await self._close_key(key)
+
+    async def _enforce_ceiling(self, config: MCPServerConfig) -> None:
+        """Make room for one more per-user session, closing the least recently used.
+
+        Two ceilings, because the two transports do not cost the same. An `http` per-user session
+        is a client session; a `stdio` one is a *subprocess per user*, which is rarely what anyone
+        intends and is the thing that actually exhausts a host. Reaching a ceiling closes the LRU
+        rather than refusing: closing is recoverable (every call re-fetches its session) and
+        refusing would fail a run for being unlucky in the ordering.
+        """
+        stdio = str(getattr(config, "transport", "")) == "stdio"
+        limit = _stdio_ceiling() if stdio else _ceiling()
+        if limit <= 0:
+            return
+        keys = self._per_user_keys(stdio_only=stdio)
+        while len(keys) >= limit:
+            victim = keys.pop(0)
+            _logger.info(
+                "per-user MCP session ceiling reached (%d, %s); closing least-recently-used %r",
+                limit,
+                "stdio" if stdio else "http",
+                victim.split("\x00")[0],
+            )
+            await self._close_key(victim)
 
     # ---- session ownership ----------------------------------------------------------------------
 
@@ -296,6 +452,10 @@ class MCPClientManager:
             self._owner_queue = asyncio.Queue()
             self._stack = AsyncExitStack()
             self._sessions.clear()
+            # The stacks belonged to the dead loop's task; their contexts cannot be exited from
+            # here and died with it. Forget them rather than leak references to closed transports.
+            self._session_closers.clear()
+            self._session_last_used.clear()
             self._owner = loop.create_task(self._owner_main(self._owner_queue), name="mcp-owner")
         assert self._owner_queue is not None
         fut: asyncio.Future[Any] = loop.create_future()
@@ -341,13 +501,15 @@ class MCPClientManager:
         a header bound at connect time pins whatever was valid at startup — the refresh would
         update the store and change nothing on the wire (credential-service.md).
         """
-        if server_id in self._sessions:
+        key = self._session_key(server_id)
+        if key in self._sessions:
             if await self._credential_changed(server_id):
                 # The SDK gives no way to alter an open sse_client's headers, so the session is
                 # reopened with the fresh one. Reconnecting is cheap next to a 401 mid-run.
                 await self._drop_session(server_id)
             else:
-                return self._sessions[server_id]
+                self._session_last_used[key] = time.monotonic()
+                return self._sessions[key]
 
         config = self._configs.get(server_id)
         if config is None:
@@ -357,12 +519,16 @@ class MCPClientManager:
                 f"Add it to workspace.yaml under mcp_servers."
             )
 
-        opener = self._start_http if config.transport == "http" else self._start_stdio
-        session: ClientSession = await self._on_owner(lambda: opener(config))
-        self._sessions[server_id] = session
+        await self._evict_idle()
+        if _is_per_user_key(key):
+            await self._enforce_ceiling(config)
+
+        session = await self._spawn_session(config)
+        self._sessions[key] = session
+        self._session_last_used[key] = time.monotonic()
         return session
 
-    async def _start_stdio(self, config: MCPServerConfig) -> ClientSession:
+    async def _start_stdio(self, config: MCPServerConfig, stack: AsyncExitStack) -> ClientSession:
         if not config.command:
             raise ValueError(
                 f"MCP server '{config.server_id}' has transport=stdio but no command. "
@@ -392,14 +558,14 @@ class MCPClientManager:
         self._stderr_tails[config.server_id] = errlog
         # cast: the SDK annotates errlog as TextIO; the process only needs fileno/write/flush,
         # which the pipe-backed sink provides.
-        transport = await self._stack.enter_async_context(
+        transport = await stack.enter_async_context(
             stdio_client(params, errlog=cast("TextIO", errlog))
         )
-        session = await self._stack.enter_async_context(ClientSession(*transport))
+        session = await stack.enter_async_context(ClientSession(*transport))
         await session.initialize()
         return session
 
-    async def _start_http(self, config: MCPServerConfig) -> ClientSession:
+    async def _start_http(self, config: MCPServerConfig, stack: AsyncExitStack) -> ClientSession:
         if not config.endpoint:
             raise ValueError(
                 f"MCP server '{config.server_id}' has transport=http but no endpoint. "
@@ -419,11 +585,11 @@ class MCPClientManager:
         resolved = await self._resolved_credential(config.server_id)
         if resolved:
             headers["Authorization"] = f"Bearer {resolved}"
-            self._session_credentials[config.server_id] = resolved
-        transport = await self._stack.enter_async_context(
+            self._session_credentials[self._session_key(config.server_id)] = resolved
+        transport = await stack.enter_async_context(
             sse_client(url=config.endpoint, headers=headers or None)
         )
-        session = await self._stack.enter_async_context(ClientSession(*transport))
+        session = await stack.enter_async_context(ClientSession(*transport))
         await session.initialize()
         return session
 
@@ -579,8 +745,15 @@ class MCPClientManager:
         return dict(server_tools.get(tool_name, {}))
 
     async def close_all(self) -> None:
-        """Close all sessions and stop all servers — from any task: the owner task exits the
-        contexts it entered and finishes."""
+        """Close all sessions and stop all servers.
+
+        Each session parks a task of its own that exits the contexts it entered (`_spawn_session`),
+        so they are closed here rather than by the owner: a task cannot unwind another task's
+        cancel scopes, which is the same rule that made the owner task necessary in the first
+        place.
+        """
+        for key in list(self._session_closers):
+            await self._close_key(key)
         owner, queue = self._owner, self._owner_queue
         self._owner = self._owner_queue = None
         if owner is None or owner.done() or queue is None:
@@ -600,6 +773,44 @@ class MCPClientManager:
     @property
     def server_ids(self) -> list[str]:
         return sorted(self._configs.keys())
+
+
+#: Separates a server id from the owner in a per-user session key. Neither a server id (the
+#: schema's identifier pattern) nor an identity that survived auth can contain it, so two owners
+#: cannot be forged into one key.
+_KEY_SEP = "\x00"
+
+
+def _is_per_user_key(key: str) -> bool:
+    return _KEY_SEP in key
+
+
+def _server_of_key(key: str) -> str:
+    return key.split(_KEY_SEP, 1)[0]
+
+
+def _int_env(name: str, default: int) -> int:
+    """A non-numeric or negative value falls back to the default rather than disabling the bound."""
+    try:
+        value = int(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+def _ceiling() -> int:
+    """Most per-user http sessions kept open at once. 0 disables the bound."""
+    return _int_env("SWARMKIT_PER_USER_SESSION_MAX", 64)
+
+
+def _stdio_ceiling() -> int:
+    """Most per-user stdio sessions — one subprocess per user, so deliberately far smaller."""
+    return _int_env("SWARMKIT_PER_USER_STDIO_SESSION_MAX", 8)
+
+
+def _idle_ttl_s() -> int:
+    """Seconds a per-user session may sit unused before it is closed. 0 disables the sweep."""
+    return _int_env("SWARMKIT_PER_USER_SESSION_IDLE_S", 900)
 
 
 _logger = logging.getLogger(__name__)

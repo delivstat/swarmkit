@@ -58,6 +58,13 @@ SHAPE_ONLY_INVALID: set[tuple[str, str]] = {
     ("skill-invalid", "decision-missing-reasoning.yaml"),
     ("skill-invalid", "decision-reasoning-wrong-type.yaml"),
     ("workspace-invalid", "credential-plugin-missing-provider-id.yaml"),
+    # `identity: per-user` derives the owner from the run's authenticated caller, so a literal
+    # `config.owner` contradicts it. That is an if-then rule, and `config` is an open object the
+    # codegen types as a plain dict — so the pair is rejected by `validate()` and accepted by the
+    # generated model. The runtime does not depend on the model catching it: resolution reads the
+    # declared mode and never consults `config.owner` in per-user, so the contradiction cannot
+    # change whose token is used even if a workspace somehow bypasses the validator.
+    ("workspace-invalid", "per-user-credential-with-literal-owner.yaml"),
     ("workspace-invalid", "context-compression-plugin-missing-class.yaml"),
     ("workspace-invalid", "server-auth-key-tier-and-scopes.yaml"),
     ("workspace-invalid", "server-auth-api-key-missing-keys.yaml"),

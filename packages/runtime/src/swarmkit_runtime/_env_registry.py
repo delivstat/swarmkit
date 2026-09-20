@@ -140,6 +140,24 @@ REGISTRY: tuple[EnvVar, ...] = (
     # ---- MCP + sandboxing ----
     EnvVar("SWARMKIT_MCP_TIMEOUT", "MCP + sandbox", "Per-call MCP timeout in seconds."),
     EnvVar(
+        "SWARMKIT_PER_USER_SESSION_MAX",
+        "MCP + sandbox",
+        "Most per-user (identity: per-user) MCP sessions kept open at once; the least recently "
+        "used is closed to make room. 0 disables the bound. Default 64.",
+    ),
+    EnvVar(
+        "SWARMKIT_PER_USER_STDIO_SESSION_MAX",
+        "MCP + sandbox",
+        "The same ceiling for stdio servers, where a per-user session is a subprocess per user — "
+        "so deliberately far smaller. Default 8.",
+    ),
+    EnvVar(
+        "SWARMKIT_PER_USER_SESSION_IDLE_S",
+        "MCP + sandbox",
+        "Seconds a per-user MCP session may sit unused before it is closed. 0 disables the "
+        "sweep. Default 900.",
+    ),
+    EnvVar(
         "SWARMKIT_OAUTH_KEY",
         "MCP + sandbox",
         "Key that encrypts stored OAuth tokens. Generated into .swarmkit/oauth.key when unset.",

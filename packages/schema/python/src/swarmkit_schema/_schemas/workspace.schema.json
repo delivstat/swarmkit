@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:swarmkit:schema:v1:workspace",
   "title": "SwarmKit Workspace",
-  "description": "Deployment-level config: identity, governance, model providers, MCP registry, storage. See design \u00a79.3 and design/details/workspace-schema-v1.md.",
+  "description": "Deployment-level config: identity, governance, model providers, MCP registry, storage. See design §9.3 and design/details/workspace-schema-v1.md.",
   "type": "object",
   "required": [
     "apiVersion",
@@ -106,7 +106,7 @@
       "items": {
         "$ref": "#/$defs/command_pack"
       },
-      "description": "Local command packs \u2014 the sibling of `mcp_servers` for capabilities that already exist as binaries and would otherwise need a wrapper server written for them."
+      "description": "Local command packs — the sibling of `mcp_servers` for capabilities that already exist as binaries and would otherwise need a wrapper server written for them."
     },
     "events": {
       "type": "array",
@@ -123,7 +123,7 @@
         "auto_resume": {
           "type": "boolean",
           "default": true,
-          "description": "Continue the run as soon as its gate is resolved. On by default: otherwise every application writes the same resume call, and the one that forgets leaves a run parked after its gate is satisfied \u2014 a stall with no visible cause, because everything looks resolved. Turn it off to batch or delay resumption; `POST /jobs/{id}/resume` still works either way."
+          "description": "Continue the run as soon as its gate is resolved. On by default: otherwise every application writes the same resume call, and the one that forgets leaves a run parked after its gate is satisfied — a stall with no visible cause, because everything looks resolved. Turn it off to batch or delay resumption; `POST /jobs/{id}/resume` still works either way."
         }
       }
     },
@@ -203,7 +203,7 @@
             "mock",
             "custom"
           ],
-          "description": "GovernanceProvider implementation (design \u00a78.5)."
+          "description": "GovernanceProvider implementation (design §8.5)."
         },
         "policy_language": {
           "enum": [
@@ -211,7 +211,7 @@
             "rego",
             "cedar"
           ],
-          "description": "\u00a721 open question \u2014 default yaml for v1.0."
+          "description": "§21 open question — default yaml for v1.0."
         },
         "config": {
           "type": "object",
@@ -264,7 +264,7 @@
             "azure-ad",
             "oidc"
           ],
-          "description": "Human-identity provider (design \u00a716.1)."
+          "description": "Human-identity provider (design §16.1)."
         },
         "config": {
           "type": "object",
@@ -313,7 +313,15 @@
             "azure-key-vault",
             "plugin"
           ],
-          "description": "Which SecretsProvider resolves this credential. `oauth` resolves through the runtime's token store: the value is obtained by logging in once from the portal or CLI, and refreshed automatically at the point of use \u2014 see design/details/mcp-oauth.md and credential-service.md."
+          "description": "Which SecretsProvider resolves this credential. `oauth` resolves through the runtime's token store: the value is obtained by logging in once from the portal or CLI, and refreshed automatically at the point of use — see design/details/mcp-oauth.md and credential-service.md."
+        },
+        "identity": {
+          "enum": [
+            "global",
+            "per-user"
+          ],
+          "default": "global",
+          "description": "Whose connection this is. `global` (the default) is set up once and used by every run — a machine token, a fileshare credential. `per-user` resolves to the token belonging to the authenticated caller of each run, so one deployed agent serves a whole organisation against per-person services. `per-user` requires a source that can key a secret by owner (today: `oauth`), an authenticated caller (so not `auth: none`, not the CLI, not a trigger), and no literal `config.owner`. See design/details/per-caller-credential-delegation.md."
         },
         "provider_id": {
           "$ref": "#/$defs/identifier",
@@ -360,6 +368,30 @@
               "config"
             ]
           }
+        },
+        {
+          "$comment": "`identity: per-user` derives the owner from the run's authenticated caller, so a literal `config.owner` naming someone else is a contradiction, not a default.",
+          "if": {
+            "properties": {
+              "identity": {
+                "const": "per-user"
+              }
+            },
+            "required": [
+              "identity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "not": {
+                  "required": [
+                    "owner"
+                  ]
+                }
+              }
+            }
+          }
         }
       ]
     },
@@ -396,7 +428,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Environment variables passed to a stdio server. Values support ${VAR} expansion from the runtime process environment, and {credential.<ref>} which resolves through the workspace `credentials` block (the same substitution command packs use). Prefer {credential.\u2026} over ${VAR} for secrets: it keeps the secret out of the runtime's own environment, so it cannot leak into an unrelated subprocess."
+          "description": "Environment variables passed to a stdio server. Values support ${VAR} expansion from the runtime process environment, and {credential.<ref>} which resolves through the workspace `credentials` block (the same substitution command packs use). Prefer {credential.…} over ${VAR} for secrets: it keeps the secret out of the runtime's own environment, so it cannot leak into an unrelated subprocess."
         },
         "cwd": {
           "type": "string",
@@ -404,18 +436,18 @@
         },
         "credentials_ref": {
           "type": "string",
-          "description": "A key_ref resolved through the workspace `credentials` block \u2014 'credentials:<name>', 'env:VAR' or 'file:/path'. For transport=http the resolved secret is sent as `Authorization: Bearer <secret>`, which is what OAuth-protected remote MCP servers expect. For stdio it is available to `env` values as {credential.<this-ref>}. Until 1.204.0 this field was parsed and read by nothing, while `env`'s own description told authors to use it for secrets \u2014 so a server configured exactly as documented connected with no credentials at all."
+          "description": "A key_ref resolved through the workspace `credentials` block — 'credentials:<name>', 'env:VAR' or 'file:/path'. For transport=http the resolved secret is sent as `Authorization: Bearer <secret>`, which is what OAuth-protected remote MCP servers expect. For stdio it is available to `env` values as {credential.<this-ref>}. Until 1.204.0 this field was parsed and read by nothing, while `env`'s own description told authors to use it for secrets — so a server configured exactly as documented connected with no credentials at all."
         },
         "headers": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Extra HTTP headers for transport=http. Values support ${VAR} and {credential.<ref>}. For a server whose scheme is not bearer \u2014 an API key in a custom header, say \u2014 set it here instead of `credentials_ref`. An explicit Authorization header wins over the one derived from `credentials_ref`."
+          "description": "Extra HTTP headers for transport=http. Values support ${VAR} and {credential.<ref>}. For a server whose scheme is not bearer — an API key in a custom header, say — set it here instead of `credentials_ref`. An explicit Authorization header wins over the one derived from `credentials_ref`."
         },
         "sandboxed": {
           "type": "boolean",
-          "description": "True forces Docker-or-equivalent isolation (design \u00a78.8)."
+          "description": "True forces Docker-or-equivalent isolation (design §8.8)."
         },
         "sandbox_image": {
           "type": "string",
@@ -527,7 +559,7 @@
                 "sqlite",
                 "postgres"
               ],
-              "description": "Audit backend. Defaults to whatever storage.runtime resolves to. ('agt' was accepted here until 1.130.0, but no writer ever implemented it \u2014 selecting it silently wrote sqlite.)"
+              "description": "Audit backend. Defaults to whatever storage.runtime resolves to. ('agt' was accepted here until 1.130.0, but no writer ever implemented it — selecting it silently wrote sqlite.)"
             },
             "retention_days": {
               "type": "integer",
@@ -542,7 +574,7 @@
         "artifacts": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Where pipeline stage outputs live. Defaults to `database` on the storage.runtime engine. Read by the runtime since the bundled orchestrator shipped, but undeclarable until 1.130.0 \u2014 `additionalProperties: false` rejected the very key the code looked for.",
+          "description": "Where pipeline stage outputs live. Defaults to `database` on the storage.runtime engine. Read by the runtime since the bundled orchestrator shipped, but undeclarable until 1.130.0 — `additionalProperties: false` rejected the very key the code looked for.",
           "properties": {
             "backend": {
               "enum": [
@@ -654,7 +686,7 @@
         "plugin"
       ],
       "default": "off",
-      "description": "Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}. headtail: reversible-lossy \u2014 keep head+tail, elide the middle, recallable via the context_retrieve tool (for lossy-tolerant surfaces like logs). plugin: a custom ContextCompressor named by backend_class."
+      "description": "Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}. headtail: reversible-lossy — keep head+tail, elide the middle, recallable via the context_retrieve tool (for lossy-tolerant surfaces like logs). plugin: a custom ContextCompressor named by backend_class."
     },
     "compression_backend_class": {
       "type": "string",
@@ -664,7 +696,7 @@
       "type": "integer",
       "minimum": 0,
       "default": 2000,
-      "description": "Payloads smaller than this (in characters) are left untouched \u2014 avoids overhead on small results."
+      "description": "Payloads smaller than this (in characters) are left untouched — avoids overhead on small results."
     },
     "compression_override": {
       "type": "object",
@@ -785,7 +817,7 @@
         "required": {
           "type": "boolean",
           "default": true,
-          "description": "Whether a failing verdict from this skill STOPS the run. true (the default) means a `fail` rejects the output; false means the skill still runs and its rejection is advisory \u2014 logged, not fatal. It does NOT disable the binding: use `enabled: false` for that. Until 1.169.0 a falsey `required` silently discarded the binding, so an advisory skill was never evaluated at all."
+          "description": "Whether a failing verdict from this skill STOPS the run. true (the default) means a `fail` rejects the output; false means the skill still runs and its rejection is advisory — logged, not fatal. It does NOT disable the binding: use `enabled: false` for that. Until 1.169.0 a falsey `required` silently discarded the binding, so an advisory skill was never evaluated at all."
         },
         "config": {
           "type": "object",
@@ -795,7 +827,7 @@
         "enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Whether this binding is active. Set false in a topology to switch off a binding inherited from the workspace. Separate from `required` because the two are different questions \u2014 whether a skill runs, and whether its verdict can stop the run."
+          "description": "Whether this binding is active. Set false in a topology to switch off a binding inherited from the workspace. Separate from `required` because the two are different questions — whether a skill runs, and whether its verdict can stop the run."
         }
       }
     },
@@ -836,7 +868,7 @@
         "a2a": {
           "type": "object",
           "additionalProperties": false,
-          "description": "A2A (Agent2Agent) server. When enabled, `swarmkit serve` publishes an Agent Card at /.well-known/agent-card.json with one skill per topology and answers the A2A task API at /a2a \u2014 a transport onto the same jobs, gates and audit as POST /run. See design/details/a2a-interop.md.",
+          "description": "A2A (Agent2Agent) server. When enabled, `swarmkit serve` publishes an Agent Card at /.well-known/agent-card.json with one skill per topology and answers the A2A task API at /a2a — a transport onto the same jobs, gates and audit as POST /run. See design/details/a2a-interop.md.",
           "properties": {
             "enabled": {
               "type": "boolean",
@@ -991,7 +1023,7 @@
         },
         "client_id": {
           "type": "string",
-          "description": "The browser's OIDC client registration (provider: jwt), advertised to clients via /auth-info. The server never uses it to validate anything \u2014 it advertises it because the portal ships as a pre-built static export, so a build-time env var would be fixed at publish and the same wheel serves every deployment. Without it the portal cannot start a sign-in flow."
+          "description": "The browser's OIDC client registration (provider: jwt), advertised to clients via /auth-info. The server never uses it to validate anything — it advertises it because the portal ships as a pre-built static export, so a build-time env var would be fixed at publish and the same wheel serves every deployment. Without it the portal cannot start a sign-in flow."
         },
         "scope": {
           "type": "string",
@@ -999,7 +1031,7 @@
         },
         "identity": {
           "type": "string",
-          "description": "Who the caller is asserted to be (provider: none). Default: anonymous. This mode already grants wildcard scopes and authorizes everything, so naming the operator confers no new capability \u2014 but the approval engine matches this value against members: in swarm/roles.yaml, so it is what makes a local gate approvable without standing up an identity provider. Asserted, not authenticated: the audit records provider=none."
+          "description": "Who the caller is asserted to be (provider: none). Default: anonymous. This mode already grants wildcard scopes and authorizes everything, so naming the operator confers no new capability — but the approval engine matches this value against members: in swarm/roles.yaml, so it is what makes a local gate approvable without standing up an identity provider. Asserted, not authenticated: the audit records provider=none."
         },
         "identity_name": {
           "type": "string",
@@ -1014,7 +1046,7 @@
         "key_ref",
         "client_id"
       ],
-      "description": "One API key. Grant scopes via a tier (read/run/admin \u2192 serve:* scopes) OR explicit scopes \u2014 not both.",
+      "description": "One API key. Grant scopes via a tier (read/run/admin → serve:* scopes) OR explicit scopes — not both.",
       "not": {
         "required": [
           "tier",
@@ -1138,7 +1170,7 @@
         "id",
         "argv"
       ],
-      "description": "A single command in a pack. `argv` is executed directly \u2014 there is no shell, so a substituted value can never become an argument or an operator.",
+      "description": "A single command in a pack. `argv` is executed directly — there is no shell, so a substituted value can never become an argument or an operator.",
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier"
@@ -1149,7 +1181,7 @@
         "argv": {
           "type": "array",
           "minItems": 1,
-          "description": "argv, executed with no shell. `{name}` placeholders are filled from the skill's declared inputs and are always passed as exactly one argument, never re-parsed. `{credential.*}` is rejected here \u2014 secrets reach a command through the pack's `env` only, so they cannot be model-placed, cannot appear in an audit line, and cannot be read from `ps`.",
+          "description": "argv, executed with no shell. `{name}` placeholders are filled from the skill's declared inputs and are always passed as exactly one argument, never re-parsed. `{credential.*}` is rejected here — secrets reach a command through the pack's `env` only, so they cannot be model-placed, cannot appear in an audit line, and cannot be read from `ps`.",
           "items": {
             "type": "string",
             "not": {
@@ -1163,7 +1195,7 @@
             "write"
           ],
           "default": "write",
-          "description": "Whether this command changes anything. Not inferrable from the binary \u2014 `curl` POSTs and `jq` takes `-i` \u2014 so the pack author declares it. Undeclared means `write`, so an unclassified command fails closed. `permission: readonly` denies every `write` command."
+          "description": "Whether this command changes anything. Not inferrable from the binary — `curl` POSTs and `jq` takes `-i` — so the pack author declares it. Undeclared means `write`, so an unclassified command fails closed. `permission: readonly` denies every `write` command."
         },
         "output": {
           "type": "object",
@@ -1206,7 +1238,7 @@
         "id",
         "commands"
       ],
-      "description": "A named set of local commands exposed to skills through `implementation.type: command`. Governed exactly as an mcp_server is \u2014 the pack carries the permission tier, the skill carries `iam.required_scopes`.",
+      "description": "A named set of local commands exposed to skills through `implementation.type: command`. Governed exactly as an mcp_server is — the pack carries the permission tier, the skill carries `iam.required_scopes`.",
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier"
@@ -1286,7 +1318,7 @@
       }
     },
     "event_sink": {
-      "$comment": "Where the runtime pushes what happened. The application decides what to do about it \u2014 which channel, which human, what wording. See design/details/extracting-the-channels.md. Delivery is BEST-EFFORT: a sink is a latency optimisation over `GET /events?after=<cursor>`, which is the durable source of truth an application reconciles from.",
+      "$comment": "Where the runtime pushes what happened. The application decides what to do about it — which channel, which human, what wording. See design/details/extracting-the-channels.md. Delivery is BEST-EFFORT: a sink is a latency optimisation over `GET /events?after=<cursor>`, which is the durable source of truth an application reconciles from.",
       "type": "object",
       "required": [
         "sink"
@@ -1314,7 +1346,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Event types to deliver. Omitted means all \u2014 which is the right default for a reconciling consumer and the wrong one for a chatty webhook."
+          "description": "Event types to deliver. Omitted means all — which is the right default for a reconciling consumer and the wrong one for a chatty webhook."
         }
       },
       "allOf": [

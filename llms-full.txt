@@ -85,10 +85,11 @@ This file is also published on the docs site at <https://delivstat.github.io/swa
 
 **Two tiers.** This `llms.txt` is the compact, link-first map. Its companion **[`llms-full.txt`](https://delivstat.github.io/swarmkit/llms-full.txt)** inlines the *full text* of the playbook, all 11 artifact references, and the core design notes into one file — fetch it once and you have the entire corpus, no link-following. Use `llms.txt` to navigate; use `llms-full.txt` when you want everything in context at once.
 
-**Status:** runtime v1.258.0 (1.0.0 was 2026-04-26); `swarmkit-schema`, `swarmkit-webui` and `swarmkit-control-plane` version independently. Phases 1–5 of the implementation plan shipped: the runtime, CLI and `swarmkit serve`; harness executors (M19); the topology canvas (M20); the fleet control plane. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. What SwarmKit is, in one line each: reusable `Funnel` gates (`validate → judge → review → approve`; only humans approve; a gate **defers** the run and `POST /jobs/{id}/resume` continues it), multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit; skills as the one capability primitive (`mcp_tool`, `llm_prompt`, `composed`, `command`, `agent`) with `requires:` ordering enforced at the permission seam; 12 declarative model providers over four wire-format families; MCP with Docker sandboxing, permission tiers and per-tool `effects`; harness executors as declarative `adapter.yaml`; memory on by default (governed + workspace); one storage service (SQLite or Postgres) behind every store; OpenTelemetry, intent-drift detection, audit redaction, circuit breakers; a self-hosted fleet control plane; the `swarmkit-skills` catalogue reachable from `swarmkit skill` and the portal. **11 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, role-registry, trigger, executor-adapter, model-provider + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace. Recent changes are listed by version in the next section; the [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) has every release.
+**Status:** runtime v1.259.0 (1.0.0 was 2026-04-26); `swarmkit-schema`, `swarmkit-webui` and `swarmkit-control-plane` version independently. Phases 1–5 of the implementation plan shipped: the runtime, CLI and `swarmkit serve`; harness executors (M19); the topology canvas (M20); the fleet control plane. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. What SwarmKit is, in one line each: reusable `Funnel` gates (`validate → judge → review → approve`; only humans approve; a gate **defers** the run and `POST /jobs/{id}/resume` continues it), multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit; skills as the one capability primitive (`mcp_tool`, `llm_prompt`, `composed`, `command`, `agent`) with `requires:` ordering enforced at the permission seam; 12 declarative model providers over four wire-format families; MCP with Docker sandboxing, permission tiers and per-tool `effects`; harness executors as declarative `adapter.yaml`; memory on by default (governed + workspace); one storage service (SQLite or Postgres) behind every store; OpenTelemetry, intent-drift detection, audit redaction, circuit breakers; a self-hosted fleet control plane; the `swarmkit-skills` catalogue reachable from `swarmkit skill` and the portal. **11 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, role-registry, trigger, executor-adapter, model-provider + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace. Recent changes are listed by version in the next section; the [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) has every release.
 
 ## Recent changes (newest first, by runtime version)
 
+- **1.259.0 (schema 1.48.0)** — a connection now declares **whose** it is. `credentials.<id>.identity` is `global` (the default: set up once, every run uses it — a machine token, a fileshare) or `per-user` (the run resolves the token of the caller who authenticated it), so one deployed agent serves a whole organisation against per-person services. `per-user` never falls back to a designated or sole owner, requires a source that keys by owner (`oauth`) and an authenticated caller, and refuses a literal `config.owner`. MCP sessions for a per-user connection are keyed per caller — nobody is handed another person's open session — and are bounded (`SWARMKIT_PER_USER_SESSION_MAX`, a smaller `SWARMKIT_PER_USER_STDIO_SESSION_MAX`, `SWARMKIT_PER_USER_SESSION_IDLE_S`). Existing workspaces are `global` by omission and unchanged. See `design/details/per-caller-credential-delegation.md`.
 - **1.258.0 (schema 1.47.0)** — identifiers are now domain-independent **URNs**, removing every reference to `swarmkit.dev` (a third-party domain the project does not own). JSON Schema `$id`s and their cross-`$ref`s are `urn:swarmkit:schema:v1:*` (validation stays bundled/local — a registry keyed by `$id`, so nothing dereferences a URL), and the A2A federation extension URI advertised on the Agent Card is `urn:swarmkit:a2a:federation:v1`. No behaviour change; a SwarmKit peer matches the new constant on both ends.
 - **soak harness (docs + examples)** — a `soak` mode in the load driver (`examples/loadtest/`, soak-testing.md) holds steady below-capacity load and reports the RSS/fd **slope** over time (least-squares, warmup sample excluded), with a window-aware verdict — under 10 min it labels itself INCONCLUSIVE (warmup dominates; a burst passes where a soak fails). A representative 2-min steady run (in `load-and-scale.md`) shows RSS decelerating to a plateau + oscillating fds, zero errors over 1,238 runs; the four-soak matrix (steady/churn/approval/harness) is a runbook for a dedicated box. No runtime change.
 - **portal (swarmkit-webui 0.27.0)** — two UI additions on top of the runtime endpoints above: the Jobs view gains a **queue-health strip** (backlog depth, oldest-unclaimed age, queue-wait/exec p95, depth by topology, from `GET /queue/stats` — queue-observability.md), and the audit view gains an **A2A trace deep-link** — an `a2a.remote_usage` event renders "↗ open run on {agent}" linking to the callee instance's own job detail (a2a-federation.md), so a federated call no longer dead-ends at "called a remote agent". No runtime change; the portal ships the built Next.js export.
@@ -2797,7 +2798,7 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 ## Environment variables
 
 <!-- BEGIN GENERATED: env -->
-52 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
+55 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
 
 **Storage**
 
@@ -2858,6 +2859,9 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 | Variable | Purpose |
 |---|---|
 | `SWARMKIT_MCP_TIMEOUT` | Per-call MCP timeout in seconds. |
+| `SWARMKIT_PER_USER_SESSION_MAX` | Most per-user (identity: per-user) MCP sessions kept open at once; the least recently used is closed to make room. 0 disables the bound. Default 64. |
+| `SWARMKIT_PER_USER_STDIO_SESSION_MAX` | The same ceiling for stdio servers, where a per-user session is a subprocess per user — so deliberately far smaller. Default 8. |
+| `SWARMKIT_PER_USER_SESSION_IDLE_S` | Seconds a per-user MCP session may sit unused before it is closed. 0 disables the sweep. Default 900. |
 | `SWARMKIT_OAUTH_KEY` | Key that encrypts stored OAuth tokens. Generated into .swarmkit/oauth.key when unset. *(secret)* |
 | `SWARMKIT_OAUTH_RUN_WINDOW_S` | How long a run is assumed to take: an OAuth token expiring within it is refreshed first. |
 | `SWARMKIT_MCP_RETRIES` | Retries for a failing MCP call. |
@@ -3410,9 +3414,55 @@ What is stored, and where: tokens live in `.swarmkit/state/oauth.db`, **encrypte
 
 A token obtained in a browser belongs to **the person who logged in** — the authenticated identity
 `serve` already resolves (`GET /whoami`). Tokens are keyed by `(credential, owner)`, so one person's
-GitHub access does not silently become the workspace's. A credential resolved with no owner named
-uses the token when exactly one owner has logged in for it; with several, `config.owner` must say
-which.
+GitHub access does not silently become the workspace's.
+
+Which owner a *run* uses is declared on the credential, with `identity`:
+
+```yaml
+credentials:
+  # Global — set up once, used by every run. The default.
+  github:
+    source: env
+    config: { env: GITHUB_TOKEN }
+
+  # Per-user — each run uses the token of whoever authenticated it.
+  google-calendar:
+    source: oauth
+    identity: per-user
+    config: { endpoint: https://mcp.example.com/google }
+```
+
+| `identity` | Which token a run uses |
+|---|---|
+| `global` (default) | One connection for everyone. `config.owner` names whose token; with no owner named, the sole logged-in owner is used, and with several `config.owner` must say which. |
+| `per-user` | The token belonging to the **authenticated caller of that run**. One deployed agent therefore serves a whole organisation, each person reaching their own calendar or mailbox. |
+
+`global` is the default because it has to be: `serve` can run with `auth: none`, the CLI has no
+caller, and a trigger has no human. A per-user default would make the ordinary deployment
+un-runnable. One workspace mixes both freely — a shared machine token for GitHub, a personal
+connection for a calendar.
+
+**`per-user` never falls back.** If the caller has no token of their own, the run is refused with a
+message telling them to connect — it does not quietly use a designated owner's token, or the sole
+stored one. That refusal is the point: without it, a workspace that worked in development would,
+deployed with auth on, serve every caller from the developer's token. It also requires a source that
+can key a secret by owner (today `oauth`; `env` and `file` are the same bytes for everyone), an
+authenticated caller, and no literal `config.owner` — which the schema refuses outright, since
+naming an owner contradicts deriving one.
+
+**If you connected but runs still say you have no token**, the identity recorded at login differs
+from the one your API token presents — some providers consent as an opaque `sub` while their JWT
+carries `email`. Compare `GET /whoami` with what the Connections page shows; the operator's log says
+whether other identities are stored. Changing which claim identifies a user after people have
+connected orphans their tokens.
+
+Per-user connections keep one MCP session **per caller** rather than one per server, so nobody is
+ever handed somebody else's open session. Those sessions are bounded and idle-swept —
+`SWARMKIT_PER_USER_SESSION_MAX` (default 64), `SWARMKIT_PER_USER_STDIO_SESSION_MAX` (default 8, as
+a per-user `stdio` server is a subprocess per user) and `SWARMKIT_PER_USER_SESSION_IDLE_S` (default
+900). Global connections keep their single warm session, unchanged.
+
+Design: [per-caller-credential-delegation.md](https://github.com/delivstat/swarmkit/blob/main/design/details/per-caller-credential-delegation.md).
 
 ## Refresh happens before a run, not during one
 
