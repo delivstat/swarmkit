@@ -66,9 +66,55 @@ What is stored, and where: tokens live in `.swarmkit/state/oauth.db`, **encrypte
 
 A token obtained in a browser belongs to **the person who logged in** — the authenticated identity
 `serve` already resolves (`GET /whoami`). Tokens are keyed by `(credential, owner)`, so one person's
-GitHub access does not silently become the workspace's. A credential resolved with no owner named
-uses the token when exactly one owner has logged in for it; with several, `config.owner` must say
-which.
+GitHub access does not silently become the workspace's.
+
+Which owner a *run* uses is declared on the credential, with `identity`:
+
+```yaml
+credentials:
+  # Global — set up once, used by every run. The default.
+  github:
+    source: env
+    config: { env: GITHUB_TOKEN }
+
+  # Per-user — each run uses the token of whoever authenticated it.
+  google-calendar:
+    source: oauth
+    identity: per-user
+    config: { endpoint: https://mcp.example.com/google }
+```
+
+| `identity` | Which token a run uses |
+|---|---|
+| `global` (default) | One connection for everyone. `config.owner` names whose token; with no owner named, the sole logged-in owner is used, and with several `config.owner` must say which. |
+| `per-user` | The token belonging to the **authenticated caller of that run**. One deployed agent therefore serves a whole organisation, each person reaching their own calendar or mailbox. |
+
+`global` is the default because it has to be: `serve` can run with `auth: none`, the CLI has no
+caller, and a trigger has no human. A per-user default would make the ordinary deployment
+un-runnable. One workspace mixes both freely — a shared machine token for GitHub, a personal
+connection for a calendar.
+
+**`per-user` never falls back.** If the caller has no token of their own, the run is refused with a
+message telling them to connect — it does not quietly use a designated owner's token, or the sole
+stored one. That refusal is the point: without it, a workspace that worked in development would,
+deployed with auth on, serve every caller from the developer's token. It also requires a source that
+can key a secret by owner (today `oauth`; `env` and `file` are the same bytes for everyone), an
+authenticated caller, and no literal `config.owner` — which the schema refuses outright, since
+naming an owner contradicts deriving one.
+
+**If you connected but runs still say you have no token**, the identity recorded at login differs
+from the one your API token presents — some providers consent as an opaque `sub` while their JWT
+carries `email`. Compare `GET /whoami` with what the Connections page shows; the operator's log says
+whether other identities are stored. Changing which claim identifies a user after people have
+connected orphans their tokens.
+
+Per-user connections keep one MCP session **per caller** rather than one per server, so nobody is
+ever handed somebody else's open session. Those sessions are bounded and idle-swept —
+`SWARMKIT_PER_USER_SESSION_MAX` (default 64), `SWARMKIT_PER_USER_STDIO_SESSION_MAX` (default 8, as
+a per-user `stdio` server is a subprocess per user) and `SWARMKIT_PER_USER_SESSION_IDLE_S` (default
+900). Global connections keep their single warm session, unchanged.
+
+Design: [per-caller-credential-delegation.md](https://github.com/delivstat/swarmkit/blob/main/design/details/per-caller-credential-delegation.md).
 
 ## Refresh happens before a run, not during one
 

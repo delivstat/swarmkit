@@ -168,6 +168,10 @@ A workspace that cannot possibly work should fail `swarmkit validate`, not a run
   and guessing which wins is how escalations happen.
 - `identity: per-user` while `server.auth.provider` is `none` → error. There is no caller to be, so
   the connection can never resolve. This is the check that keeps the permissive default honest.
+  *(Not yet implemented: the resolver already fails closed with a precise message at run time, so
+  this is an earlier error rather than a missing guarantee. It needs a workspace-level semantic
+  validation seam that does not exist yet — `swarmkit validate` renders "no errors, 0 warnings"
+  from a success renderer with nowhere to put a semantic finding. Worth building for its own sake.)*
 
 ### Which string is the owner
 
@@ -278,11 +282,18 @@ by crashing, so the policy ships with the feature:
   owns every session's lifetime today.
 - **Idle TTL.** `SWARMKIT_PER_USER_SESSION_IDLE_S`. A session held open because one person ran one
   thing this morning is pure cost.
-- **Eviction never touches a session in use.** This is the part a naive LRU gets wrong: a job is
-  mid-run, its session is by definition idle between two tool calls, and closing it fails the run.
-  Sessions are refcounted for the duration of a run's use, and only unreferenced ones are evictable.
-  A ceiling reached with every session in use is backpressure — wait or fail clearly — never a
-  silent close.
+- **Eviction is recoverable, so refcounting is unnecessary.** *(Corrected during implementation.
+  This note originally called for refcounting so that a session in use could never be evicted.)*
+  Every consumer calls `get_session` per tool call — nothing holds a session across calls — so a
+  closed session is simply reopened on next use, and a call already in flight holds its own session
+  object and finishes on it. The ceiling therefore closes the least-recently-used rather than
+  refusing, because refusing would fail a run for being unlucky in the ordering.
+- **Eviction had to be made real first.** *(Also found in implementation, and the more important
+  correction.)* Every session entered **one shared `AsyncExitStack`**, closed only at shutdown, so
+  dropping a session forgot it while its transport stayed open — reopening *added* a connection
+  rather than replacing one. An LRU over that would have reclaimed nothing. Each session now owns
+  its stack, entered and exited on the owner task, which is what the ceiling and the idle sweep
+  actually act on.
 - **Eviction is observable.** It is logged and counted; a deployment whose ceiling is wrong should be
   able to see that it is thrashing rather than infer it from latency.
 - **`stdio` per-user is the expensive case and is treated as one.** A remote `http` server keeps a

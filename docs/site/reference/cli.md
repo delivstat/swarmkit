@@ -239,7 +239,7 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 ## Environment variables
 
 <!-- BEGIN GENERATED: env -->
-52 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
+55 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
 
 **Storage**
 
@@ -300,6 +300,9 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 | Variable | Purpose |
 |---|---|
 | `SWARMKIT_MCP_TIMEOUT` | Per-call MCP timeout in seconds. |
+| `SWARMKIT_PER_USER_SESSION_MAX` | Most per-user (identity: per-user) MCP sessions kept open at once; the least recently used is closed to make room. 0 disables the bound. Default 64. |
+| `SWARMKIT_PER_USER_STDIO_SESSION_MAX` | The same ceiling for stdio servers, where a per-user session is a subprocess per user — so deliberately far smaller. Default 8. |
+| `SWARMKIT_PER_USER_SESSION_IDLE_S` | Seconds a per-user MCP session may sit unused before it is closed. 0 disables the sweep. Default 900. |
 | `SWARMKIT_OAUTH_KEY` | Key that encrypts stored OAuth tokens. Generated into .swarmkit/oauth.key when unset. *(secret)* |
 | `SWARMKIT_OAUTH_RUN_WINDOW_S` | How long a run is assumed to take: an OAuth token expiring within it is refreshed first. |
 | `SWARMKIT_MCP_RETRIES` | Retries for a failing MCP call. |
