@@ -195,12 +195,21 @@ class MCPClientManager:
         self._credential_service: Any = credential_service
         #: What secret each open session was opened with, so a changed one can be detected.
         self._session_credentials: dict[str, str] = {}
-        #: One exit stack per session, so a single session can be closed without taking the others
-        #: with it. A shared stack made eviction a lie: dropping a session forgot it while its
-        #: transport — for stdio, a subprocess — stayed open until the manager shut down. A
-        #: per-user connection turns that leak into an exhaustion, because the population is
-        #: users x servers. Entered and exited only on the owner task (see `_on_owner`).
-        self._session_stacks: dict[str, AsyncExitStack] = {}
+        #: One task per session, so a single session can be closed without disturbing the others.
+        #:
+        #: Two constraints meet here. A shared exit stack made eviction a lie — dropping a session
+        #: forgot it while its transport (for stdio, a subprocess) stayed open until shutdown, so
+        #: reopening *added* a connection rather than replacing one; harmless at one session per
+        #: server, an exhaustion at one per user. But giving each session its own stack on the one
+        #: owner task is not enough either: anyio cancel scopes form a per-task stack that must
+        #: unwind in LIFO order, and closing the least-recently-used session is by definition out
+        #: of order. Doing that corrupts the nesting and cancels unrelated sessions.
+        #:
+        #: So each session owns a task that enters its contexts, hands back the session, waits to
+        #: be told to close, and exits those contexts itself. Every cancel scope is then entered
+        #: and exited by the same task, in order, and sessions are independently closable.
+        #: ``{key: (task, close_event)}``.
+        self._session_closers: dict[str, tuple[asyncio.Task[None], asyncio.Event]] = {}
         #: Monotonic timestamp of each session's last use, for idle eviction and LRU.
         self._session_last_used: dict[str, float] = {}
 
@@ -332,13 +341,50 @@ class MCPClientManager:
         self._sessions.pop(key, None)
         self._session_credentials.pop(key, None)
         self._session_last_used.pop(key, None)
-        stack = self._session_stacks.pop(key, None)
-        if stack is None:
+        closer = self._session_closers.pop(key, None)
+        if closer is None:
             return
+        task, closing = closer
+        closing.set()
         try:
-            await self._on_owner(stack.aclose)
+            await task
         except Exception:
             _logger.debug("closing MCP session %r raised", key, exc_info=True)
+
+    async def _spawn_session(self, config: MCPServerConfig) -> ClientSession:
+        """Open a session on a task of its own, and leave that task parked until it is closed.
+
+        The task is the unit of lifetime, not the exit stack: anyio requires the cancel scopes a
+        transport opens to be exited by the task that entered them, in the order they were entered.
+        One task per session satisfies both halves, which a shared owner task cannot once sessions
+        are closed out of order.
+        """
+        loop = asyncio.get_running_loop()
+        ready: asyncio.Future[ClientSession] = loop.create_future()
+        closing = asyncio.Event()
+        opener = self._start_http if config.transport == "http" else self._start_stdio
+
+        async def _hold() -> None:
+            try:
+                async with AsyncExitStack() as stack:
+                    session = await opener(config, stack)
+                    if not ready.done():
+                        ready.set_result(session)
+                    await closing.wait()
+            except BaseException as exc:
+                if not ready.done():
+                    ready.set_exception(exc)
+                elif not isinstance(exc, asyncio.CancelledError):
+                    _logger.debug("MCP session for %r ended with an error", config.server_id)
+
+        task = loop.create_task(_hold(), name=f"mcp-session:{config.server_id}")
+        try:
+            session = await ready
+        except BaseException:
+            closing.set()
+            raise
+        self._session_closers[self._session_key(config.server_id)] = (task, closing)
+        return session
 
     def _per_user_keys(self, *, stdio_only: bool = False) -> list[str]:
         """Open per-user session keys, least-recently-used first."""
@@ -408,7 +454,7 @@ class MCPClientManager:
             self._sessions.clear()
             # The stacks belonged to the dead loop's task; their contexts cannot be exited from
             # here and died with it. Forget them rather than leak references to closed transports.
-            self._session_stacks.clear()
+            self._session_closers.clear()
             self._session_last_used.clear()
             self._owner = loop.create_task(self._owner_main(self._owner_queue), name="mcp-owner")
         assert self._owner_queue is not None
@@ -441,13 +487,6 @@ class MCPClientManager:
         finally:
             # Whatever happens to the owner, the sessions it entered are exited here — the only
             # place they legally can be.
-            for key, stack in list(self._session_stacks.items()):
-                try:
-                    await stack.aclose()
-                except Exception:
-                    _logger.debug("closing MCP session %r raised", key, exc_info=True)
-            self._session_stacks.clear()
-            self._session_last_used.clear()
             try:
                 await self._stack.aclose()
             except Exception:
@@ -484,11 +523,8 @@ class MCPClientManager:
         if _is_per_user_key(key):
             await self._enforce_ceiling(config)
 
-        opener = self._start_http if config.transport == "http" else self._start_stdio
-        stack = AsyncExitStack()
-        session: ClientSession = await self._on_owner(lambda: opener(config, stack))
+        session = await self._spawn_session(config)
         self._sessions[key] = session
-        self._session_stacks[key] = stack
         self._session_last_used[key] = time.monotonic()
         return session
 
@@ -709,8 +745,15 @@ class MCPClientManager:
         return dict(server_tools.get(tool_name, {}))
 
     async def close_all(self) -> None:
-        """Close all sessions and stop all servers — from any task: the owner task exits the
-        contexts it entered and finishes."""
+        """Close all sessions and stop all servers.
+
+        Each session parks a task of its own that exits the contexts it entered (`_spawn_session`),
+        so they are closed here rather than by the owner: a task cannot unwind another task's
+        cancel scopes, which is the same rule that made the owner task necessary in the first
+        place.
+        """
+        for key in list(self._session_closers):
+            await self._close_key(key)
         owner, queue = self._owner, self._owner_queue
         self._owner = self._owner_queue = None
         if owner is None or owner.done() or queue is None:
