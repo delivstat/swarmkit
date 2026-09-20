@@ -17,6 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from swarmkit_runtime._principal import reset_current_principal, set_current_principal
 from swarmkit_runtime._workspace_runtime import MissingMCPServerError, WorkspaceRuntime
 from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
 from swarmkit_runtime.auth import AuthRequest as AuthReq
@@ -435,7 +436,17 @@ def create_app(  # noqa: PLR0915
                 content={"error": f"Insufficient scope: requires serve:{required}"},
             )
 
-        response = await call_next(request)
+        # The authenticated caller, for the duration of this request. A credential declared
+        # `identity: per-user` resolves to this person's own token — and because
+        # `asyncio.create_task` copies the current context, a job started while handling this
+        # request inherits the principal and keeps it for the whole run, long after the response
+        # has gone (per-caller-credential-delegation.md). Reset in `finally` so a pooled task
+        # cannot carry one caller's identity into the next request.
+        principal_token = set_current_principal(getattr(identity, "client_id", "") or None)
+        try:
+            response = await call_next(request)
+        finally:
+            reset_current_principal(principal_token)
         # Audit mutating calls (run/admin) with the acting client_id.
         if required in ("run", "admin"):
             _record_serve_access(request, identity, required, response.status_code)
