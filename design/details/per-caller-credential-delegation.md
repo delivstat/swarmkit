@@ -181,8 +181,34 @@ another, every user connects successfully and every run then reports "no stored 
 Rule: **the owner key is the identity `client_id`, the same value `/whoami` returns, on both paths** —
 the login that stores the token and the run that resolves it. A human-readable label is metadata for
 display, never the key. Where an operator wants emails as keys, that is an auth-provider
-configuration (`identity_claim: email`), applied once, before anyone connects — changing it later
-orphans every stored token, and the runtime should say so rather than silently miss.
+configuration (`identity_claim: email`), applied once, before anyone connects.
+
+**But a rule is not a mechanism, and this one is historically brittle.** Enterprise IdPs do not
+cooperate: a consent handshake may record an opaque `sub` while the JWT presented on API calls
+carries `email` or `upn`, and the two never meet. The resulting failure is the worst kind — the user
+connects successfully, the run reports no token, the portal offers Connect again, and they loop
+forever. "No token for you" and "a token exists under a different spelling of you" are the same
+message today, and they must not be.
+
+So mismatch is **detected and said out loud**, not inferred by the user:
+
+- **At connect**, the stored row records which claim produced the key, alongside the identity's other
+  known identifiers as metadata. Not to match on — matching an alternate identifier would be exactly
+  the escalation this note forbids — but so a later mismatch is *provable* rather than suspected.
+- **At resolve**, a per-user miss distinguishes its two causes. If the credential has no tokens at
+  all for anyone, it is a genuine first run: "connect your account." If tokens exist but none for
+  this principal, the error says so — *you are authenticating as `X`; this connection has stored
+  logins recorded under a different identifier* — and names the claim each side used.
+- **The diagnosis must not become the leak.** The caller is told their own principal and that a
+  mismatch is likely; the specifics — which owners exist, which claims they used — go to the
+  operator's log and the audit record, never to the non-admin's browser. Diagnosability and the
+  roster split (below) pull in opposite directions, and the split wins.
+- **Changing `identity_claim` after tokens exist orphans all of them.** The runtime detects this at
+  load — stored rows recorded one claim, the configured provider now yields another — and refuses
+  with the count, rather than turning every user's connection into a silent miss.
+- **A user can check without guessing.** `/whoami` reports the owner key their runs will use, so it
+  can be compared with what the portal shows as stored. That one read turns an infinite loop into a
+  thirty-second diagnosis.
 
 ### Propagation
 
@@ -236,10 +262,35 @@ exactly right. For a per-user one it is wrong in three ways at once:
 
 So the session key follows the connection's mode: **`server_id` for `global`, `(server_id, owner)` for
 `per-user`.** Global keeps its single warm session and its changed-secret detection unchanged.
-Per-user sessions are opened lazily on first use by that owner, are never handed to another owner,
-and need a lifetime policy — idle eviction and a ceiling — because the population is now users ×
-servers rather than servers. A per-user session must not outlive its usefulness merely because one
-person ran something once.
+Per-user sessions are opened lazily on first use by that owner and are never handed to another owner.
+
+### Per-user sessions are a bounded cache, in v1
+
+The population stops being *servers* and becomes *users × servers*, and MCP sessions are not free —
+a `stdio` server is a **subprocess**, holding memory and file descriptors. An unbounded cache here
+does not degrade, it exhausts: the instance dies of memory or descriptor starvation on the day
+adoption succeeds. Treating that as something to observe in production first is choosing to find out
+by crashing, so the policy ships with the feature:
+
+- **A hard ceiling on live per-user sessions, enforced, with LRU eviction.**
+  `SWARMKIT_PER_USER_SESSION_MAX` — a conservative default, not unlimited. Reaching the ceiling
+  evicts the least-recently-used session, closing it properly through the same context exit that
+  owns every session's lifetime today.
+- **Idle TTL.** `SWARMKIT_PER_USER_SESSION_IDLE_S`. A session held open because one person ran one
+  thing this morning is pure cost.
+- **Eviction never touches a session in use.** This is the part a naive LRU gets wrong: a job is
+  mid-run, its session is by definition idle between two tool calls, and closing it fails the run.
+  Sessions are refcounted for the duration of a run's use, and only unreferenced ones are evictable.
+  A ceiling reached with every session in use is backpressure — wait or fail clearly — never a
+  silent close.
+- **Eviction is observable.** It is logged and counted; a deployment whose ceiling is wrong should be
+  able to see that it is thrashing rather than infer it from latency.
+- **`stdio` per-user is the expensive case and is treated as one.** A remote `http` server keeps a
+  client session per owner; a local `stdio` server spawns *one process per user*, which is rarely
+  what anyone intends. It is allowed, bounded by a separate and much lower ceiling, and `swarmkit
+  validate` says plainly what was asked for at load rather than at the hundredth user.
+
+Global connections are unaffected by all of this: one warm session per server, as today.
 
 The same rule reaches the other governed dispatchers (`commands/_governed.py`,
 `agent_skill/_governed.py`): anything that caches a connection keyed by configuration alone has to
@@ -265,12 +316,20 @@ it is not provider-specific configuration; it is what the connection *is*. `cred
 identity: global | per-user      # default: global
 ```
 
-Reads that change:
+Reads that change — **two routes, not one route with a filter**:
 
-| Route | Change |
-|---|---|
-| `GET /api/oauth/credentials` | gains the mode per entry, and a per-caller view — *is there a token for me* — so a portal can render Connect for the signed-in person |
-| `GET /whoami` | unchanged; becomes load-bearing, and should be documented as the key delegation matches on |
+| Route | Scope | Change |
+|---|---|---|
+| `GET /api/oauth/credentials` | admin | the operator inventory, as today, plus the mode per entry. Stays admin-scoped. |
+| `GET /api/oauth/my-credentials` | any authenticated caller | **new.** Every connection this workspace declares, with — for per-user ones — whether *this caller* has a token, its expiry and its scopes. Nothing about anyone else. |
+| `GET /whoami` | any | unchanged shape; now reports the owner key the caller's runs will use, so a mismatch is checkable |
+
+The separation is structural, not cosmetic. **The caller route takes no owner parameter.** It derives
+the owner from the authenticated principal server-side and can express no other query — there is no
+argument to tamper with, no filter to forget, and no code path from that handler to another owner's
+rows. A single endpoint that returns the roster and trims it for non-admins is one forgotten branch
+away from disclosing who in the organisation uses what, and the trimming that matters cannot live in
+the browser: a filtered frontend has already received the data it is hiding.
 
 Nothing new returns a token.
 
@@ -298,17 +357,24 @@ viewer's to fix and a perfectly healthy state.
 a single-operator workspace is effectively the workspace's. On a per-user row the same click connects
 *only that person's* account. An operator must not be able to read it as "set this up for everybody."
 
-**4. A scope-gated non-operator view.** Most people who need to connect an account have no business
-in the operator inventory — adding credentials, editing `workspace.yaml` through
-`PUT /api/workspace/config/...`. They need one screen: the accounts this agent will use as me, each
-with its state and a Connect button.
+**4. A separate user route, not a filtered page.** Most people who need to connect an account have no
+business in the operator inventory — adding credentials, editing `workspace.yaml` through
+`PUT /api/workspace/config/...`. They get their own route (`/connect`), rendering one screen: the
+accounts this agent will use as me, each with its state and a Connect button.
 
-**5. Listing must not leak the roster.** `GET /api/oauth/credentials` returns metadata for every
-owner — provider, owner, expiry, scopes. In a single-operator workspace that is an inventory; in a
-multi-user deployment it is a list of who uses what, which is not a non-admin's business. The
-per-caller view needs *is there a token for me*; the full listing stays admin-scoped. This is a
-genuine authorization change, not a display tweak, and it is the one piece of this note that is a
-privacy regression if it ships thoughtlessly.
+It is a **separate page hitting a separate endpoint**, for a reason that outranks the duplication it
+costs. Filtering the operator page in the frontend means the browser already holds the roster it is
+declining to draw — the data is disclosed the moment it is serialised, and `view-source` is the whole
+exploit. The user page therefore talks only to `GET /api/oauth/my-credentials`, a handler with no
+owner parameter and no query that can name another owner: not *permitted* to see other users' tokens,
+but structurally *unable* to ask.
+
+**5. The roster is the thing being protected.** `GET /api/oauth/credentials` returns metadata for
+every owner — provider, owner, expiry, scopes. In a single-operator workspace that is an inventory;
+in a multi-user deployment it is a list of who uses what, and in some organisations that list is more
+sensitive than any single connection. It stays admin-scoped. This is an authorization change, not a
+display tweak, and it is the piece of this note most likely to become a privacy incident if it ships
+as a frontend condition.
 
 No new UI machinery is needed: the page, the API client methods (`oauthProbe`, `oauthLogin`,
 `oauthDisconnect`) and a vitest suite for the logic (`packages/ui/lib/connections.test.ts`) all exist.
@@ -357,6 +423,19 @@ is the test that would have caught the leak described in *Dispatch*, and it belo
 `mcp/_client.py`'s existing session tests rather than in the integration tier, because it is a keying
 bug, not a wiring one.
 
+**Unit — session bounding.** The ceiling evicts least-recently-used and closes it properly; an idle
+session passes its TTL and goes; **a session referenced by a running job is never evicted**, even
+when it is the LRU candidate and the ceiling is reached — that case returns backpressure instead.
+The last one is the test that separates a working cache from a cache that fails runs under load, and
+it is the reason refcounting is in the design rather than assumed.
+
+**Unit — identity mismatch is diagnosable.** A token stored under `sub` while the caller presents
+`email`: the resolution fails, and the error distinguishes *no token exists for this credential at
+all* from *tokens exist, none under your identifier*. Asserted together with its inverse — the
+caller-facing message names the caller's own principal and **no other owner** — because the
+diagnosis and the roster split constrain each other, and only a test holds both at once.
+Changing `identity_claim` with tokens already stored is refused at load with the orphan count.
+
 **Integration — isolation, end to end.** One `create_app` workspace, one topology, two JWTs from the
 existing helper, and a stub MCP server that reports *which account it was called as*. Alice's run
 touches Alice's account and Bob's touches Bob's — asserted from the stub's per-account data, **not by
@@ -375,13 +454,17 @@ cron trigger on a per-user connection refuses while the same trigger on a global
 connection and the designated one for a global connection (`tests/test_oauth_refresh.py` has the
 expiry-window arithmetic and the revoked-refresh case to extend).
 
-**Security.** No route returns a token (existing guarantee, re-asserted for the new per-caller read);
-the non-admin per-caller listing does not disclose other owners; the audit row names principal, owner
-and mode.
+**Security — the roster.** No route returns a token (existing guarantee, re-asserted for the new
+read). `GET /api/oauth/my-credentials` returns only the caller's own rows **for two callers in the
+same workspace**, and rejects — rather than honours — any attempt to name an owner: an added query
+parameter, a body field, a header. That is the test that proves "structurally unable to ask" rather
+than merely "currently not asking." `GET /api/oauth/credentials` is refused to a non-admin outright.
+The audit row names principal, owner and mode.
 
 **TypeScript (`packages/ui/lib/connections.test.ts`).** A global row's status is identical for two
-viewers; a per-user row's differs; the three "not ready" states stay distinct; a non-operator sees no
-other owner.
+viewers; a per-user row's differs; the three "not ready" states stay distinct. The user route's page
+is tested against the caller payload only — if a test can hand it a roster, the component is reading
+something it should never be given.
 
 **What this plan does not cover, honestly.** A stub provider proves the runtime's contract and nothing
 about a real one. Consent screens, scope drift between what was requested and what was granted,
@@ -403,18 +486,10 @@ same store, is not what either of them got.
 
 ## Open questions
 
-1. **One page or two?** The portal changes are settled above except their shape: whether the
-   non-operator view is the Connections page filtered by scope or a separate lightweight route. A
-   filtered page is less code and one less thing to keep in step; a separate route is harder to leak
-   the operator inventory from by accident. Leaning separate route, for the same reason the listing
-   split is a privacy question rather than a display one.
-2. **Per-user session lifetime.** Idle eviction and a ceiling are clearly needed once sessions are
-   users × servers, but the numbers are guesses until something real runs. A conservative idle TTL is
-   the obvious start; a ceiling that closes the least-recently-used is the obvious companion.
-3. **Revocation at the organisation level.** An employee leaves; their rows should go. Deleting by
+1. **Revocation at the organisation level.** An employee leaves; their rows should go. Deleting by
    owner exists (`DELETE /api/oauth/credentials/{id}` is owner-scoped), but nothing sweeps by
    identity. Probably a control-plane concern, like question 4 of `mcp-oauth.md`.
-4. **Federated token exchange as a third mode.** For a single-tenant Entra/Okta deployment,
+2. **Federated token exchange as a third mode.** For a single-tenant Entra/Okta deployment,
    `identity: exchange` could obtain a downstream token from the inbound assertion and store nothing.
    The resolution table is the right place for it; whether the audit and refresh stories survive
    statelessness needs its own note.
