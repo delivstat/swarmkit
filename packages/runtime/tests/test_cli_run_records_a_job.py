@@ -230,3 +230,78 @@ def test_a_store_that_fails_mid_write_does_not_stop_the_run(
     result = _run(_Runtime(result=RunResult(output="still ran")), tmp_path)
 
     assert result.output == "still ran"
+
+
+# ---- the CLI resolves like serve, and closes what it opened -----------------------------------
+
+
+class _CanaryRuntime(_Runtime):
+    """A runtime whose workspace declares a canary route, as serve would read it."""
+
+    def __init__(self, result: Any = None) -> None:
+        super().__init__(result)
+        self.ran: list[str] = []
+        # `resolve_topology` checks the resolved name exists before routing to it.
+        self.workspace = type("_W", (), {"topologies": {"hello": object(), "hello@v2": object()}})()
+
+    async def run(self, _topology: str, _input: str, *, thread_id: str, **_kw: Any) -> Any:
+        self.ran.append(_topology)
+        self.thread_ids.append(thread_id)
+        return self._result
+
+
+class _Router:
+    def has_route(self, name: str) -> bool:
+        return name == "hello"
+
+    def select(self, _name: str) -> str:
+        return "v2"
+
+
+def test_a_cli_run_is_routed_to_the_canary(
+    store: _Store, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`swarmkit run` used to ignore canary entirely.
+
+    Canary routes come from the *workspace*, so they apply to whoever runs it — serve built a
+    router and the CLI built none, which meant the same topology name executed different code
+    depending on the door. The row records the version for the same reason a served run does.
+    """
+    monkeypatch.setattr(
+        "swarmkit_runtime.canary.router_for_workspace", lambda _ws: _Router(), raising=True
+    )
+    runtime = _CanaryRuntime(RunResult(output="x"))
+
+    _run(runtime, tmp_path)
+
+    assert runtime.ran == ["hello@v2"]
+    assert any(u.get("version") == "v2" for u in store.updates)
+
+
+def test_a_cli_run_without_a_canary_route_is_unchanged(
+    store: _Store, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "swarmkit_runtime.canary.router_for_workspace", lambda _ws: None, raising=True
+    )
+    runtime = _CanaryRuntime(RunResult(output="x"))
+
+    _run(runtime, tmp_path)
+
+    assert runtime.ran == ["hello"]
+
+
+def test_a_routing_failure_never_stops_the_run(
+    store: _Store, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A question about *which* version to run must not be what fails a run."""
+
+    def _boom(_ws: Any) -> Any:
+        raise RuntimeError("canary config is broken")
+
+    monkeypatch.setattr("swarmkit_runtime.canary.router_for_workspace", _boom, raising=True)
+    runtime = _CanaryRuntime(RunResult(output="x"))
+
+    _run(runtime, tmp_path)
+
+    assert runtime.ran == ["hello"]

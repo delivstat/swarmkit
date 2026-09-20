@@ -363,6 +363,13 @@ def _execute_run(  # noqa: PLR0915
     # had produced a trace and audit events. The THREAD id is the job id on purpose: it is also the
     # trace's run_id, so the row links straight to `.swarmkit/traces/<id>.json` and to
     # `/observability/runs/<id>/trace`, which a serve-started job cannot do.
+    # Which topology actually runs is a property of the workspace, not of the front door: a
+    # topology under canary was routed over HTTP and ignored here, so `swarmkit run` and
+    # `POST /run` of the same name executed different things with nothing saying so. Resolution
+    # goes through the same service, which is pure — no store, no execution — so a one-shot CLI
+    # run can ask it without adopting the server's job lifecycle.
+    topology_to_run, canary_version = _resolve_with_canary(runtime, topology_name)
+
     store = _job_store(workspace_path)
     if store is not None:
         try:
@@ -375,6 +382,8 @@ def _execute_run(  # noqa: PLR0915
                 labels=labels,
                 parent_job_id=supersedes,
             )
+            if canary_version:
+                store.update_job(thread_id, version=canary_version)
         except Exception as exc:
             _stderr(f"note: this run will not appear in history: {exc}")
             store = None
@@ -382,7 +391,7 @@ def _execute_run(  # noqa: PLR0915
     try:
         result = asyncio.run(
             runtime.run(
-                topology_name,
+                topology_to_run,
                 user_input,
                 labels=labels,
                 thread_id=thread_id,
@@ -491,6 +500,25 @@ def _persist_artifact(
     typer.echo(f"artifact: {ref}")
 
 
+def _resolve_with_canary(runtime: Any, topology_name: str) -> tuple[str, str | None]:
+    """The topology to run and its canary version, resolved the way serve resolves it.
+
+    Best-effort: a routing question must never be what stops a run. If the router or the service
+    cannot answer, the run proceeds with the name as written — the behaviour before this existed.
+    """
+    try:
+        from swarmkit_runtime.canary import router_for_workspace  # noqa: PLC0415
+        from swarmkit_runtime.server._jobs import JobStore  # noqa: PLC0415
+        from swarmkit_runtime.server._services import JobService  # noqa: PLC0415
+
+        router = router_for_workspace(runtime.workspace)
+        if router is None:
+            return topology_name, None
+        return JobService(JobStore()).resolve_topology(runtime, router, topology_name)
+    except Exception:
+        return topology_name, None
+
+
 def _save_thread_id(workspace_path: Path, thread_id: str) -> None:
     """Save the thread_id so --resume can find it."""
     state_dir = workspace_path.resolve() / ".swarmkit" / "state"
@@ -514,10 +542,30 @@ def _execute_resume(
     _stderr(f"Resuming from checkpoint: {thread_id}")
 
     try:
-        return asyncio.run(runtime.resume(topology_name, thread_id))
+        result = asyncio.run(runtime.resume(topology_name, thread_id))
     except Exception as exc:
         _stderr(f"error: resume failed: {exc}")
         raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    # Close the row this run left open. `_execute_run` marks it `interrupted` when a run parks or
+    # is stopped, and a successful resume never cleared it — so history reported a failure that
+    # did not happen, for ever, while the same resume over HTTP (JobService.resume, used by the
+    # review queue) updated the row correctly. Best-effort in the usual direction: a row that
+    # cannot be written must not cost the answer that was just produced.
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    store = _job_store(workspace_path)
+    if store is not None:
+        try:
+            store.update_job(
+                thread_id,
+                status="completed",
+                output=getattr(result, "output", "") or "",
+                completed_at=datetime.now(tz=UTC).isoformat(),
+            )
+        except Exception as exc:
+            _stderr(f"note: the resumed run will still read as interrupted in history: {exc}")
+    return result
 
 
 # ---- eval (score a topology against an eval-set) -------------------------
