@@ -41,6 +41,15 @@ class Job:
     completed_at: str | None = None
     #: Drift scores the run recorded (`intent.drift` events), for the canary router's criterion.
     drift_scores: list[float] = field(default_factory=list)
+    #: The `RunResult` this job produced, for an in-process caller that needs more than `output`
+    #: (a chat turn summarises `result.events`). Never serialised — `_to_response` builds its
+    #: shape field by field — and never persisted; it is a handle, not a record.
+    result: Any = field(default=None, repr=False, compare=False)
+    #: The task executing this job, for an in-process caller that must wait for it. Awaiting the
+    #: task is the only correct way to wait: polling `status` spins forever if the task dies
+    #: without reaching a terminal state (a BaseException — `KeyboardInterrupt` — does exactly
+    #: that), and it swallows the exception the caller should see. Never serialised or persisted.
+    task: Any = field(default=None, repr=False, compare=False)
     #: What the caller tagged the run with (Level 16). Held here too, so the response to the
     #: submit — built from this object before the durable row is read back — carries them.
     correlation_id: str | None = None
@@ -56,9 +65,17 @@ class JobStore:
         self._lock = asyncio.Lock()
         self._background_tasks: set[asyncio.Task[None]] = set()
 
-    async def create(self, topology: str, user_input: str) -> Job:
+    async def create(self, topology: str, user_input: str, job_id: str | None = None) -> Job:
+        """Track a new job, minting an id unless the caller has a meaningful one of its own.
+
+        `execute_job` keys the run by the job id — "run_id == job_id == thread_id" below — so a
+        caller that already owns an identity for this work (a chat turn, a CLI thread) must be able
+        to supply it rather than have a second id minted alongside. Those callers previously had to
+        bypass this service entirely to keep their id, which is how chat ended up hand-rolling its
+        own job rows and running outside the concurrency gate.
+        """
         job = Job(
-            id=uuid4().hex[:12],
+            id=job_id or uuid4().hex[:12],
             topology=topology,
             status="pending",
             input=user_input,
@@ -242,6 +259,7 @@ async def _execute_job_body(
                 )
             )
             result = await asyncio.wait_for(call, timeout=timeout_seconds)
+            job.result = result
             job.output = result.output
             job.status = "completed"
             # Drift scores this run recorded (Level 8's `intent_monitoring`), for the canary
@@ -280,6 +298,19 @@ async def _execute_job_body(
             job.error = str(exc)
             job.status = "failed"
             job.events.append(f"Job failed: {exc}")
+        except BaseException as exc:
+            # `BaseException`, not `Exception`: a Ctrl-C mid-run would otherwise leave the row at
+            # `running` for ever — the stalled shape, indistinguishable from a job still being
+            # answered. The `finally` below stamps `completed_at` either way, so without this the
+            # row ends up completed-but-running, which is worse than either.
+            #
+            # Chat's hand-rolled job rows already got this right while this service did not; the
+            # rule arrived here when chat moved onto the service, because a shared path has to be
+            # at least as good as the bespoke one it replaces.
+            job.error = f"{type(exc).__name__}: {exc}"
+            job.status = "interrupted"
+            job.events.append(f"Job interrupted: {type(exc).__name__}")
+            raise
         finally:
             if semaphore is not None:
                 semaphore.release()
@@ -342,4 +373,5 @@ def _start_job(
             budget_override=budget_override,
         )
     )
+    job.task = task
     job_store.track_task(task)

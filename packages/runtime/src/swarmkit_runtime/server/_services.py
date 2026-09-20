@@ -142,6 +142,7 @@ class JobService:
         enqueue_only: bool = False,
         queue_max_depth: int = 0,
         budget_override: dict[str, Any] | None = None,
+        job_id: str | None = None,
     ) -> Job:
         """Resolve, gate on capacity, create + persist the job, and start it in the background.
 
@@ -199,7 +200,7 @@ class JobService:
                 raise BusyError(f"Queue is full ({queue_max_depth} runs waiting). Try again later.")
         elif semaphore is not None and semaphore.locked():
             raise BusyError("Max concurrent jobs reached. Try again later.")
-        job = await self._jobs.create(resolved_name, user_input)
+        job = await self._jobs.create(resolved_name, user_input, job_id=job_id)
         job.version = selected_version
         job.correlation_id = correlation_id
         job.source = source
