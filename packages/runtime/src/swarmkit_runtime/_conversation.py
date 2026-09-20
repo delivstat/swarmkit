@@ -215,6 +215,13 @@ class ConversationManager:
         topology_to_run, version = self._resolve_topology(conversation.topology_name)
         self._record_turn_job(run_id, conversation, user_message, version=version)
         try:
+            # a turn is awaited INLINE on purpose. Through JobService the
+            # run would execute in a task, where a Ctrl-C escapes into the event loop instead of
+            # reaching the caller, and the service writes its row unguarded while chat's rule is
+            # that a store which will not write loses the record of a turn, never the turn. The
+            # part that must not diverge — WHICH topology runs — is resolved through the service
+            # above (per-caller-credential-delegation.md is unrelated; see #977).
+            # noqa: service-layer
             result = await self._runtime.run(topology_to_run, context, thread_id=run_id)
         except BaseException as exc:
             self._finish_turn_job(run_id, "failed", error=f"{type(exc).__name__}: {exc}")

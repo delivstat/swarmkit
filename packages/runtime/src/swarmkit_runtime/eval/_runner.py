@@ -77,6 +77,10 @@ async def run_eval_set(
         output = ""
         error: str | None = None
         try:
+            # An eval case is measurement, not a run someone asked for. Writing a job row
+            # per case would fill history with scoring traffic and make cost attribution
+            # meaningless.
+            # noqa: service-layer
             run_result = await runtime.run(eval_set.target, case.input)
             output = str(getattr(run_result, "output", "") or "")
             checks.extend(deterministic_checks(output, case.expect))

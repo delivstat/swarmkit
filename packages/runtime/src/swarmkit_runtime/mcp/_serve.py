@@ -199,16 +199,80 @@ def _build_handlers(
     return list_tools, call_tool
 
 
+#: One job store per runtime for the life of this process. `swarmkit mcp-serve` is long-lived and
+#: may hold several workspaces, and a store per call would lose every job the moment it returned.
+_JOB_STORES: dict[int, Any] = {}
+_SEMAPHORES: dict[int, Any] = {}
+
+
+def _run_deps(rt: Any) -> tuple[Any, Any, Any, Any]:
+    """The job store, durable store, config and capacity gate this runtime's runs go through."""
+    import asyncio  # noqa: PLC0415
+
+    from swarmkit_runtime.server._config import ServerCfg  # noqa: PLC0415
+    from swarmkit_runtime.server._jobs import JobStore  # noqa: PLC0415
+
+    key = id(rt)
+    cfg = ServerCfg()
+    if key not in _JOB_STORES:
+        _JOB_STORES[key] = JobStore()
+        # The same bound `swarmkit serve` applies. Without it this front door had no capacity gate
+        # at all: an assistant could start unlimited concurrent runs on a box that bounds every
+        # other caller.
+        _SEMAPHORES[key] = asyncio.Semaphore(max(1, cfg.max_concurrent))
+    store = None
+    try:
+        store = rt.store
+    except Exception:
+        store = None
+    return _JOB_STORES[key], store, cfg, _SEMAPHORES[key]
+
+
 async def _run_topology(
     rt: Any,
     topo_name: str,
     arguments: dict[str, Any],
     TextContent: type,
 ) -> list[Any]:
+    """Run a topology for an MCP tool call, through the service every other interface uses.
+
+    This called `WorkspaceRuntime.run` directly, so a run started from an MCP client was not a
+    job: no durable row (invisible in `/jobs`, the portal and cost attribution), no canary routing,
+    no capacity gate, no `source`. The twin path inside `swarmkit serve` was fixed; this one was
+    missed the same way the trigger path once was.
+    """
+    from swarmkit_runtime.canary import router_for_workspace  # noqa: PLC0415
+    from swarmkit_runtime.server._services import JobService, ServiceError  # noqa: PLC0415
+
     user_input = arguments.get("input", "")
     try:
         await rt.start_session()
-        result = await rt.run(topo_name, user_input)
+        job_store, store, cfg, semaphore = _run_deps(rt)
+        try:
+            job = await JobService(job_store).start(
+                rt=rt,
+                canary=router_for_workspace(rt.workspace),
+                store=store,
+                cfg=cfg,
+                semaphore=semaphore,
+                topology_name=topo_name,
+                user_input=user_input,
+                # The same default the serve-side MCP tool and the webhook route use.
+                max_steps=10,
+                source="mcp",
+            )
+        except ServiceError as exc:
+            return [TextContent(type="text", text=f"Could not start {topo_name}: {exc}")]
+
+        # Await the task rather than polling: a run that dies without a terminal status would spin
+        # a poll loop for ever, and polling swallows the exception the caller should see.
+        if job.task is not None:
+            await job.task
+        result = job.result
+        if result is None:
+            reason = job.error or f"the run ended {job.status}"
+            return [TextContent(type="text", text=f"Error running {topo_name}: {reason}")]
+
         usage_info = ""
         if result.usage:
             usage_info = f"\n\n---\nTokens: {result.usage.total_tokens}"
