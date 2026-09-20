@@ -55,7 +55,13 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  
         from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
 
         rt = _get_runtime(request)
-        manager = ConversationManager(rt, workspace_path)
+        manager = ConversationManager(
+            rt,
+            workspace_path,
+            # Without this a turn runs the base topology while `POST /run` of the same name is
+            # routed to the canary — the two interfaces execute different things.
+            canary=getattr(request.app.state, "canary_router", None),
+        )
         conv = manager.resume(conversation_id)
         if conv is None:
             raise HTTPException(

@@ -244,3 +244,66 @@ async def test_no_store_does_not_stop_the_conversation(tmp_path: Path) -> None:
     result = await manager.send(_conversation(tmp_path), "hello")
 
     assert result.output == "the answer"
+
+
+# ---- a turn is routed like every other interface ----------------------------------------------
+
+
+class _Canary:
+    """A router with one topology under canary."""
+
+    def __init__(self, name: str = "advisor", version: str = "v2") -> None:
+        self._name = name
+        self._version = version
+
+    def has_route(self, name: str) -> bool:
+        return name == self._name
+
+    def select(self, _name: str) -> str:
+        return self._version
+
+
+class _CanaryRuntime(_Runtime):
+    """A runtime whose workspace holds both the base topology and its canary version."""
+
+    def __init__(self, store: Any) -> None:
+        super().__init__(store)
+        self.workspace = type(
+            "_W", (), {"topologies": {"advisor": object(), "advisor@v2": object()}}
+        )()
+        self.ran: list[str] = []
+
+    async def run(self, _topology: str, _input: str, *, thread_id: str = "", **_kw: Any) -> Any:
+        self.ran.append(_topology)
+        self.thread_ids.append(thread_id)
+        return _Result()
+
+
+@pytest.mark.asyncio
+async def test_a_turn_is_routed_to_the_canary(tmp_path: Path) -> None:
+    """A chat turn resolves its topology through `JobService`, so canary reaches chat.
+
+    It used to run `conversation.topology_name` as written, so a topology under canary was
+    answered by the base version in chat and by the canary over `POST /run` — the same name
+    executing different things depending on which door the caller used, with nothing saying so.
+    """
+    store = _Store()
+    runtime = _CanaryRuntime(store)
+    manager = ConversationManager(runtime, tmp_path, canary=_Canary())  # type: ignore[arg-type]
+
+    await manager.send(_conversation(tmp_path), "hello")
+
+    assert runtime.ran == ["advisor@v2"], "the turn must run the version the router selected"
+    # And the row says which version answered, rather than leaving it to be inferred.
+    assert any(u.get("version") == "v2" for u in store.updates)
+
+
+@pytest.mark.asyncio
+async def test_a_turn_without_a_canary_runs_the_name_as_written(tmp_path: Path) -> None:
+    store = _Store()
+    runtime = _CanaryRuntime(store)
+    manager = ConversationManager(runtime, tmp_path)  # type: ignore[arg-type]
+
+    await manager.send(_conversation(tmp_path), "hello")
+
+    assert runtime.ran == ["advisor"]
