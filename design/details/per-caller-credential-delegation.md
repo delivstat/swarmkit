@@ -184,22 +184,111 @@ Reads that change:
 
 Nothing new returns a token.
 
+## Portal changes
+
+The portal is not optional here, and it is not only a new page: **an existing invariant is compiled
+into the UI's own logic.** `packages/ui/lib/connections.ts` says so in its header — *"its credential
+has one owner fixed at setup"* — and `statusFor()` returns one `ConnectionStatus` per row for the
+whole workspace (`needs-credential`, `unresolved`, `no-auth`, ready). That is exactly the assumption
+this note removes.
+
+**1. Status becomes per-viewer.** With `owner: caller`, "does this credential resolve" has no single
+answer: the same row is ready for Alice and not-yet-connected for Bob. `statusFor()` takes the
+signed-in identity, and `ConnectionStatus` gains a state for *you have not connected this one*,
+distinct from `needs-credential` (the workspace is misconfigured) and `unresolved` (configured but
+the source returned nothing). Those three must not be collapsed: one is the operator's bug, one is
+the operator's environment, one is the viewer's to fix and is a perfectly healthy state.
+
+**2. Connect changes meaning, so it must change wording.** Today the Connect button
+(`oauthProbe` → `oauthLogin` → popup → callback) stores a token owned by whoever clicked it, which in
+a single-operator workspace is effectively the workspace's. Under `owner: caller` the same click
+connects *only that person's* account. An operator must not be able to read the button as "set this
+up for everybody" — that misreading is how one person's token silently becomes the team's.
+
+**3. A non-operator view.** Most people who need to connect an account have no business seeing the
+operator inventory — adding credentials, editing `workspace.yaml` through
+`PUT /api/workspace/config/...`. They need one screen: *the accounts this agent will use as me*, each
+with its state and a Connect button. Whether that is the Connections page filtered by scope or a
+separate route is an implementation choice; that it is scope-gated is not.
+
+**4. Listing must not leak the roster.** `GET /api/oauth/credentials` returns metadata for every
+owner — provider, owner, expiry, scopes. In a single-operator workspace that is an inventory; in a
+multi-user deployment it is a list of who uses what, which is not a non-admin's business. The
+per-caller view needs *is there a token for me*, and the full listing stays admin-scoped. This is a
+genuine authorization change, not a display tweak, and it is the one piece of this note that is a
+privacy regression if it ships thoughtlessly.
+
+None of this needs new UI machinery: the page, the API client methods (`oauthProbe`, `oauthLogin`,
+`oauthDisconnect`), and a vitest suite for the logic (`packages/ui/lib/connections.test.ts`) all
+exist.
+
 ## Test plan
 
-- **Unit** — the resolution matrix above, every row, including that `owner: caller` with no principal
-  raises rather than falling back when a sole owner exists. That single test is the feature's
-  security property.
-- **Unit** — principal scoping: concurrent jobs in one process resolve their own principals (the
-  reason this is a `ContextVar` and not a global, same as the run id).
-- **Security** — a run started by Alice cannot resolve Bob's token by any configuration reachable
-  from the topology; no route returns a token; the audit row names principal and choice.
-- **Integration** — two identities, one workspace, one topology, a stub OAuth provider: each caller's
-  run touches only their own account, proven by the stub's per-account data rather than by assertion.
-- **Integration** — Bob calls before connecting and receives the actionable connect response, then
-  connects and the same call succeeds, with no change to the workspace.
-- **Integration** — propagation: a child run sees the principal; an A2A call does not; a cron trigger
-  on the same topology refuses.
-- **Integration** — pre-run refresh refreshes the caller's token, not the designated one.
+The point of writing this section against the real harnesses is that **the security property is
+cheap to test today** — the scaffolding it needs is already in the repo, so there is no excuse for
+asserting it in prose instead of in code.
+
+**Unit — the resolution matrix (`tests/test_credential_service.py`).** That file already builds a
+`TokenStore(tmp_path)`, calls `store.save(..., owner="srijith")`, constructs
+`CredentialService(tmp_path, {...})` and awaits `service.resolve(name)`. Every row of the table above
+is that same setup with a second owner added:
+
+| Case | Expected |
+|---|---|
+| literal `owner` | that owner's token (regression — unchanged behaviour) |
+| no `owner`, exactly one stored | sole owner (regression — unchanged behaviour) |
+| `owner: caller`, principal Alice, Alice has a token | Alice's token |
+| **`owner: caller`, principal Alice, Bob is the *sole* stored owner** | **raises — no fallback** |
+| `owner: caller`, no principal | raises, naming why |
+| `owner: caller`, principal Alice, no token for Alice | actionable "connect" error carrying the URL |
+
+Row four is the feature. If only one test from this note survives, it is that one: it is the
+difference between delegation and privilege escalation, and it fails loudly the day someone
+"simplifies" the resolver by reusing the sole-owner convenience.
+
+**Unit — principal isolation.** Two `asyncio.gather`-ed resolutions with different principals in one
+process each get their own token. This is why the principal is a `ContextVar` and not a module
+global, and it is the same property `_run_scope.py` already relies on.
+
+**Unit — the owner-key agreement.** The bug this prevents is the silent one: the login stores under
+one string, the run looks up another, every user connects and nothing resolves. `tests/test_jwt_auth.py`
+already mints RS256 tokens against an in-test RSA key with a mocked JWKS client, so the test is
+cheap: assert that the identity `/whoami` reports and the owner the resolver looks up are **the same
+string**, for JWT (`sub`), for api_key, and for `none` (the named operator,
+`tests/test_none_auth_identity.py`).
+
+**Integration — isolation, end to end.** One `create_app` workspace, one topology, two JWTs minted by
+the existing helper, and a stub MCP server that reports *which account it was called as*. Alice's run
+touches Alice's account and Bob's touches Bob's — asserted from the stub's per-account data, **not by
+mocking the resolver**, because a test that mocks the thing under test proves only that the mock was
+called.
+
+**Integration — the first-run path.** Bob calls before connecting, receives the connect response,
+connects through the stub provider, and the identical call then succeeds **with no edit to
+`workspace.yaml`**. That "no edit" is the whole product claim: the agent is deployed once.
+
+**Integration — boundaries.** A child run inherits the principal; an A2A call does not forward it; a
+cron trigger on the same topology refuses; `owner: caller` under auth `none` is refused at load by
+`swarmkit validate`, not at run time.
+
+**Integration — refresh.** The pre-run refresh pass refreshes *the caller's* token
+(`tests/test_oauth_refresh.py` has the expiry-window arithmetic and the revoked-refresh case to
+extend).
+
+**Security.** No route returns a token (existing guarantee, re-asserted for the new per-caller read);
+the non-admin per-caller listing does not disclose other owners; the audit row names principal, owner
+and *how the owner was chosen*.
+
+**TypeScript (`packages/ui/lib/connections.test.ts`).** `statusFor()` returns a different status for
+the same row under two viewers; the three "not ready" states stay distinct; a non-operator sees no
+other owner.
+
+**What this plan does not cover, honestly.** A stub provider proves the runtime's contract and
+nothing about a real one. Consent screens, scope drift between what was requested and what was
+granted, refresh-token lifetimes and admin-consent policies differ per provider (Google, Entra,
+Okta), and they surface only in a manual pass against a real tenant. That pass should happen once
+before this is called done, and its findings belong in this note — not in a test that cannot run in
+CI.
 
 ## Demo plan
 
@@ -213,9 +302,11 @@ in the same store, is not what either of them got.
 
 ## Open questions
 
-1. **Portal ergonomics for a non-operator.** A user who is not the workspace owner needs a page that
-   does exactly one thing: connect the accounts this agent will use as me. That is a different view
-   from today's Connections page, which is an operator's inventory.
+1. **One page or two?** The portal changes are settled above except their shape: whether the
+   non-operator view is the Connections page filtered by scope or a separate lightweight route. A
+   filtered page is less code and one less thing to keep in step; a separate route is harder to leak
+   the operator inventory from by accident. Leaning separate route, for the same reason the listing
+   split is a privacy question rather than a display one.
 2. **Revocation at the organisation level.** An employee leaves; their rows should go. Deleting by
    owner exists (`DELETE /api/oauth/credentials/{id}` is owner-scoped), but nothing sweeps by
    identity. Probably a control-plane concern, like question 4 of `mcp-oauth.md`.
