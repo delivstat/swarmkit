@@ -40,6 +40,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import CallToolResult
 from swarmkit_schema.models.workspace import McpServer
 
+from swarmkit_runtime._principal import current_principal
 from swarmkit_runtime.mcp._credentials import resolve_env, resolve_headers
 from swarmkit_runtime.mcp._sdk_compat import tool_input_schema, tool_read_only_hint
 
@@ -263,6 +264,32 @@ class MCPClientManager:
         resolved: str = await self._credential_service.resolve(config.credentials_ref)
         return resolved
 
+    def _session_key(self, server_id: str) -> str:
+        """The cache key a session for this server may be stored under.
+
+        A `global` connection presents the same secret to everyone, so one session per server is
+        correct and stays keyed by the server id alone — today's behaviour, unchanged.
+
+        A `per-user` connection does not. Its session carries one person's bearer, and the cache
+        is consulted before any credential is resolved, so keying it by server id would hand
+        Alice's open session to Bob's run and let Bob act as Alice. The resolver cannot prevent
+        that: it already returned the right token for each of them. The leak is here, one layer
+        below, which is why this is a keying problem and not a resolution one.
+        """
+        config = self._configs.get(server_id)
+        ref = getattr(config, "credentials_ref", "") if config is not None else ""
+        if not ref or self._credential_service is None:
+            return server_id
+        try:
+            per_user = bool(self._credential_service.is_per_user(ref))
+        except Exception:  # a service that cannot answer is treated as shared: see is_per_user
+            per_user = False
+        if not per_user:
+            return server_id
+        # NUL cannot appear in a server id (the schema's identifier pattern) or in an identity
+        # string that survived auth, so it cannot be forged into a collision between two owners.
+        return f"{server_id}\x00{current_principal() or ''}"
+
     async def _credential_changed(self, server_id: str) -> bool:
         """Would this server now present a different secret than its open session carries?"""
         config = self._configs.get(server_id)
@@ -274,12 +301,15 @@ class MCPClientManager:
             current = await self._resolved_credential(server_id)
         except Exception:
             return False
-        return current is not None and current != self._session_credentials.get(server_id)
+        return current is not None and current != self._session_credentials.get(
+            self._session_key(server_id)
+        )
 
     async def _drop_session(self, server_id: str) -> None:
         """Forget a session so the next call reopens it. The exit stack closes the transport."""
-        self._sessions.pop(server_id, None)
-        self._session_credentials.pop(server_id, None)
+        key = self._session_key(server_id)
+        self._sessions.pop(key, None)
+        self._session_credentials.pop(key, None)
 
     # ---- session ownership ----------------------------------------------------------------------
 
@@ -341,13 +371,14 @@ class MCPClientManager:
         a header bound at connect time pins whatever was valid at startup — the refresh would
         update the store and change nothing on the wire (credential-service.md).
         """
-        if server_id in self._sessions:
+        key = self._session_key(server_id)
+        if key in self._sessions:
             if await self._credential_changed(server_id):
                 # The SDK gives no way to alter an open sse_client's headers, so the session is
                 # reopened with the fresh one. Reconnecting is cheap next to a 401 mid-run.
                 await self._drop_session(server_id)
             else:
-                return self._sessions[server_id]
+                return self._sessions[key]
 
         config = self._configs.get(server_id)
         if config is None:
@@ -359,7 +390,7 @@ class MCPClientManager:
 
         opener = self._start_http if config.transport == "http" else self._start_stdio
         session: ClientSession = await self._on_owner(lambda: opener(config))
-        self._sessions[server_id] = session
+        self._sessions[key] = session
         return session
 
     async def _start_stdio(self, config: MCPServerConfig) -> ClientSession:
@@ -419,7 +450,7 @@ class MCPClientManager:
         resolved = await self._resolved_credential(config.server_id)
         if resolved:
             headers["Authorization"] = f"Bearer {resolved}"
-            self._session_credentials[config.server_id] = resolved
+            self._session_credentials[self._session_key(config.server_id)] = resolved
         transport = await self._stack.enter_async_context(
             sse_client(url=config.endpoint, headers=headers or None)
         )

@@ -110,6 +110,20 @@ class CredentialService:
         except CredentialError:
             return False
 
+    def is_per_user(self, name: str) -> bool:
+        """Whether this connection resolves to the caller rather than to one designated owner.
+
+        Read by the MCP client to decide what a cached session may be keyed by: a per-user
+        connection's session carries one person's bearer and must never be handed to another
+        caller. An undeclared or unknown credential answers False — the conservative direction,
+        since treating a shared connection as per-user only costs a session, while the reverse
+        hands Alice's session to Bob.
+        """
+        try:
+            return identity_of(self.entry(name)) == PER_USER
+        except CredentialError:
+            return False
+
     async def resolve(self, name: str) -> str:
         """The secret for this reference, valid now.
 
