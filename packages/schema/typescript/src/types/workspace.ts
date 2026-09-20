@@ -210,6 +210,16 @@ export interface CredentialValue {
      */
     config: { [key: string]: any };
     /**
+     * Whose connection this is. `global` (the default) is set up once and used by every run — a
+     * machine token, a fileshare credential. `per-user` resolves to the token belonging to the
+     * authenticated caller of each run, so one deployed agent serves a whole organisation
+     * against per-person services. `per-user` requires a source that can key a secret by owner
+     * (today: `oauth`), an authenticated caller (so not `auth: none`, not the CLI, not a
+     * trigger), and no literal `config.owner`. See
+     * design/details/per-caller-credential-delegation.md.
+     */
+    identity?: IdentityEnum;
+    /**
      * Required when source=plugin. Names the registered SecretsProvider.
      */
     provider_id?: string;
@@ -221,6 +231,17 @@ export interface CredentialValue {
      */
     source: Source;
 }
+
+/**
+ * Whose connection this is. `global` (the default) is set up once and used by every run — a
+ * machine token, a fileshare credential. `per-user` resolves to the token belonging to the
+ * authenticated caller of each run, so one deployed agent serves a whole organisation
+ * against per-person services. `per-user` requires a source that can key a secret by owner
+ * (today: `oauth`), an authenticated caller (so not `auth: none`, not the CLI, not a
+ * trigger), and no literal `config.owner`. See
+ * design/details/per-caller-credential-delegation.md.
+ */
+export type IdentityEnum = "global" | "per-user";
 
 /**
  * Which SecretsProvider resolves this credential. `oauth` resolves through the runtime's
