@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import logging
+import time
 import typing
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -85,6 +86,63 @@ def _register_pipeline_event_tool(mcp_server: Any, app: FastAPI) -> None:
     )
 
 
+async def _run_as_job(app: FastAPI, topology_name: str, user_input: str) -> str:
+    """Run a topology for an MCP tool call — through the same service every other caller uses.
+
+    This called ``WorkspaceRuntime.run`` directly, which is the same mistake the trigger path made
+    and had already fixed above: a run started that way is not a job. It gets no durable row, so it
+    is invisible in ``/jobs/history`` the moment it ends; no canary routing, so a topology being
+    canaried is bypassed by whichever front door the caller happened to use; no capacity gate, so
+    ``jobs.max_concurrent`` means nothing here and an assistant can start unlimited concurrent runs
+    on an instance that is carefully bounded everywhere else; and no `source`, so nobody can tell
+    which runs came from an assistant.
+
+    The CLI, ``POST /run``, A2A, triggers and now MCP all start work the same way. A second path
+    into the runtime is a second set of rules to keep in step, and it drifts silently — the only
+    symptom is a run that behaves differently depending on which door it came through.
+
+    The tool still answers with the output, so it waits for the job it started.
+    """
+    from ._services import JobService, ServiceError  # noqa: PLC0415
+
+    job_store: JobStore = app.state.job_store
+    cfg: ServerCfg = getattr(app.state, "server_config", ServerCfg())
+    try:
+        job = await JobService(job_store).start(
+            rt=app.state.runtime,
+            canary=getattr(app.state, "canary_router", None),
+            store=getattr(app.state, "store", None),
+            cfg=cfg,
+            semaphore=getattr(app.state, "job_semaphore", None),
+            topology_name=topology_name,
+            user_input=user_input,
+            max_steps=10,
+            # Attributable in the portal and in `tasks/list`, the same way `a2a` runs are.
+            source="mcp",
+        )
+    except ServiceError as exc:
+        # The tool's contract is a string; a refusal is an answer, not a transport error.
+        return f"Could not start {topology_name!r}: {exc}"
+
+    terminal = {"completed", "failed", "stopped", "interrupted", "deferred"}
+    deadline = time.monotonic() + max(1, cfg.timeout_seconds) + 5
+    while job.status not in terminal and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+
+    if job.status == "completed":
+        return job.output or ""
+    if job.status == "deferred":
+        # Parked on a human gate. Saying so with the id is the only useful answer: an assistant
+        # cannot resolve the gate (approval scopes are un-grantable), but a person can.
+        return (
+            f"Run {job.id} is waiting on a human gate and will continue once it is resolved. "
+            f"Nothing further to do from here."
+        )
+    if job.status in terminal:
+        return f"Run {job.id} {job.status}: {job.error or 'no error recorded'}"
+    return f"Run {job.id} is still running; poll GET /jobs/{job.id} for its result."
+
+
 def _mount_mcp(app: FastAPI) -> None:
     """Set up MCP server and mount on the FastAPI app.
 
@@ -121,9 +179,7 @@ def _mount_mcp(app: FastAPI) -> None:
 
                 def _make_tool_fn(topo_name: str, desc: str, app_ref: FastAPI) -> None:
                     async def _run(input: str) -> str:
-                        runtime: WorkspaceRuntime = app_ref.state.runtime
-                        result = await runtime.run(topo_name, input)
-                        return result.output
+                        return await _run_as_job(app_ref, topo_name, input)
 
                     mcp_server.add_tool(
                         _run,

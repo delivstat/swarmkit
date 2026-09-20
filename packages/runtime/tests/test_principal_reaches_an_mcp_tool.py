@@ -1,4 +1,4 @@
-"""A topology invoked as an MCP tool still knows who called it.
+"""A topology invoked as an MCP tool is a job like any other, and knows who called it.
 
 `swarmkit serve` publishes every topology as a `run_<name>` tool on `/mcp/`, so an assistant in
 Claude Desktop or Cursor can call a swarm directly. That path does not go through `POST /run`: the
@@ -114,3 +114,65 @@ async def test_a_topology_called_as_an_mcp_tool_sees_its_caller(
         "a topology called through /mcp/ must see the authenticated caller, or every "
         "`identity: per-user` credential reached this way refuses with 'no authenticated caller'"
     )
+
+
+@pytest.mark.asyncio
+async def test_an_mcp_tool_call_is_a_real_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tool goes through JobService, not straight into the runtime.
+
+    Calling `WorkspaceRuntime.run` directly is not a job: no durable row (invisible in
+    `/jobs/history` the moment it ends), no canary routing (a topology being canaried is bypassed
+    by whichever door the caller used), no capacity gate (`jobs.max_concurrent` means nothing), and
+    no `source` (nobody can tell which runs came from an assistant).
+
+    Every interface — CLI, `POST /run`, A2A, triggers, MCP — starts work through the same service.
+    A second path into the runtime is a second set of rules to keep in step, and it drifts in
+    silence: the only symptom is a run behaving differently depending on how it was started.
+    """
+    started: dict[str, Any] = {}
+
+    async def _probe(self: Any, *args: Any, **kwargs: Any) -> Any:
+        class _Result:
+            output = "ok"
+            usage = None
+
+            @property
+            def events(self) -> list[str]:
+                return []
+
+        return _Result()
+
+    monkeypatch.setattr(WorkspaceRuntime, "run", _probe)
+
+    app = create_app(_workspace(tmp_path / "ws"), auth_provider=NoneAuthProvider(identity="alice"))
+    transport = httpx.ASGITransport(app=app)
+
+    def _client(
+        headers: dict[str, str] | None = None,
+        timeout: Any = None,
+        auth: Any = None,
+    ) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=transport, base_url="http://test", headers=headers or {}, timeout=30
+        )
+
+    async with (
+        app.router.lifespan_context(app),
+        streamable.streamablehttp_client("http://test/mcp/", httpx_client_factory=_client) as (
+            read,
+            write,
+            _,
+        ),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        await asyncio.wait_for(session.call_tool("run_hello", {"input": "anything"}), timeout=60)
+        started["jobs"] = await app.state.job_store.list_all()
+
+    jobs = started["jobs"]
+    assert len(jobs) == 1, "an MCP tool call must create exactly one tracked job"
+    assert jobs[0].topology == "hello"
+    # `source` is what makes an assistant-driven run distinguishable in the portal.
+    assert getattr(jobs[0], "source", "") == "mcp"
