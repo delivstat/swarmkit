@@ -658,6 +658,31 @@ export interface CredentialEntry {
 	/** Whether it produces a value right now. An env var nobody exported looks identical to a
 	 * working credential in every other view. */
 	resolves: boolean;
+	/** Whose connection this is. `global` (the default) is set up once and used by every run;
+	 * `per-user` resolves to the token of whoever authenticated the run, so its state is a
+	 * property of the viewer rather than of the workspace.
+	 * See `design/details/per-caller-credential-delegation.md`. */
+	identity?: "global" | "per-user";
+}
+
+/**
+ * One row of `GET /api/oauth/my-credentials` — what the signed-in person has connected.
+ *
+ * Deliberately not `OAuthCredential`: that carries an `owner` and comes from the operator
+ * inventory, which is admin-only because it is a roster. This shape names nobody.
+ */
+export interface MyCredential {
+	credential_id: string;
+	source: string;
+	identity: "global" | "per-user";
+	endpoint: string | null;
+	/** Null on a `global` row: that token is not this person's to hold, so neither connected nor
+	 * not-connected is true of them. */
+	connected: boolean | null;
+	scopes: string[];
+	expires_at: number | null;
+	seconds_remaining: number | null;
+	expired: boolean | null;
 }
 
 export interface McpServerEntry {

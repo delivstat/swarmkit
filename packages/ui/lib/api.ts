@@ -18,6 +18,7 @@ import type {
 	MemoryConfig,
 	MemoryItem,
 	MemoryQuarantineItem,
+	MyCredential,
 	OAuthCredential,
 	OAuthProbe,
 	PersistedJob,
@@ -314,8 +315,21 @@ export const api = {
 			{ yaml },
 		),
 	workspaceConfig: () => get<WorkspaceConfig>("/api/workspace/config"),
+	/** The operator inventory — every owner's stored tokens. Admin-scoped: it is a roster. */
 	oauthCredentials: () =>
 		get<{ credentials: OAuthCredential[] }>("/api/oauth/credentials"),
+	/**
+	 * What the signed-in person has connected, and nothing about anyone else.
+	 *
+	 * A different endpoint rather than `oauthCredentials` filtered here: a filter in the browser
+	 * has already received the roster it declines to draw. This one takes no owner — the server
+	 * derives it from the authenticated identity
+	 * (`design/details/per-caller-credential-delegation.md`).
+	 */
+	myCredentials: () =>
+		get<{ owner: string; credentials: MyCredential[] }>(
+			"/api/oauth/my-credentials",
+		),
 	a2aProbe: (cardUrl: string) =>
 		get<A2AProbe>(`/api/a2a/probe?card_url=${encodeURIComponent(cardUrl)}`),
 	remoteAgents: () => get<RemoteAgentEntry[]>("/api/a2a/agents"),
