@@ -389,6 +389,11 @@ def _execute_run(  # noqa: PLR0915
             store = None
 
     try:
+        # one-shot CLI: no server, so the semaphore, queue and
+        # enqueue_only machinery do not apply, and the thread-id-as-job-id choice above is
+        # incompatible with JobService minting its own. Canary resolution, the part that was
+        # genuinely diverging, goes through the service (#980).
+        # noqa: service-layer
         result = asyncio.run(
             runtime.run(
                 topology_to_run,

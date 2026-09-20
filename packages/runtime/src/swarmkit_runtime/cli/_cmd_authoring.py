@@ -654,6 +654,10 @@ def _run_authoring(
         try:
             runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
             prompt = f"Create a new {mode}. {input_text}".strip()
+            # one-shot authoring run, same class as `swarmkit run`.
+            # It leaves no job row, so a long authoring run has no history or cost record;
+            # that gap is known and tracked, not intended (#980).
+            # noqa: service-layer
             result = asyncio.run(runtime.run("skill-authoring", prompt))
             if result.output:
                 typer.echo(result.output)
@@ -792,6 +796,10 @@ def edit(
         user_input = "What would you like to change in this workspace?"
 
     try:
+        # one-shot authoring run, same class as `swarmkit run`.
+        # It leaves no job row, so a long authoring run has no history or cost record;
+        # that gap is known and tracked, not intended (#980).
+        # noqa: service-layer
         result = asyncio.run(runtime.run("skill-authoring", user_input))
     except KeyError:
         _stderr(
