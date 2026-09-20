@@ -30,6 +30,7 @@ hide:
 <div class="sk-stats">
   <div><strong>11</strong> open artifact schemas</div>
   <div><strong>5</strong> skill backings — MCP, prompt, command, composed, agent</div>
+  <div><strong>2</strong> executor kinds — a model, or a coding harness as a node</div>
   <div><strong>12</strong> bundled model providers, declared in YAML</div>
   <div><strong>7,000+</strong> MCP servers wire in as config</div>
   <div><strong>~4,000</strong> tests in CI</div>
@@ -45,7 +46,7 @@ hide:
 
 Ten agents, three leaders, tools, a human gate on deployment — and no Python. Change the structure and you edit configuration, not code. Every artifact is open YAML any conformant runtime can run, and the portal edits the same file you would.
 
-The runtime compiles it to a LangGraph `StateGraph`, starts the MCP servers it needs, enforces the governance you declared, and hands you a run you can replay.
+The runtime compiles it to a LangGraph `StateGraph`, starts the tools it needs, enforces the governance you declared, and hands you a run you can replay. A node runs on a **model** by default — or on a **coding harness** (Claude Code, Codex, Gemini CLI, opencode) as the executor, editing files and running tests under the very same gates and audit.
 
 [Level 1: Hello World →](tutorials/01-hello-world.md){ .md-button }
 
@@ -124,9 +125,9 @@ Append-only from the agents' side: verdicts, tool calls with their policy decisi
 <div class="sk-card" markdown>
 <div class="shot"><img src="img/tutorials/05-connections.png" alt="Connections: MCP servers and credentials"></div>
 <div class="body" markdown>
-### 7,000+ tools, one config block
-Any MCP server is a few lines of `mcp_servers`. Permission tiers, declared `effects`, sandboxing, credentials by reference — a `readonly` server cannot write, whatever the model asks.
-<a class="more" href="tutorials/05-mcp-tools/">MCP tools →</a>
+### One primitive: the skill, five backings
+A capability is always a skill — an MCP tool, an LLM prompt, a local command, a composition of skills, or another agent (local or remote over A2A). MCP is just the largest of the five: 7,000+ servers wire in as a few lines of `mcp_servers`, with permission tiers, declared `effects` and sandboxing — a `readonly` server cannot write, whatever the model asks.
+<a class="more" href="tutorials/03-skills/">Skills →</a>
 </div>
 </div>
 
@@ -250,7 +251,8 @@ Every level builds on one workspace. Every transcript is a real run, every YAML 
 |---|---|---|---|---|
 | Agent definition | YAML topology | Python code | Python classes | Code + config |
 | Multi-agent orchestration | Declarative hierarchy + DAG + task plans | Manual graph construction | Role-based | Single agent loop |
-| Tool integration | 7,000+ MCP servers via YAML | Build or wire yourself | Built-in + MCP | Built-in harness + MCP |
+| Node execution | A model, or a coding harness (Claude Code, Codex, Gemini CLI, opencode) — same gates | DIY | Model | Built-in harness (Claude only) |
+| Skills (extensions) | 5 backings: MCP (7,000+), prompt, command, composed, agent | Build or wire yourself | Built-in + MCP | Built-in harness + MCP |
 | Governance | Decision-skill gates, IAM scopes, circuit breakers, funnels | DIY | None | None |
 | Human approval | Structural: quorum, roles, defer-and-resume | Manual interrupt points | None | None |
 | Audit trail | Append-only, with reasoning | DIY | None | None |
