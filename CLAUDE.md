@@ -112,12 +112,13 @@ Every feature, big or small, follows this lifecycle. No exceptions.
 
 **Branch protection is enforced on `main`.** Direct pushes are blocked for all contributors including admins. Every change — code, docs, workspace files, design notes — goes through a pull request.
 
-1. **Design first.** Write a short design note at `design/details/<feature-slug>.md` — or, if the v0.6 doc already covers it, reference the section. Must state: goal, non-goals, API shape, test plan, demo plan. For large features open a design-only PR and get review before implementation.
-2. **Branch.** `feat/<scope>-<slug>`, `fix/<scope>-<slug>`, `design/<slug>`, `docs/<slug>`, etc. One feature per branch.
-3. **Tests are mandatory.** Every feature ships with tests — unit, integration, or both as appropriate. No "tests later." A PR without tests is not reviewable.
-4. **Demo every feature.** Every feature — small or big — ships a demo: a runnable script under `examples/`, a recorded terminal transcript in the PR body, a screenshot for UI changes, or a `just demo-<feature>` target. The demo proves the feature works for a real user, not just the compiler.
-5. **PR against `main`.** The PR description must link the design note, show the demo, and summarise test coverage. Use the template at `.github/pull_request_template.md`.
-6. **Review + green CI + merge.** Delete the branch after merge.
+1. **File an issue first.** Every feature and fix starts as a GitHub issue stating the *problem* — what is wrong, the evidence (measurements, `file:line`, what it costs), and what it would take. The PR then references it (`Fixes #N`), so it closes on merge. An issue and a PR answer different questions: the issue holds the reasoning and stays findable when someone asks "why did we do this?"; a rationale that lives only in a merged diff is one nobody greps. A sweep that finds several problems gets several issues plus one for the systemic guard, with the sub-issues linked from it (see #977–#981). Split by reviewability, not convenience — evidence and design in one PR, the behaviour change in another; a change to a live path deserves its own diff against a merged baseline rather than arriving bundled with the tooling that measured it. This applies to the one-line fix found mid-task too: file it rather than letting it ride along silently in an unrelated PR.
+2. **Design first.** Write a short design note at `design/details/<feature-slug>.md` — or, if the v0.6 doc already covers it, reference the section. Must state: goal, non-goals, API shape, test plan, demo plan. For large features open a design-only PR and get review before implementation.
+3. **Branch.** `feat/<scope>-<slug>`, `fix/<scope>-<slug>`, `design/<slug>`, `docs/<slug>`, etc. One feature per branch.
+4. **Tests are mandatory.** Every feature ships with tests — unit, integration, or both as appropriate. No "tests later." A PR without tests is not reviewable.
+5. **Demo every feature.** Every feature — small or big — ships a demo: a runnable script under `examples/`, a recorded terminal transcript in the PR body, a screenshot for UI changes, or a `just demo-<feature>` target. The demo proves the feature works for a real user, not just the compiler.
+6. **PR against `main`.** The PR description must link the design note, show the demo, and summarise test coverage. Use the template at `.github/pull_request_template.md`.
+7. **Review + green CI + merge.** Delete the branch after merge.
 
 This applies to this CLAUDE.md change too — these rules arrived via `feat/workflow-rules-and-plan`.
 
