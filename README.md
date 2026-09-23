@@ -21,6 +21,15 @@
 
 ---
 
+**[The problem](#the-problem)** · **[The fix](#the-fix)** · **[Quick start](#quick-start)** ·
+**[How it works](#how-it-works)** · **[Commands](#commands)** · **[Key features](#key-features)** ·
+**[Attachments](#attachments--put-a-file-in-front-of-an-agent-shipped)** ·
+**[Eval](#eval--score-a-topology-and-gate-ci-shipped)** ·
+**[Complete feature list](#complete-feature-list)** · **[Reference topologies](#reference-topologies)** ·
+**[Install from source](#install-from-source)** · **[For LLMs](#for-llms)**
+
+---
+
 ## The problem
 
 Building multi-agent systems with LangGraph means writing hundreds of lines of Python for every topology: node functions, edge routing, state management, tool wiring, governance, error handling. Change the agent structure and you're refactoring code, not configuration.
@@ -122,9 +131,75 @@ go from one agent (level 1) to a fleet (level 22); levels 17–22 each end in a 
 
 ## How it works
 
+Artifacts in, a governed run out. Nothing in the middle is generated code — the runtime **interprets**
+your YAML, which is why changing the agent structure is an edit rather than a refactor.
+
 <p align="center">
-  <img src="docs/images/architecture.svg" alt="SwarmKit architecture" width="800" />
+  <img src="docs/images/architecture.svg" alt="SwarmKit architecture: artifacts are resolved and compiled to LangGraph, executed as model or harness nodes, with every tool call passing one permission seam into governance, gated by funnels and recorded in a hash-chained audit trail, served over CLI, HTTP, MCP, A2A and the fleet panel." width="860" />
 </p>
+
+Four things in that picture are the whole design:
+
+1. **Compile, don't generate.** Your topology becomes a LangGraph `StateGraph` at load time. There is
+   no Python to read, own or regenerate — and the artifacts stay portable to any conformant runtime.
+2. **Two executor kinds, one contract.** A node is a `model` (a provider call) or a `harness` (a coding
+   agent like Claude Code in its own worktree). Both dispatch through the same permission seam, so a
+   skill prerequisite or an IAM scope behaves identically whichever runs.
+3. **One seam, not sprinkled checks.** Every tool call passes `evaluate_action()` before it executes.
+   Approval scopes reserved for humans are structurally un-grantable to agents — not discouraged in a
+   prompt, refused by the policy engine.
+4. **The run is a record.** Hash-chained audit, OTel traces, artifacts addressable by correlation id.
+   A run parked on a human gate checkpoints and frees its resources rather than holding them open.
+
+<p align="center">
+  <img src="docs/images/topology-yaml-to-graph.svg" alt="A topology YAML on the left compiles into a LangGraph agent graph on the right" width="760" />
+</p>
+
+## Commands
+
+43 commands ship. These are the ones you reach for; `swarmkit --help` lists the rest.
+
+**Build and run**
+
+| | |
+|---|---|
+| `swarmkit init` · `edit` | create or change a workspace **through conversation** — you never write YAML |
+| `swarmkit run` | one-shot execution (`--attach`, `--resume`, `--input`) |
+| `swarmkit chat` | interactive multi-turn against a topology |
+| `swarmkit validate` | resolve the workspace; `--require` finds unreachable config, `--require-verified` finds outputs nothing checks |
+| `swarmkit eval` | [score a topology and gate CI](#eval--score-a-topology-and-gate-ci-shipped) |
+
+**Serve, scale and connect**
+
+| | |
+|---|---|
+| `swarmkit serve` | HTTP server + the portal, same origin |
+| `swarmkit worker` | claim and execute queued jobs — **throughput scales with worker count** ([measured](https://delivstat.github.io/swarmkit/reference/load-and-scale/)) |
+| `swarmkit connect` | poll connector for a NAT'd or edge instance |
+| `swarmkit queue-stats` | backlog depth, oldest-unclaimed age, queue-wait percentiles |
+| `swarmkit mcp-serve` | expose your topologies as MCP tools to Claude Code, Cursor, any client |
+| `swarmkit fleet` · `auth` | enrollment join codes; serve API token minting |
+
+**Understand a run**
+
+| | |
+|---|---|
+| `swarmkit status` · `logs` · `trace` | what ran, what it emitted, the call graph with token counts |
+| `swarmkit why` | an LLM explains what happened in a run |
+| `swarmkit ask` | ask a question about the workspace or recent runs |
+| `swarmkit debug` | the actual prompts and responses, from the local ring buffer |
+| `swarmkit artifacts` | fetch run outputs by correlation id |
+| `swarmkit stop` · `checkpoints` | stop at the next agent boundary; list what can be resumed |
+
+**Govern and curate**
+
+| | |
+|---|---|
+| `swarmkit review` | the human-in-the-loop queue — approve, request changes, reject |
+| `swarmkit trust` | turn repeated approvals into a proposed allowlist changeset |
+| `swarmkit memory` | search governed memory, inspect history, resolve contradictions |
+| `swarmkit skill` · `adapters` · `providers` | the catalogue; harness launch blocks; provider readiness |
+| `swarmkit system` · `storage` · `upgrade` | what this instance is, where data lives, in-place upgrade |
 
 ## Key features
 
@@ -304,9 +379,90 @@ Planner-driven task execution. Coordinators call `create-task-plan` to produce a
 
 Agents can delegate to focused sub-agents instead of handling everything with one overloaded tool set. A coordinator with 40+ tools becomes a coordinator with 4 delegate tools orchestrating focused researchers — each with 10-12 tools and their own 25-turn tool budget.
 
-### Multimodal support (M8 — shipped)
+### Attachments — put a file in front of an agent (shipped)
 
-Image content blocks across every model provider family. MCP tools can return `ImageContent` for vision models. `view_image` tool lets agents see diagrams, screenshots, and architecture drawings. MarkItDown integration for document reading with inline images.
+```bash
+# Repeatable. Workspace-relative. The entry agent sees the file in its first message.
+swarmkit run my-swarm/ triage --attach screenshots/error.png --input "What broke here?"
+```
+
+```bash
+# Same thing over HTTP
+curl -X POST localhost:8000/jobs -H 'content-type: application/json' -d '{
+  "topology": "triage",
+  "input": "What broke here?",
+  "attachments": [{"path": "screenshots/error.png"}]
+}'
+```
+
+Three decisions in that surface are worth knowing, because each rules out something that looks easier:
+
+- **One `--attach`, not `--image` / `--pdf` / `--audio`.** The type is sniffed from the bytes, never
+  declared. Taking a `type` field would mean accepting a caller's claim about bytes that are about to
+  be forwarded to a third party — and a flag per format bakes the first case into the surface forever.
+- **Paths, never URLs.** A URL source would have the runtime fetch a caller-supplied address: the same
+  exfiltration primitive already refused for prompt-scraped paths. Worth naming, because some providers
+  do accept URLs and passing one through looks free.
+- **The entry node only.** An earlier version broadcast images on shared state, so they reached
+  text-only supervisors and errored there. A node that wants an image it was not handed asks for one
+  through a skill — which is what skills are for.
+
+**Today only images are carried** (`png`, `jpeg`, `gif`, `webp`); PDF and audio types are recognised
+and refused rather than silently dropped. Inside a run, MCP tools can return `ImageContent`, the
+`view_image` skill lets an agent look at a diagram it found, and MarkItDown reads documents with
+inline images.
+
+### Eval — score a topology, and gate CI (shipped)
+
+A swarm that worked last week is not a swarm that works now: a prompt edit, a model swap or a new
+skill can quietly change what it does. `swarmkit eval` turns "does it still work" into a number and
+an exit code.
+
+```yaml
+# my-swarm/evals/triage-evals.yaml
+apiVersion: swarmkit/v1
+kind: EvalSet
+metadata: { id: triage-evals }
+target: triage                       # the topology every case runs against
+cases:
+  - id: names-the-service
+    input: "Checkout is 500ing for EU users"
+    expect:
+      contains: ["checkout"]
+      not_contains: ["I don't know"]
+      used_skills: [search-logs]     # trajectory: did it actually go and look?
+  - id: judged-for-usefulness
+    input: "Checkout is 500ing for EU users"
+    expect:
+      rubric: "Names a likely cause and a next step. No invented error codes."
+      min_confidence: 0.7
+```
+
+```bash
+swarmkit eval my-swarm/ triage-evals            # exit 0 if every case passes, 1 if any fails
+swarmkit eval my-swarm/ triage-evals --compare  # diff against the previous run
+```
+
+```
+eval: triage-evals → topology 'triage' (2 cases)
+  [PASS] names-the-service
+  [FAIL] judged-for-usefulness
+         ✗ rubric: no next step offered (confidence 0.42)
+1/2 passed (50%) · report: .swarmkit/eval-results/triage-evals-20260923T164814Z.json
+compare: pass rate 100% → 50% · regressed: judged-for-usefulness
+```
+
+Three kinds of check, mixed freely in one case:
+
+| kind | checks | cost |
+|---|---|---|
+| **Deterministic** | `contains` · `not_contains` · `regex` · `equals` · `not_empty` | free, instant |
+| **Trajectory** | `used_skills` — the skill was *invoked*, not just mentioned | free, instant |
+| **Judged** | `rubric` (inline) or `judge` (a decision-skill), with `min_confidence` | one model call |
+
+The exit code is the point: put it in CI and a regression fails the build rather than reaching a user.
+Reports land in `.swarmkit/eval-results/`, so `--compare` reads the last one and tells you what broke
+and what got fixed — the two questions a pass rate alone cannot answer.
 
 ### MCP permission tiers (M8 — shipped)
 
@@ -342,6 +498,10 @@ Read the whole HTTP contract in one page: **[Driving SwarmKit from your applicat
 See it end to end in the **[SDLC walkthrough](https://delivstat.github.io/swarmkit/sdlc-example/)** — a video tour of the workspace in the composer (recorded before the extraction; the artifact tour is current, the stage-graph sections are historical).
 
 ## Complete feature list
+
+<details>
+<summary><strong>All 104 shipped features</strong> — the reference appendix. Click to expand.</summary>
+
 
 ### Topology & Agent Orchestration
 1. **Topology as data** — define swarms in YAML, not Python code
@@ -473,6 +633,8 @@ See it end to end in the **[SDLC walkthrough](https://delivstat.github.io/swarmk
 103. **A2A server** (`server.a2a.enabled`) — an Agent Card at `/.well-known/agent-card.json` with one skill per topology, and the A2A task API at `POST /a2a` as a transport onto the same jobs, gates and audit; a run parked on a human gate is `input-required` that the calling agent cannot resolve ([design](./design/details/a2a-interop.md))
 104. **Another agent as a skill** (`implementation.type: agent`) — a topology in this workspace as a child run, or a remote A2A agent through its card; same permission seam, same audit; `on_unanswerable: agent | relay | abort` says who answers its questions, and a human gate on the far side is never the agent's to resolve
 
+</details>
+
 ## Reference topologies
 
 Ships with production-quality topologies you can use immediately:
@@ -494,6 +656,13 @@ swarmkit author skill my-workspace/ --thorough
 ## Real-world example
 
 The [`examples/sterling-oms/`](./examples/sterling-oms/) workspace demonstrates enterprise-scale agent orchestration: 8 topologies, 12 archetypes, 75 skills. A root coordinator delegates to an architect, which delegates to 6 focused workers (jira, config, docs, developer, log-analyst, document-writer). Includes an Atlassian wrapper MCP (structured JQL/CQL), a log analyser MCP (SQLite-indexed, 500MB+ logs, 9 tools), and a document writer with pandoc MCP for DOCX/PDF generation. Per-agent model selection: Kimi K2.5 for reasoning, DeepSeek V4 Flash for workers, DeepSeek Chat V3 for writing.
+
+That per-agent selection is most of why it is affordable — a cheap model does the fetching, an
+expensive one only reasons:
+
+<p align="center">
+  <img src="docs/images/cost-breakdown.svg" alt="Cost per day for the Sterling OMS workspace: 507 requests and 1.9M tokens totalling $0.33 — router $0.02, workers $0.28, synthesis $0.03, local tool calls free." width="700" />
+</p>
 
 ## Install from source
 
