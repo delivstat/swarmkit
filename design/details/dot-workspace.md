@@ -2,7 +2,8 @@
 
 **Status:** design (issue #990).
 **Design references:** [[mcp-oauth]] for the per-user OAuth binding; §8.5 (`GovernanceProvider`),
-§8.7 (structural approval scopes) for the HITL gates. The DOT concept originates in
+§8.7 (structural approval scopes) for the HITL gates. DOT is Dominique Rose Van-Winther's
+Daily Optimization Tracker, described in
 [*How Dominique Rebuilt Her Morning Around AI*](https://www.linkedin.com/pulse/how-dominique-rebuilt-her-morning-around-ai-chaithra-madan-qpmbc/)
 by Chaithra Madan — the mechanism there is generic; what this note designs is a SwarmKit
 implementation of it as a shipped reference.
@@ -46,8 +47,8 @@ DOT is the first.
 - **Not a Gmail / Google Calendar reimplementation.** The MCP bundles curate existing servers
   (Google's own remote MCP servers by default, community options as fallback) and add manifests +
   liveness probes. Zero API-wrapper code lives in swarmkit-skills.
-- **Not send-first.** The MVP is deliberately read-only. Read-write staging is called out below
-  and is a separate design conversation.
+- **Not send-first.** Sprint 1 is deliberately read-only. Read-write comes later in the sprint
+  plan below.
 - **Not a general-purpose product.** Owner-first, and owner-only for the foreseeable future. If
   DOT ever grows a wider user base that changes the calculus (governance for shared plugins,
   migration for user-authored manifests, safety review for authored artefacts), that becomes its
@@ -56,7 +57,8 @@ DOT is the first.
 
 ## Shape
 
-Three artifacts, in dependency order:
+Three delivered pieces, each with its own section below: two MCP bundles (curated, not
+implemented), the reference workspace, and a standalone companion app.
 
 ### 1. Two OAuth-authenticated MCP bundles (in `swarmkit-skills`)
 
@@ -73,7 +75,7 @@ not a business it wants to be in.
     OpenID Connect and — importantly — is the same spec [[mcp-oauth]] targets in the runtime's
     OAuth store. First-party, no adapter needed.
   - **Read-only caveat**: as of the August 2026 preview, Google's Gmail MCP cannot send. That
-    matches Phase 1's read-only stance exactly; when Phase 2 lands and we need sending, we either
+    matches Sprint 1's read-only stance exactly; when send arrives in the sprint plan we either
     wait for Google to lift the preview restriction or add a send-only community bundle then.
 
 - **Community options if we prefer self-hosted for MVP:**
@@ -88,8 +90,8 @@ not a business it wants to be in.
   not implementations:
   - `packs/gmail/pack.yaml` — declares which upstream MCP server to point at (Google's remote by
     default; community fallback documented), the OAuth flow, the small subset of tools we
-    actually consume from the workspace (\`list_recent\`, \`get_message\`, \`search\`), and a nightly
-    liveness probe (per \`feedback_skills_catalogue_curation\` — probe don't transcribe).
+    actually consume from the workspace (`list_recent`, `get_message`, `search`), and a nightly
+    liveness probe (per `feedback_skills_catalogue_curation` — probe don't transcribe).
   - `packs/google-calendar/pack.yaml` — same shape, pointing at the Calendar server.
 
 The workspace consumes each through `source: oauth` with `identity: per-user` per [[mcp-oauth]];
@@ -106,30 +108,34 @@ Layout, mirroring how other reference workspaces are shaped:
 
 ```
 reference/workspaces/dot/
-  workspace.yaml            # credentials, mcp_servers, provider settings
+  workspace.yaml               # credentials, mcp_servers, provider settings
   archetypes/
-    context-aggregator.yaml # pulls last-24h context from Gmail + Calendar
-    item-ranker.yaml        # decision skill: rank + structured output
-    email-drafter.yaml      # draft in the user's tone (delegated per item)
-    meeting-prepper.yaml    # prep notes for an upcoming meeting (delegated)
+    context-aggregator.yaml    # pulls last-24h context from Gmail + Calendar
+    item-ranker.yaml           # decision skill: rank + structured output
+    email-drafter.yaml         # draft in the user's tone (delegated per item)
+    meeting-prepper.yaml       # prep notes for an upcoming meeting (delegated)
+    conversation-retriever.yaml # find and summarise a past conversation
   topologies/
-    morning-brief.yaml      # the top-level swarm: aggregate -> rank -> present
-    handle-item.yaml        # invoked per item after human picks it
+    morning-brief.yaml         # the top-level swarm: aggregate -> rank -> present
+    handle-item.yaml           # invoked per item after human picks it
 ```
+
+Additional per-item archetypes are added as new item types earn them.
 
 The morning-brief topology has a `supervisor-leader` root, a `context-aggregator` worker (calls
 Gmail + Calendar MCPs), and an `item-ranker` worker whose output is a structured list of ≤10
-items. The output is committed to the audit trail and surfaced to the human (where — see the
-frontend section below); no autonomous action is taken.
+items. The output is committed to the audit trail and surfaced to the human via the app
+(section 3 below); no autonomous action is taken.
 
 The handle-item topology is invoked when the human picks an item. It takes the item id + the
 aggregator's context and dispatches to the right per-item archetype (draft an email, prep a
 meeting, retrieve a past conversation). Each per-item action goes through a HITL gate before any
 outbound effect.
 
-### 3. Frontend — what the user actually sees, and where it lives
+### 3. Frontend — a standalone companion app
 
-**In read-only Phase 1, without a UI, the artifacts already exist.** A morning-brief run produces:
+**In read-only Sprint 1, without a UI, the artifacts already exist.** A morning-brief run
+produces:
 
 - A ranked list of ≤10 items with source references (message ids, event ids, thread ids).
 - A structured JSON output committed to the audit log.
@@ -145,9 +151,9 @@ domain and deserves its own container. There is no plugin/extension mechanism fo
 today, and building one just for DOT is bad shape — the runtime already exposes an HTTP API that
 any frontend can talk to, which is the same seam Minder-style products use.
 
-So the frontend is a **separate application**. Three questions decide the rest:
+So the frontend is a **separate application**. Four decisions decide the rest.
 
-**Where does the app's source live?**
+**Decision 3.1 — Where does the app's source live?**
 
 - **Option A — `reference/apps/dot/` in this repo, as a peer to `packages/ui/`.** Built with
   `pnpm` as its own package, deployed separately from `swarmkit serve`. Discovered next to the
@@ -169,7 +175,7 @@ to. This is a new pattern (SwarmKit does not have a reference-app tree today) an
 introduced with a short paragraph in `README.md` naming what the pattern is and when a workspace
 should have one.
 
-**How does the app get deployed?**
+**Decision 3.2 — How does the app get deployed?**
 
 Same pattern every long-lived service in the surrounding ecosystem uses — **hosted Docker image
 + Dockerfile in the source tree + docker-compose.yml that composes it**. A `.next/` static
@@ -201,7 +207,7 @@ Concrete shape:
 - No dependency on being co-hosted with `swarmkit serve`. `SWARMKIT_URL` can be any reachable
   runtime — same host, another host on the LAN, a tunnelled personal runtime, anything.
 
-**How does the user's browser get to it?**
+**Decision 3.3 — How does the user's browser get to it?**
 
 Same pattern as the fleet UI (`reference_fleet_launch_scripts`): the container binds a port, the
 user opens `http://<host>:3400`, DOT's own login flow redirects them to the SwarmKit runtime's
@@ -209,20 +215,17 @@ OAuth for authentication (the user signs in to the runtime; DOT gets a session t
 identity), every API call to the runtime carries the user's identity. No auth reimplemented in
 DOT.
 
-**One-command up:**
+A `just dot-up` target at the repo root runs `docker compose up -d` in `reference/apps/dot/`,
+matching the ergonomics of `./minder up` and the fleet launch scripts. This is small and worth
+having from day one — the operational story is much of what makes a reference app a *reference*.
 
-A `just dot-up` target at the repo root that runs `docker compose up -d` in
-`reference/apps/dot/`, matching the ergonomics of `./minder up` and the fleet launch scripts.
-This is small and worth having from day one — the operational story is much of what makes a
-reference app a *reference*.
-
-**What's in the MVP app itself?**
+**Decision 3.4 — What's in the MVP app itself?**
 
 - One page: today's brief. Latest morning-brief run for the signed-in user, rendered as a card
   stack.
 - Per-item card with source snippet + buttons for the common per-item actions (Draft reply,
   Retrieve related, Prep response, Summarise thread).
-- Right-rail scoped chat surface per item (see next section).
+- Right-rail scoped chat surface per item (see the Conversational section below).
 - A tiny history strip along the top: last 7 briefs, click to jump back.
 
 That's it for MVP. No settings screen (settings are workspace YAML in the runtime). No
@@ -230,7 +233,7 @@ notifications (the run trigger is a schedule in the workspace). No dashboards. T
 on purpose — the whole point of the "reference *app*" pattern is that most of the intelligence
 lives in the workspace, not the UI.
 
-### 4. Conversational — the delegation surface
+#### Conversational — the delegation surface
 
 The article's core loop is conversational: *"Draft this email... find that conversation... prep
 for the meeting."* The design question is: **what is the conversational surface, and what does it
@@ -257,21 +260,32 @@ for the common cases; scoped chat covers the long tail.
 Mechanism: the per-item chat is not a new primitive. Every SwarmKit archetype that takes a
 `prompt` argument can drive this — a `handle-item` invocation with `{item_id, user_intent:
 "draft the reply but push back on the timeline"}` compiles to the same topology run a button
-would. The chat surface is a small React component in the panel; the backend is the runtime we
+would. The chat surface is a small React component in the app; the backend is the runtime we
 already have.
 
 **What the conversation is *not*:** it is not a general-purpose assistant. There is no
 "Chat with DOT" surface at the top of the app. Every chat is scoped to an item, uses only that
-item's context (plus workspace-level Gmail/Calendar access), and produces artifacts (drafts,
+item's context (plus workspace-level Gmail/Calendar access), and produces artefacts (drafts,
 prep notes) that the human reviews before anything reaches an outbound channel. The scoping is a
 feature — it bounds what a compromised prompt can do to what one specific item is about.
 
-### 5. Documentation + demo
+## OAuth path — where the existing seam does the work
 
-- `docs/dot-quickstart.md` — how to connect Gmail + Calendar through the portal, run the morning
-  brief, use the panel, inspect the run tree.
-- `just demo-dot` — end-to-end target that runs against a demo account fixture (a small pre-canned
-  set of inbox + calendar JSON responses); no real accounts needed for CI.
+The OAuth story is entirely reuse. From [[mcp-oauth]] and the shipped implementation:
+
+1. User opens the portal, navigates to Connections, clicks *Connect Gmail*. The portal (running
+   under `serve`) launches Google's OAuth flow, stores the encrypted token in the runtime's
+   `oauth_tokens` table keyed by (credential, owner).
+2. User does the same for Google Calendar.
+3. User runs the `morning-brief` topology (manually, or via a scheduled trigger). The
+   `CredentialService` resolves each `source: oauth` reference, refreshes the token on-use if it's
+   near expiry, and hands the MCP bundle a live bearer.
+4. The MCP bundle calls Google, returns structured results. The runtime records every call in the
+   audit log with the resolved credential owner.
+
+Nothing in this path is new work. The design note exists to make the flow visible as a
+demonstration, not to design new machinery. The two new pieces are the MCP bundles (curation
+YAML pointing at Google's servers) and the workspace YAML wiring them together.
 
 ## Self-extending — the recursive authoring loop
 
@@ -292,7 +306,7 @@ meeting, the new archetype runs.
 - **Zero framework work to enable this.** `skill-authoring` exists; the runtime knows how to
   execute it; the workspace can be extended live.
 - **DOT app's role**: knows how to invoke `skill-authoring` and where in its workspace the
-  authored artifacts land. Renders the review step in-app so the owner never leaves the DOT
+  authored artefacts land. Renders the review step in-app so the owner never leaves the DOT
   container to author.
 
 ### Layer 2 — DOT authors its own UI plugins
@@ -305,7 +319,7 @@ manifest declares which items it applies to, what button it adds, what topology 
 click, and how to render the result — from a fixed set of `render_as` templates the manifest
 chooses from. The DOT app hot-reads its plugin registry from the workspace.
 
-Sketch of the schema (real one is a separate design note — see below):
+Sketch of the schema (real one is a separate design note — see Future work below):
 
 ```yaml
 apiVersion: dot/v1
@@ -341,7 +355,7 @@ Concrete lifecycle for every authored artefact:
 2. **Sandboxed** — the owner triggers the draft explicitly against a chosen item (or a
    past-brief item that has been kept for replay). The runtime executes it in an isolated run —
    same as any other run, but the outputs are labelled "sandbox" and side-effect writes (Gmail
-   send, Calendar mutate) are refused by the runtime even in Phase 4+ where those would normally
+   send, Calendar mutate) are refused by the runtime even in Sprint 6+ where those would normally
    be allowed. Sandboxed runs land in the audit log with an explicit `sandbox: true` flag.
 3. **Reviewed** — the owner reads the sandbox output, decides one of:
    - **Promote** — set `status: active`. The DOT app hot-reloads; from now on the plugin fires
@@ -382,7 +396,7 @@ affordance on active plugins.
   schema-migration discipline for every version bump. Owner-only means the owner rewrites their
   own three manifests if the schema changes. Cheap.
 
-### Staging into sprints, not phases
+## Sprint plan
 
 Because the owner is also the developer and the only user, "phases" collapse into "commits I
 merge as they land." What still matters is dependency order:
@@ -405,59 +419,27 @@ merge as they land." What still matters is dependency order:
   scopes with human confirmation before every outbound effect. Sandboxed drafts continue to be
   refused these scopes even in this phase — the sandbox is stricter than production, always.
 
-### What follows (deliberately not this design note)
+## Future work — deliberately not this design note
 
-- **The plugin manifest schema** — load-bearing decision; needs its own note before Sprint 3
+- **The plugin manifest schema** — load-bearing decision; needs its own note before Sprint 4
   code. Draft the schema against three concrete plugin ideas (e.g. board-meeting-prep,
   customer-ticket-context, weekly-writeup) so the schema is shaped by real cases rather than
   imagined ones.
-- **The `dot-plugins` repo split** — probably worth doing when the third or fourth plugin arrives
-  (plugins accumulate, workspace stays tidy, plugin repo becomes the natural sharing surface if
-  and when other people show up). Not now.
+- **The `dot-plugins` repo split** — worth considering when the third or fourth plugin arrives,
+  purely for the owner's own tidiness (plugins accumulate; the workspace stays focused on
+  topologies and archetypes rather than manifests). Deferred; not driven by any sharing story
+  since DOT is owner-only.
 - **The `render_as` template catalogue** — starts as ~three built-ins (`card_with_attachments`,
   `card_with_metrics`, `card_with_chat`); grows as plugin cases push for new shapes. Every new
   template is a small first-party addition; plugins never define their own rendering code.
+- **Additional per-item archetypes** — the workspace layout in section 2 is a starting set;
+  richer item types (support tickets, PRs, standups) get their own archetypes as the owner
+  authors them via Layer 1.
 
-## OAuth path — where the existing seam does the work
+## Eight decisions the workspace owner needs to make before code
 
-The OAuth story is entirely reuse. From [[mcp-oauth]] and the shipped implementation:
-
-1. User opens the portal, navigates to Connections, clicks *Connect Gmail*. The portal (running
-   under `serve`) launches Google's OAuth flow, stores the encrypted token in the runtime's
-   `oauth_tokens` table keyed by (credential, owner).
-2. User does the same for Google Calendar.
-3. User runs the `morning-brief` topology (manually, or via a scheduled trigger). The
-   `CredentialService` resolves each `source: oauth` reference, refreshes the token on-use if it's
-   near expiry, and hands the MCP bundle a live bearer.
-4. The MCP bundle calls Google, returns structured results. The runtime records every call in the
-   audit log with the resolved credential owner.
-
-Nothing in this path is new work. The design note exists to make the flow visible as a
-demonstration, not to design new machinery. The two new pieces are the MCP bundles' code (call
-Google's APIs) and the workspace YAML wiring them together.
-
-## Read-only first — the staging that matters
-
-The MVP is deliberately read-only. That is the honest scope for a first ship, and it lets the DOT
-prove out the pattern before we design the approval gates for outbound action.
-
-Progressive path:
-
-- **Phase 1 (this design note):** read-only. Aggregate, rank, present. No sending, no scheduling,
-  no calendar mutation. HITL gate is a no-op because there is no side-effect to approve.
-- **Phase 2 (a follow-up design note):** send-with-approval. `email-drafter` produces a draft; the
-  HITL gate requires an approval scope reserved for a real human before the draft is sent through
-  a Gmail `send` skill. This is where the `GovernanceProvider` earns its keep in a personal
-  workflow context.
-- **Phase 3:** schedule-with-approval. Same shape for calendar mutations.
-
-The reason for staging: sending an email in a user's name is a large-blast-radius action, and the
-design of the approval flow deserves its own note. Shipping read-only first tests every part of
-the plumbing without carrying that risk.
-
-## Five decisions the workspace owner needs to make before code
-
-Every question has a proposed default so the code path is unambiguous if the owner just says "go."
+Every question has a proposed default. Q5 is committed rather than a proposal — the direction is
+decided.
 
 - **Q1 — Where does the workspace live?**
   Proposed: `reference/workspaces/dot/` in this repo (canonical, discovered alongside the other
@@ -465,7 +447,7 @@ Every question has a proposed default so the code path is unambiguous if the own
   harder to find). *Default: in-repo.*
 
 - **Q2 — MVP scope: read-only or read-write?**
-  Proposed: **read-only for Phase 1** as described above. *Default: read-only.*
+  Proposed: **read-only for Sprint 1** as described in the Sprint plan. *Default: read-only.*
 
 - **Q3 — Providers for the first pass.**
   Proposed: **Gmail + Google Calendar, nothing else.** Slack, Notion, GitHub, Linear are natural
@@ -479,10 +461,13 @@ Every question has a proposed default so the code path is unambiguous if the own
   the existing `ModelProvider` seam. Default in the reference YAML: **local Ollama**, so the
   demonstration works without a cloud key and the privacy story leads. *Default: local Ollama with
   a documented cloud override.*
+  Note: the shipped authoring topology (`authoring-supervisor`) already defaults to
+  `openrouter/moonshotai/kimi-k2.5` — LLM defaults are per-topology, not global. DOT's own
+  topologies pick their own defaults independently.
 
 - **Q5 — Who is the user for MVP?**
   **Committed: owner-only** for the foreseeable future. Not planning around a public user base;
-  self-authoring is the point of the experiment, and the sandbox mechanism (below) is what makes
+  self-authoring is the point of the experiment, and the sandbox mechanism (above) is what makes
   it safe for one user rather than what it would need to be safe for many.
 
 - **Q6 — Where does the app's source live?**
@@ -508,50 +493,52 @@ Every question has a proposed default so the code path is unambiguous if the own
 
 ## Split for reviewability
 
-Per the umbrella issue #990, updated for the owner-only scope + self-extending direction:
+Per the umbrella issue #990, ten PRs mapping onto the Sprint plan above (Sprint column shown):
 
-1. This design note (design-only PR, reviewed before implementation).
-2. `swarmkit-skills/gmail` bundle — pack.yaml pointing at Google's remote server (with community
-   fallback), OAuth wiring against SwarmKit's existing `source: oauth`, nightly probe.
-3. `swarmkit-skills/google-calendar` bundle — same shape, Calendar surface.
-4. `reference/workspaces/dot/` scaffold: aggregator + ranker + morning-brief topology +
-   handle-item sub-topology + per-item archetypes + HITL gate scaffold (no-op in read-only).
-5. `reference/apps/dot/` — a standalone Next.js app (peer to `packages/ui/`, not part of it):
-   today's brief page, per-item cards with buttons, scoped chat surface, history strip. Ships as
-   a **hosted Docker image (`ghcr.io/delivstat/dot-app`) with a Dockerfile in the source tree and
-   a `docker-compose.yml`** (default profile: DOT alone pointing at an external `SWARMKIT_URL`;
-   `all-in-one` profile: DOT + SwarmKit runtime side-by-side). `just dot-up` target for one-
-   command deployment. Talks to the SwarmKit runtime over HTTP. Establishes the "reference app"
-   pattern; introduce it with a paragraph in `README.md`.
-6. **Sandbox lifecycle for authored artefacts** — the `status: draft` marker on authored
-   artefacts, the runtime's sandbox-run mode (side-effect writes refused), the audit log
-   `sandbox: true` flag. Ships BEFORE any authoring feature so the safety property is invariant,
-   not retrofitted. Uses canary for topologies (already shipped) + a small `status` field for DOT
-   plugin manifests (per Q8).
-7. **Layer 1 authoring wired into DOT** — DOT app invokes `skill-authoring`; drafts land in the
-   Drafts drawer; sandbox / promote / refine / discard / rollback affordances.
-8. **DOT plugin manifest schema + registry + hot-reload** — the schema drafted against three
-   concrete plugin ideas (board-meeting-prep, customer-ticket-context, weekly-writeup); the
-   fixed `render_as` template catalogue starts at ~3.
-9. **`dot-authoring` topology + Layer 2 recursive loop closed** — the owner asks DOT to author a
-   new DOT capability, `dot-authoring` produces a draft plugin manifest, sandbox → promote →
-   hot-reload.
-10. `docs/dot-quickstart.md` + `just demo-dot` fixture-based demo.
+| PR | What ships | Sprint |
+|---:|---|:---:|
+| 1 | This design note (design-only PR, reviewed before implementation) | — |
+| 2 | `swarmkit-skills/gmail` bundle — pack.yaml pointing at Google's remote server (with community fallback), OAuth wiring against SwarmKit's existing `source: oauth`, nightly probe | 1 |
+| 3 | `swarmkit-skills/google-calendar` bundle — same shape, Calendar surface | 1 |
+| 4 | `reference/workspaces/dot/` scaffold: aggregator + ranker + morning-brief topology + handle-item sub-topology + per-item archetypes + HITL gate scaffold (no-op in read-only) | 1 |
+| 5 | `reference/apps/dot/` — standalone Next.js app (peer to `packages/ui/`), hosted Docker image `ghcr.io/delivstat/dot-app`, Dockerfile in tree, `docker-compose.yml` (default + `all-in-one` profiles), `just dot-up` target. Establishes the "reference app" pattern; introduce it with a paragraph in `README.md` | 1 |
+| 6 | **Sandbox lifecycle for authored artefacts** — `status: draft` marker + runtime's sandbox-run mode (side-effect writes refused) + audit log `sandbox: true` flag. Ships BEFORE any authoring feature so the safety property is invariant. Canary for topologies (already shipped) + `status` field for DOT plugin manifests (per Q8) | 2 |
+| 7 | **Layer 1 authoring wired into DOT** — DOT app invokes `skill-authoring`; drafts land in the Drafts drawer; sandbox / promote / refine / discard / rollback affordances | 3 |
+| 8 | **DOT plugin manifest schema + registry + hot-reload** — schema drafted against three concrete plugin ideas (board-meeting-prep, customer-ticket-context, weekly-writeup); `render_as` template catalogue starts at ~3. **Own design note precedes this PR** | 4 |
+| 9 | **`dot-authoring` topology + Layer 2 recursive loop closed** — owner asks DOT to author a new DOT capability, `dot-authoring` produces a draft plugin manifest, sandbox → promote → hot-reload | 5 |
+| 10 | `docs/dot-quickstart.md` + `just demo-dot` fixture-based demo | 1 (finalised across sprints) |
 
 The app (PR 5) is the piece most likely to iterate after first use — deliberately scoped small
 so we can rewrite it as the recursive loop teaches us what an "extend-me" DOT app actually needs.
-The plugin manifest schema (PR 8) gets its own design note before code, drafted against three
-real plugin cases.
 
 ## Test plan
+
+Baseline coverage — Sprint 1:
 
 - Contract tests for the two MCP bundles against Google's own API sandbox / recorded responses.
 - End-to-end test for the `morning-brief` topology against a fixture workspace with fake
   credentials and pre-canned MCP responses; asserts the ranked list has expected shape and cites
   the correct source items.
-- Approval-gate test scaffolding (asserts that no outbound effect fires in Phase 1 even when the
-  topology tries; there is nothing to try yet, so this test starts as a placeholder that becomes
-  load-bearing when Phase 2 lands).
+- Approval-gate test scaffolding (asserts that no outbound effect fires in read-only Sprint 1
+  even when the topology tries; there is nothing to try yet, so this test starts as a placeholder
+  that becomes load-bearing at Sprint 6+).
+
+Sandbox + authoring coverage — Sprints 2–5:
+
+- **Draft isolation.** An artefact with `status: draft` does NOT fire on qualifying items;
+  proven by seeding a draft plugin and asserting the morning brief renders without its button.
+- **Sandbox refuses side-effects.** A sandbox run of a topology that tries to send an email or
+  mutate a calendar entry is refused by the runtime, even in Sprint 6+ where those scopes would
+  normally be allowed for a non-sandbox run.
+- **Promote flips status.** After promote, the same artefact fires on qualifying items on the
+  next reload.
+- **Rollback works.** Flipping back to draft removes the artefact from active behaviour but
+  keeps the definition on disk.
+- **Authoring end-to-end.** `skill-authoring` produces a draft; the DOT app surfaces it; sandbox
+  run produces an output; promote makes it live. Same test structure for `dot-authoring` when
+  Sprint 5 lands.
+- **Audit trail completeness.** Every state transition (authored / sandboxed / promoted /
+  refined / discarded / rolled-back) writes a distinguishable audit entry.
 
 ## What this earns SwarmKit
 
@@ -559,10 +546,13 @@ Beyond the immediate utility of a personal DOT:
 
 - **Live proof of per-user OAuth end-to-end.** Portal → provider consent → token store →
   refresh-on-use → per-owner audit. Every one of those pieces is shipped; none has had a flagship
-  reference topology exercising them until now.
-- **A pattern for personal-workflow topologies.** The `aggregate → rank → present → delegate on
-  approval` shape is domain-agnostic. Once the shape is a reference topology, replacing "Gmail +
+  reference workspace exercising them until now.
+- **A pattern for personal-workflow workspaces.** The `aggregate → rank → present → delegate on
+  approval` shape is domain-agnostic. Once the shape is a reference workspace, replacing "Gmail +
   Calendar" with "Linear + GitHub" is a workspace edit, not a framework change.
+- **The "reference app" pattern established.** Reference workspaces have wanted their own UIs
+  for a while but nothing has landed one; DOT is the first, and `reference/apps/` becomes a
+  discoverable place other reference workspaces can drop UIs when they want them.
 - **Evidence for the platform story.** The claim that SwarmKit is a runtime for governed AI
   systems needs a reference that is neither a code-review tool (`code-review.yaml`) nor a
   memory-curator (`knowledge-curator.yaml`) — something in the personal-productivity domain where
