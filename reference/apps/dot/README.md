@@ -19,7 +19,7 @@ Next commits (per the design note's split):
 7. **Settings** — workspace-config projection.
 8. **Activity** — audit-log projection.
 9. **Usage & cost** — stat tiles + 30-day chart + breakdowns.
-10. **Dockerfile + compose + `just dot-up`** — deployment surface.
+10. **Dockerfile + compose + a one-command boot target** — deployment surface.
 11. **README + `docs/dot-quickstart.md`** — end-to-end quickstart.
 
 ## Local dev (when there is something to see)

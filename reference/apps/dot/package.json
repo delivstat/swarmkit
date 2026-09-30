@@ -10,8 +10,7 @@
 		"build": "next build",
 		"start": "next start --port 3400",
 		"lint": "biome check .",
-		"typecheck": "tsc --noEmit",
-		"test": "vitest run"
+		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@radix-ui/react-dialog": "^1.1.4",
@@ -38,7 +37,6 @@
 		"@types/node": "^22.10.0",
 		"@types/react": "^19.0.0",
 		"@types/react-dom": "^19.0.0",
-		"typescript": "^5.6.0",
-		"vitest": "^2.1.0"
+		"typescript": "^5.6.0"
 	}
 }
