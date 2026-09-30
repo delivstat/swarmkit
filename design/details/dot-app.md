@@ -52,6 +52,9 @@ In scope for this design note (Sprint 1–5 of the parent plan):
 - **Activity page** — a thin proxy of the runtime's audit log, scoped to the owner: recent
   morning-brief runs, recent per-item runs, promote/rollback events (Sprint 2+). "What
   happened this morning?" is answerable without opening the SwarmKit portal.
+- **Usage & cost page** — daily and monthly token counts and cost totals, per provider and
+  per topology. Answers "am I burning money faster than expected?" without leaving DOT. A
+  compact stat tile on `/activity` shows the same top-line numbers at a glance.
 - **Drafts drawer** (Sprint 2+).
 - **Authoring review flow** (Sprint 3+).
 - **Plugin registry view** (Sprint 4+).
@@ -64,8 +67,16 @@ Out of scope for the BRD (called out separately below or deferred to the portal)
 - Multi-user account management, user roles, tenancy.
 - Deep workspace editing — the archetype YAML, the topology structure, the credential
   definitions. That is a power surface and stays in the SwarmKit portal / on disk.
-- Dashboards, analytics, cross-run reporting. The Activity page shows recent runs; anything
-  richer than that lives in the portal's audit tools.
+- Dashboards, analytics, cross-run reporting. The Activity page shows recent runs; the Usage
+  page shows token + cost totals. Anything richer (per-model latency histograms, retry rate
+  trends, per-tool-call breakdown) lives in the portal's audit tools.
+- **Budget alerting** — the Usage page shows numbers; it does not send an alert when the
+  owner blows a budget. That's a Sprint 2+ notifications concern with its own design.
+- **Billing / invoicing** — DOT reads cost data the runtime already records; it does not
+  reconcile against a provider's actual bill or issue invoices.
+- **Per-item cost attribution** — cost is broken down per topology (morning-brief vs
+  handle-item), not per individual item. Item-level cost is available via the audit trail
+  on any given run and stays there.
 - Runtime health / fleet / control-plane views. If DOT itself is broken those live in the
   portal.
 
@@ -300,7 +311,37 @@ questions ("why did this fail?") still delegate.
 Mobile: single-column list; row detail is a bottom sheet or new full-screen page. Desktop:
 list on the left, detail on the right when a row is selected.
 
-### 7. Drafts (Sprint 2+)
+### 7. Usage & cost
+
+`/usage`. Answers "am I burning money faster than expected?" without leaving DOT.
+
+Top of the page: **stat tile row** — three tiles, tap-to-drill:
+- **Today** — tokens (formatted with SI suffix, e.g. "42.1k") and cost in USD ("$0.084").
+- **This month** — same shape, month-to-date.
+- **Last 30 days** — rolling window, so month boundaries do not hide a trend.
+
+Below the tiles: a **30-day sparkline / bar chart** — one bar per day, height by cost. Mouse
+hover or tap for the day's totals. This is the "am I trending up?" glance.
+
+Below that: two **breakdowns** for the current month, each as a small ranked list:
+- **By provider / model** — e.g. `openrouter/kimi-k2.5`: 480k tokens, $2.14 / `ollama/qwen2.5`:
+  1.2M tokens, $0.00.
+- **By topology** — `morning-brief`: 320k tokens, $0.94 / `handle-item`: 640k tokens, $1.20.
+
+Bottom of the page: **"See individual runs in the Activity page"** link — Usage is aggregate;
+per-run detail is Activity's job.
+
+Mobile: single column, stat tiles wrap to 2×2, chart is full-width, breakdowns stack. Desktop:
+tiles side-by-side, chart full-width capped at 960 px, breakdowns two-column.
+
+Also: **a compact stat tile lives at the top of `/activity`** showing today's tokens + cost,
+so the number is visible in the "what happened" flow without requiring a nav.
+
+**Not on this page** — budget alerting (Sprint 2+ notifications concern), reconciliation
+against the provider's actual bill (out of scope), per-item cost attribution (available in
+Activity's per-run detail, not on Usage).
+
+### 8. Drafts (Sprint 2+)
 
 `/drafts`. List of authored-but-not-promoted artefacts (archetypes, topologies, plugin
 manifests). Each row: title, `authored at`, source topology, status. Tapping opens the artefact
@@ -308,7 +349,7 @@ in a preview + "Sandbox" / "Promote" / "Refine" / "Discard" affordances.
 
 Not sketched in detail in this design note — Sprint 2 gets its own sub-note.
 
-### 8. Plugins (Sprint 4+)
+### 9. Plugins (Sprint 4+)
 
 `/plugins`. List of active DOT plugin manifests. Tapping opens the manifest's YAML in a
 read-only viewer (owner edits by authoring, not by direct edit). "Disable" affordance flips
@@ -420,6 +461,9 @@ Every endpoint is JSON in / JSON out unless noted.
 | PATCH | `/api/settings` | Apply a partial settings update; DOT translates to a workspace-config patch and forwards. |
 | GET | `/api/activity` | Recent runs for the owner, scoped to DOT's topologies (`morning-brief`, `handle-item`). Optional `?cursor=` for paging. |
 | GET | `/api/activity/:runId` | Detail for a single run — the user-facing shape (which archetypes, elapsed, errors), not the full audit. |
+| GET | `/api/usage/summary` | Today / month-to-date / last-30-days aggregates: tokens_in, tokens_out, cost_usd. |
+| GET | `/api/usage/daily?window=30` | Per-day totals for the sparkline / bar chart. |
+| GET | `/api/usage/breakdown?by=provider\|topology&window=month` | Ranked list of per-provider or per-topology totals for the given window. |
 | GET | `/api/drafts` | Sprint 2+. |
 | GET | `/api/plugins` | Sprint 4+. |
 
@@ -491,6 +535,10 @@ DOT's backend uses a thin `SwarmKitClient` (`lib/swarmkit-client.ts`) with the m
   chunks to the caller.
 - `listRuns(owner, topologies?, cursor?)` — for the Activity page. Wraps `GET /audit` with
   filters.
+- `getUsageAggregate(owner, window, groupBy?)` — for the Usage page. Wraps whichever runtime
+  aggregation endpoint ships; if none does, DOT falls back to paging `/audit` and aggregating
+  in-memory (fine for owner-only volumes, wrong shape at scale — but the whole design is
+  owner-only, so scale is not the constraint).
 - `getMyCredentials()` — GET `/api/oauth/my-credentials` (from #982).
 - `startOAuth(provider, returnTo)` — POST runtime's `/oauth/:provider/start` with a return
   URL, receives Google's auth URL back.
@@ -522,10 +570,13 @@ Explicitly tracked as dependent PRs (each small, each landable independently):
   shipped equivalent exists (a persistent API token surface), point at that instead.
 - **Runtime PR — Owner-scoped `/audit?owner=<>` filter.** Confirm the audit endpoint accepts
   an owner filter today. If not, small runtime addition.
+- **Runtime PR — Usage aggregation endpoint.** Optional: a `/audit/aggregate` that groups by
+  day / provider / topology server-side. If it doesn't ship, DOT does the aggregation client-
+  side (per `getUsageAggregate` above). Worth having eventually; not blocking for MVP.
 
-None of these three block PR 5 from starting — the scaffold + login + brief commits can
-land against the runtime as it is. Settings and Connections wait on whichever runtime
-additions are needed.
+None of these four block PR 5 from starting — the scaffold + login + brief commits can
+land against the runtime as it is. Settings, Connections, Activity, and Usage wait on
+whichever runtime additions are needed.
 
 ## Env config
 
@@ -687,8 +738,12 @@ each independently reviewable:
 8. **Activity** — `/activity/page.tsx`, `/api/activity` list + detail, audit-log projection
    into the user-facing shape. Verify: list renders, detail expands, "See full audit in the
    portal" link is present.
-9. **Dockerfile + compose + `just dot-up`** — build + smoke tests + GHA image workflow.
-10. **README + `docs/dot-quickstart.md`** — how to install, connect accounts, run the app.
+9. **Usage & cost** — `/usage/page.tsx`, `/api/usage/*` routes, stat tiles + 30-day chart +
+   provider/topology breakdowns, plus the compact tile at the top of `/activity`. Follows
+   the dataviz skill for chart colour + shape. Verify: tiles match the raw audit numbers,
+   sparkline renders correctly at 360/768/1024, empty-state message when no runs yet.
+10. **Dockerfile + compose + `just dot-up`** — build + smoke tests + GHA image workflow.
+11. **README + `docs/dot-quickstart.md`** — how to install, connect accounts, run the app.
 
 Each commit ships with the tests it enables.
 
