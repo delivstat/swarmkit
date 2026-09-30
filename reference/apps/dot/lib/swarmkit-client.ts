@@ -42,6 +42,56 @@ export class SwarmKitClient {
 		return body.result;
 	}
 
+	// GET /api/oauth/my-credentials (from #982). Returns rows per provider with expiry.
+	async getMyCredentials(): Promise<MyCredential[]> {
+		const url = new URL("/api/oauth/my-credentials", this.opts.baseUrl);
+		const res = await fetch(url, { headers: this.headers() });
+		if (!res.ok) {
+			throw new SwarmKitError(
+				`getMyCredentials failed: ${res.status}`,
+				res.status,
+			);
+		}
+		const body = (await res.json()) as { credentials: MyCredential[] };
+		return body.credentials;
+	}
+
+	// POST /oauth/{provider}/start with a return_to; returns Google's auth URL. The runtime does
+	// the token exchange on Google's callback and 302s back to return_to.
+	async startOAuth(provider: string, returnTo: string): Promise<string> {
+		const url = new URL(
+			`/oauth/${encodeURIComponent(provider)}/start`,
+			this.opts.baseUrl,
+		);
+		const res = await fetch(url, {
+			method: "POST",
+			headers: this.headers(),
+			body: JSON.stringify({ return_to: returnTo }),
+		});
+		if (!res.ok) {
+			throw new SwarmKitError(`startOAuth failed: ${res.status}`, res.status);
+		}
+		const body = (await res.json()) as { auth_url: string };
+		return body.auth_url;
+	}
+
+	async disconnectOAuth(provider: string): Promise<void> {
+		const url = new URL(
+			`/api/oauth/credentials/${encodeURIComponent(provider)}`,
+			this.opts.baseUrl,
+		);
+		const res = await fetch(url, {
+			method: "DELETE",
+			headers: this.headers(),
+		});
+		if (!res.ok && res.status !== 404) {
+			throw new SwarmKitError(
+				`disconnectOAuth failed: ${res.status}`,
+				res.status,
+			);
+		}
+	}
+
 	private headers(): Record<string, string> {
 		return {
 			Authorization: `Bearer ${this.opts.token}`,
@@ -49,6 +99,13 @@ export class SwarmKitClient {
 			"Content-Type": "application/json",
 		};
 	}
+}
+
+export interface MyCredential {
+	provider: string;
+	owner: string;
+	expires_at: string | null;
+	expired: boolean;
 }
 
 export class SwarmKitError extends Error {

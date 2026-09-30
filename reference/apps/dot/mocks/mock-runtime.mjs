@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 // Mock SwarmKit runtime for standalone DOT dev. Speaks the subset of the runtime API DOT uses:
-//   POST /api/mcp/{server_id}/invoke — the fast-lane MCP invocation (v1.260.0).
-//   POST /api/run                    — streams SSE progress + final result for handle-item.
-//   GET  /health — trivial liveness.
+//   POST /api/mcp/{server_id}/invoke      — fast-lane MCP invocation (v1.260.0).
+//   POST /api/run                         — SSE progress + result for handle-item.
+//   GET  /api/oauth/my-credentials        — per-owner OAuth credentials (from #982).
+//   POST /oauth/{provider}/start          — kick off OAuth; returns Google auth URL.
+//   GET  /oauth/{provider}/mock-consent   — fake Google consent page (mock-only).
+//   GET  /oauth/{provider}/mock-callback  — fake Google → runtime callback; 302 to return_to.
+//   POST /api/oauth/credentials/{provider}— DELETE-alias for disconnect (accepts POST too).
+//   DELETE /api/oauth/credentials/{provider} — disconnect.
+//   GET  /health                          — liveness.
 //
 // Design note Q4 default (b): a small mock runtime under mocks/ lets the app run without the
 // real SwarmKit runtime installed. Do NOT use in production — no auth, no audit.
@@ -75,11 +81,22 @@ const FIXTURES = {
 	},
 };
 
+// In-memory OAuth store keyed by X-Owner header. Persists for the lifetime of the mock.
+const OWNER_CREDS = new Map(); // owner -> { provider -> { expires_at, expired } }
+const PENDING = new Map(); // state -> { returnTo, provider }
+
+function ownerFrom(req) {
+	return req.headers["x-owner"] ?? "owner";
+}
+
 const server = createServer((req, res) => {
-	if (req.method === "GET" && req.url === "/health") {
+	const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
+	const p = url.pathname;
+
+	if (req.method === "GET" && p === "/health") {
 		return json(res, 200, { ok: true, mock: true });
 	}
-	const invoke = /^\/api\/mcp\/([^/]+)\/invoke$/.exec(req.url ?? "");
+	const invoke = /^\/api\/mcp\/([^/]+)\/invoke$/.exec(p);
 	if (req.method === "POST" && invoke) {
 		const serverId = decodeURIComponent(invoke[1]);
 		return readBody(req).then((body) => {
@@ -93,11 +110,89 @@ const server = createServer((req, res) => {
 			return json(res, 200, { result: impl(body.arguments ?? {}) });
 		});
 	}
-	if (req.method === "POST" && req.url === "/api/run") {
+	if (req.method === "POST" && p === "/api/run") {
 		return readBody(req).then((body) => streamRun(res, body));
+	}
+	if (req.method === "GET" && p === "/api/oauth/my-credentials") {
+		const owner = ownerFrom(req);
+		const creds = Object.entries(OWNER_CREDS.get(owner) ?? {}).map(
+			([provider, meta]) => ({
+				provider,
+				owner,
+				expires_at: meta.expires_at,
+				expired: meta.expired,
+			}),
+		);
+		return json(res, 200, { credentials: creds });
+	}
+	const start = /^\/oauth\/([^/]+)\/start$/.exec(p);
+	if (req.method === "POST" && start) {
+		const provider = decodeURIComponent(start[1]);
+		return readBody(req).then((body) => {
+			const state = Math.random().toString(36).slice(2);
+			PENDING.set(state, {
+				returnTo: body.return_to,
+				provider,
+				owner: ownerFrom(req),
+			});
+			const authUrl = `http://localhost:${PORT}/oauth/${encodeURIComponent(provider)}/mock-consent?state=${state}`;
+			return json(res, 200, { auth_url: authUrl });
+		});
+	}
+	const consent = /^\/oauth\/([^/]+)\/mock-consent$/.exec(p);
+	if (req.method === "GET" && consent) {
+		const provider = decodeURIComponent(consent[1]);
+		const state = url.searchParams.get("state") ?? "";
+		return html(res, 200, renderConsent(provider, state));
+	}
+	const cb = /^\/oauth\/([^/]+)\/mock-callback$/.exec(p);
+	if (req.method === "GET" && cb) {
+		const state = url.searchParams.get("state") ?? "";
+		const decision = url.searchParams.get("decision") ?? "allow";
+		const pending = PENDING.get(state);
+		PENDING.delete(state);
+		if (!pending) return html(res, 400, "<h1>Missing or expired state.</h1>");
+		if (decision === "allow") {
+			const bucket = OWNER_CREDS.get(pending.owner) ?? {};
+			bucket[pending.provider] = {
+				expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+				expired: false,
+			};
+			OWNER_CREDS.set(pending.owner, bucket);
+		}
+		res.writeHead(302, { Location: pending.returnTo });
+		return res.end();
+	}
+	const disconnect = /^\/api\/oauth\/credentials\/([^/]+)$/.exec(p);
+	if ((req.method === "DELETE" || req.method === "POST") && disconnect) {
+		const provider = decodeURIComponent(disconnect[1]);
+		const owner = ownerFrom(req);
+		const bucket = OWNER_CREDS.get(owner);
+		if (bucket) delete bucket[provider];
+		return json(res, 200, { ok: true });
 	}
 	json(res, 404, { error: "not_found" });
 });
+
+function renderConsent(provider, state) {
+	const allow = `/oauth/${encodeURIComponent(provider)}/mock-callback?state=${state}&decision=allow`;
+	const deny = `/oauth/${encodeURIComponent(provider)}/mock-callback?state=${state}&decision=deny`;
+	return `<!doctype html>
+<html><head><title>Mock consent — ${provider}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font-family:system-ui;background:#0f0f0f;color:#e5e5e5;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}main{max-width:420px;padding:24px;background:#171717;border:1px solid #262626;border-radius:12px}h1{font-size:18px;margin:0 0 8px}p{color:#a3a3a3;font-size:14px;line-height:1.4}a.btn{display:inline-block;margin-top:16px;margin-right:8px;padding:10px 14px;border-radius:8px;font-size:14px;text-decoration:none}a.allow{background:#22c55e;color:#052e14}a.deny{background:#262626;color:#e5e5e5;border:1px solid #404040}</style>
+</head><body><main>
+<h1>Mock Google — grant DOT access to your ${provider}?</h1>
+<p>This is a stand-in for Google's consent screen so DOT can demo the connect flow without real OAuth credentials. In production the runtime redirects here to Google, then Google to the runtime callback, and finally the runtime 302s back to DOT.</p>
+<a class="btn allow" href="${allow}">Allow</a>
+<a class="btn deny" href="${deny}">Deny</a>
+</main></body></html>`;
+}
+
+function html(res, status, body) {
+	res.writeHead(status, { "Content-Type": "text/html; charset=utf-8" });
+	res.end(body);
+}
 
 function json(res, status, body) {
 	res.writeHead(status, { "Content-Type": "application/json" });
