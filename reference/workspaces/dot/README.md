@@ -40,7 +40,8 @@ loudly at startup rather than silently defaulting to something.
 
 ## Running the morning brief
 
-Ad-hoc for Sprint 1 (until the companion app in [reference/apps/dot/](../../apps/) lands):
+Ad-hoc for Sprint 1 (until the companion app under `reference/apps/dot/` lands — see PR 5 in
+the [design note's split](../../../design/details/dot-workspace.md#split-for-reviewability)):
 
 ```bash
 swarmkit run morning-brief --workspace reference/workspaces/dot
