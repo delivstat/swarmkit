@@ -2,3 +2,4 @@ packages:
   - "packages/ui"
   - "packages/control-plane-ui"
   - "packages/schema/typescript"
+  - "reference/apps/*"
