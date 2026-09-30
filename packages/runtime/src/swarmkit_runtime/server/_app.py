@@ -43,6 +43,7 @@ from ._routes_events_stream import _register_event_stream_routes
 from ._routes_fleet import _register_fleet_routes
 from ._routes_introspection import _register_introspection_routes
 from ._routes_jobs import _register_job_routes
+from ._routes_mcp_invoke import _register_mcp_invoke_routes
 from ._routes_memory import _register_memory_routes
 from ._routes_oauth import OAuthService, _register_oauth_routes
 from ._routes_review import _register_review_routes
@@ -461,6 +462,7 @@ def create_app(  # noqa: PLR0915
     _register_review_routes(app, workspace_path)
     _register_fleet_routes(app)
     _register_memory_routes(app)
+    _register_mcp_invoke_routes(app)
     # Registered unconditionally; each route answers 404 until `server.a2a.enabled` is true, so
     # a workspace can flip it on with a reload and not a restart.
     _register_a2a_routes(app, _auth, workspace_path)
