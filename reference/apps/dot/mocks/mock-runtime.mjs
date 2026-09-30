@@ -85,6 +85,78 @@ const FIXTURES = {
 const OWNER_CREDS = new Map(); // owner -> { provider -> { expires_at, expired } }
 const PENDING = new Map(); // state -> { returnTo, provider }
 
+// Audit-log fixtures for the Activity page (design/details/dot-app.md §3.6).
+const AUDIT_ENTRIES = [
+	{
+		run_id: "r-1",
+		topology_id: "morning-brief",
+		started_at: offsetMin(-20),
+		elapsed_ms: 8400,
+		status: "success",
+		summary: "Morning brief · 5 items",
+	},
+	{
+		run_id: "r-2",
+		topology_id: "handle-item",
+		started_at: offsetMin(-14),
+		elapsed_ms: 1200,
+		status: "success",
+		summary: "handle-item · prep · OEM sync",
+	},
+	{
+		run_id: "r-3",
+		topology_id: "handle-item",
+		started_at: offsetMin(-9),
+		elapsed_ms: 2100,
+		status: "success",
+		summary: "handle-item · draft_reply · cost breakdown",
+	},
+	{
+		run_id: "r-4",
+		topology_id: "handle-item",
+		started_at: offsetMin(-4),
+		elapsed_ms: 640,
+		status: "error",
+		summary: "handle-item · archive · newsletter (500)",
+	},
+];
+
+const AUDIT_DETAILS = {
+	"r-1": {
+		...AUDIT_ENTRIES[0],
+		archetypes: [
+			{ id: "context-aggregator", elapsed_ms: 3100, status: "success" },
+			{ id: "item-ranker", elapsed_ms: 5300, status: "success" },
+		],
+		errors: [],
+	},
+	"r-2": {
+		...AUDIT_ENTRIES[1],
+		archetypes: [
+			{ id: "meeting-prepper", elapsed_ms: 1200, status: "success" },
+		],
+		errors: [],
+	},
+	"r-3": {
+		...AUDIT_ENTRIES[2],
+		archetypes: [
+			{ id: "conversation-retriever", elapsed_ms: 800, status: "success" },
+			{ id: "email-drafter", elapsed_ms: 1300, status: "success" },
+		],
+		errors: [],
+	},
+	"r-4": {
+		...AUDIT_ENTRIES[3],
+		archetypes: [{ id: "email-drafter", elapsed_ms: 640, status: "error" }],
+		errors: [
+			{
+				archetype: "email-drafter",
+				message: "Gmail archive_thread: 500 Internal Server Error",
+			},
+		],
+	},
+};
+
 // Workspace-config projection the Settings page reads/writes (design/details/dot-app.md §3.5).
 const WORKSPACE_CONFIG = {
 	triggers: {
@@ -182,6 +254,20 @@ const server = createServer((req, res) => {
 		}
 		res.writeHead(302, { Location: pending.returnTo });
 		return res.end();
+	}
+	if (req.method === "GET" && p === "/audit") {
+		const topologies = url.searchParams.getAll("topology");
+		const filtered = topologies.length
+			? AUDIT_ENTRIES.filter((e) => topologies.includes(e.topology_id))
+			: AUDIT_ENTRIES;
+		return json(res, 200, { entries: filtered, next_cursor: null });
+	}
+	const audit = /^\/audit\/([^/]+)$/.exec(p);
+	if (req.method === "GET" && audit) {
+		const runId = decodeURIComponent(audit[1]);
+		const entry = AUDIT_DETAILS[runId];
+		if (!entry) return json(res, 404, { error: "not_found" });
+		return json(res, 200, entry);
 	}
 	if (req.method === "GET" && p === "/api/workspace-config") {
 		return json(res, 200, WORKSPACE_CONFIG);

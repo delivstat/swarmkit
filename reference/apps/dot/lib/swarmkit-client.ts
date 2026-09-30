@@ -75,6 +75,37 @@ export class SwarmKitClient {
 		return body.auth_url;
 	}
 
+	// Wraps GET /audit — confirmed live surface (design §Runtime dependencies).
+	async listRuns(params: {
+		topologies?: string[];
+		cursor?: string;
+		limit?: number;
+	}): Promise<AuditListResult> {
+		const url = new URL("/audit", this.opts.baseUrl);
+		if (params.topologies) {
+			for (const t of params.topologies) url.searchParams.append("topology", t);
+		}
+		if (params.cursor) url.searchParams.set("cursor", params.cursor);
+		if (params.limit) url.searchParams.set("limit", String(params.limit));
+		const res = await fetch(url, { headers: this.headers() });
+		if (!res.ok) {
+			throw new SwarmKitError(`listRuns failed: ${res.status}`, res.status);
+		}
+		return (await res.json()) as AuditListResult;
+	}
+
+	async getRunDetail(runId: string): Promise<AuditDetail> {
+		const url = new URL(
+			`/audit/${encodeURIComponent(runId)}`,
+			this.opts.baseUrl,
+		);
+		const res = await fetch(url, { headers: this.headers() });
+		if (!res.ok) {
+			throw new SwarmKitError(`getRunDetail failed: ${res.status}`, res.status);
+		}
+		return (await res.json()) as AuditDetail;
+	}
+
 	async getWorkspaceConfig<T = unknown>(): Promise<T> {
 		const url = new URL("/api/workspace-config", this.opts.baseUrl);
 		const res = await fetch(url, { headers: this.headers() });
@@ -135,6 +166,29 @@ export interface MyCredential {
 	owner: string;
 	expires_at: string | null;
 	expired: boolean;
+}
+
+export interface AuditListResult {
+	entries: AuditEntry[];
+	next_cursor: string | null;
+}
+
+export interface AuditEntry {
+	run_id: string;
+	topology_id: string;
+	started_at: string;
+	elapsed_ms: number;
+	status: "success" | "error" | "running";
+	summary: string;
+}
+
+export interface AuditDetail extends AuditEntry {
+	archetypes: {
+		id: string;
+		elapsed_ms: number;
+		status: "success" | "error" | "running";
+	}[];
+	errors: { archetype: string; message: string }[];
 }
 
 export class SwarmKitError extends Error {
