@@ -1,0 +1,59 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: item-ranker
+  name: Item Ranker
+  description: >
+    Consumes the aggregator's raw bundle, returns a structured ranked list of ≤10 actionable
+    items with a reason each. Decision-shaped skill — output is validated against a fixed
+    schema so the DOT app can render it as a card stack without guessing shape.
+role: worker
+defaults:
+  model:
+    provider: ollama
+    name: qwen2.5:14b-instruct
+    temperature: 0.0
+  prompt:
+    system: >
+      You are the DOT morning-brief ranker. Read the aggregator's raw bundle of emails and
+      calendar events, return a JSON list of at most 10 items in priority order. Each item:
+      { id, source_type: "email"|"meeting", source_id, title, why: "one-sentence reason this
+      matters this morning", suggested_action: one of "draft-reply"|"retrieve-related"|
+      "prep-response"|"summarise-thread"|"prep-meeting"|"no-action" }. Rank on: does the
+      owner need to act, does the response window matter today, is the sender/attendee list
+      of established importance. Do not invent items not present in the input. Do not carry
+      out any action — surfacing is your only job.
+  output_schema:
+    type: object
+    properties:
+      items:
+        type: array
+        maxItems: 10
+        items:
+          type: object
+          required: [id, source_type, source_id, title, why, suggested_action]
+          properties:
+            id:
+              type: string
+            source_type:
+              type: string
+              enum: [email, meeting]
+            source_id:
+              type: string
+            title:
+              type: string
+            why:
+              type: string
+            suggested_action:
+              type: string
+              enum:
+                - draft-reply
+                - retrieve-related
+                - prep-response
+                - summarise-thread
+                - prep-meeting
+                - no-action
+    required: [items]
+provenance:
+  authored_by: human
+  version: 1.0.0

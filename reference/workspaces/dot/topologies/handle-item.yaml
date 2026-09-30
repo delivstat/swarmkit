@@ -1,0 +1,68 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: handle-item
+  version: 1.0.0
+# Invoked per item after the human picks one from the morning brief. Takes { item_id,
+# source_type, source_id, suggested_action, user_intent? } as input; dispatches to the right
+# per-item archetype and returns its output. Every action is read-only in Sprint 1 — drafts
+# are produced but never sent, prep notes are compiled but never delivered anywhere but the
+# app. Sending / scheduling arrive in Sprint 6+ behind their own HITL gates; this topology
+# stays the dispatcher.
+input_schema:
+  type: object
+  required: [item_id, source_type, source_id, suggested_action]
+  properties:
+    item_id:
+      type: string
+    source_type:
+      type: string
+      enum: [email, meeting]
+    source_id:
+      type: string
+    suggested_action:
+      type: string
+      enum:
+        - draft-reply
+        - retrieve-related
+        - prep-response
+        - summarise-thread
+        - prep-meeting
+        - no-action
+    # Optional freeform intent from the human — the scoped-chat surface's payload.
+    # If present, the per-item archetype treats it as a directive.
+    user_intent:
+      type: string
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-leader
+    prompt:
+      system: >
+        You are the DOT per-item dispatcher. Read the suggested_action and route to the right
+        specialist: draft-reply → email-drafter; retrieve-related or summarise-thread →
+        conversation-retriever; prep-response → email-drafter (with user_intent as directive);
+        prep-meeting → meeting-prepper; no-action → return "no action needed" and stop.
+        Never send, schedule, or mutate. Every specialist you delegate to is read-only.
+    children:
+      - id: drafter
+        role: worker
+        archetype: email-drafter
+      - id: prepper
+        role: worker
+        archetype: meeting-prepper
+      - id: retriever
+        role: worker
+        archetype: conversation-retriever
+# HITL gate scaffold — NOT declared in this topology because SwarmKit does not have a
+# topology-level `gates` field. Human-approval gates are enforced by the GovernanceProvider
+# policy (design §8.5, §8.7); in read-only Sprint 1 there is nothing to gate anyway because
+# no side-effect tools (gmail send, google-calendar create_event, etc.) are exposed to any
+# archetype. Sprint 6+ ships:
+#   - the write-side bundles (gmail-write, google-calendar-write) that expose those tools
+#   - the governance policy that requires an approval scope reserved for a real human on those
+#     specific tool calls
+# Nothing in this topology changes at that point; the enforcement is added at the workspace's
+# governance policy, and this topology's dispatcher role stays as it is. See
+# design/details/dot-workspace.md "Sprint 6+".

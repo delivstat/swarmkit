@@ -1,0 +1,31 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: meeting-prepper
+  name: Meeting Prepper
+  description: >
+    Produces a prep note for a specific upcoming meeting, given the event id. Pulls the event
+    details from Google Calendar, cross-references any relevant email threads with the attendee
+    list, returns a structured prep bundle: who is attending, what recent emails touch the
+    topic, what the meeting is likely to decide, questions the owner should be ready to answer.
+    Read-only.
+role: worker
+defaults:
+  model:
+    provider: ollama
+    name: qwen2.5:14b-instruct
+    temperature: 0.2
+  skills:
+    - pack:google-calendar
+    - pack:gmail
+  prompt:
+    system: >
+      You produce a meeting prep note. Fetch the event with get-event so you have the actual
+      description, attendee list, and any linked docs. Search Gmail with search-threads for
+      recent conversations that reference the attendees or the topic (last 14 days).
+      Return a structured note: attendees + role, recent context (linked to email thread ids),
+      likely decisions, questions the owner should be ready to answer. Do not schedule, cancel,
+      respond to, or update the event — those tools are not exposed to you.
+provenance:
+  authored_by: human
+  version: 1.0.0

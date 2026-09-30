@@ -1,0 +1,37 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: morning-brief
+  version: 1.0.0
+# The DOT morning brief. Runs once per morning (schedule-triggered in production, ad-hoc from
+# the app during Sprint 1). Aggregates Gmail + Calendar context, ranks ≤10 actionable items,
+# commits the result to the audit trail. Read-only end-to-end — no send, no schedule, no
+# calendar mutation. The human picks an item from the ranked list; the app then invokes
+# handle-item.yaml for that specific one.
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-leader
+    prompt:
+      system: >
+        You are the DOT morning-brief supervisor. Run the aggregator to pull Gmail + Calendar
+        context, then hand the raw bundle to the ranker to produce the ≤10 item list. Return
+        the ranker's structured output as your result. Do not carry out any per-item action —
+        that is the handle-item topology's job, and it runs only when the human explicitly picks
+        an item. Read-only for the entire flow.
+    children:
+      - id: aggregator
+        role: worker
+        archetype: context-aggregator
+        prompt:
+          system: >
+            Gather the owner's morning context from Gmail and Google Calendar. Return the
+            unranked JSON bundle described in your archetype prompt.
+      - id: ranker
+        role: worker
+        archetype: item-ranker
+        prompt:
+          system: >
+            Rank the aggregator's bundle into a JSON list of ≤10 actionable items per your
+            output_schema. Nothing else.
