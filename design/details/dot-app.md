@@ -512,8 +512,16 @@ cross-origin cookie ceremony (which is a fragile dance for a personal tool). A s
 session with an owner-scoped bearer to the runtime is simpler and honest.
 
 **What Gmail/Calendar OAuth is:** entirely handled by the runtime, unchanged. DOT redirects
-the owner's browser to the runtime's `/oauth/<provider>/start` URL to connect an account,
-then reads status through `/api/oauth/my-credentials`. DOT never sees a Google token.
+the owner's browser through the runtime's OAuth start (with `return_to` back to DOT so the
+UX feels native — see the Connections screen sketch); the runtime stores the encrypted
+token per owner in its `oauth_tokens` table; every subsequent tool call resolves the token
+from that single store. DOT never sees a Google token, on either lane.
+
+**No parallel connection UI, no parallel token store.** The Connections page in DOT is a
+proxy over the runtime's existing connections surface; the fast-lane endpoint invokes
+tools with credentials the runtime resolves; the freeform-lane LLM calls go through the
+same credential path as any other topology-borne tool call. The whole point of the two-
+lane design is that the *credential authority* stays exactly where [[mcp-oauth]] put it.
 
 ## Session management
 
@@ -526,6 +534,29 @@ then reads status through `/api/oauth/my-credentials`. DOT never sees a Google t
   transparently. Owner never sees a spontaneous re-login unless they're gone > 30 days.
 
 ## Runtime integration
+
+## Two data-fetch lanes, one credential authority
+
+Data pulls happen through one of two lanes, both routed through the runtime so credentials
+live in exactly one place:
+
+- **Fast lane (deterministic, used by the scheduled / user-tapped-refresh path).** DOT's
+  backend calls a runtime endpoint that invokes a specific MCP tool on the owner's behalf
+  with fixed arguments (`search_threads` with `is:unread in:inbox` for the last 24 h,
+  `list_events` with today+tomorrow window). Runtime resolves the owner's credential from
+  its OAuth store and forwards to the MCP server. Result comes back structured. Zero LLM
+  tokens on data fetching.
+
+- **Freeform lane (LLM-mediated, used by scoped chat, dot-authoring, downstream authored
+  topologies, and any CLI/schedule invocation).** An archetype's LLM has MCP tools available
+  and decides which to call. Same runtime, same MCP servers, same credentials — the LLM
+  drives the tool selection instead of DOT's app code.
+
+**The credential invariant is that both lanes resolve tokens through exactly the same
+runtime path** (`oauth_tokens` table, per-user, per [[mcp-oauth]]). DOT never holds a Google
+token. There is no parallel connection UI, no parallel token store, no rewrite of the
+connections work. The Connections page in DOT delegates to the runtime's existing OAuth
+start (with a `return_to` back to DOT) — same flow the portal uses.
 
 DOT's backend uses a thin `SwarmKitClient` (`lib/swarmkit-client.ts`) with the methods DOT needs:
 
@@ -545,6 +576,11 @@ DOT's backend uses a thin `SwarmKitClient` (`lib/swarmkit-client.ts`) with the m
 - `disconnectOAuth(provider)` — DELETE runtime's `/api/oauth/credentials/:id`.
 - `getWorkspaceConfig()` / `patchWorkspaceConfig(patch)` — for Settings. Wraps the runtime's
   workspace config surface.
+- `invokeMcpTool(serverId, tool, args)` — for the fast lane. POSTs to a runtime endpoint that
+  resolves the owner's credential from the OAuth store, invokes the named MCP tool via the
+  runtime's own MCP client machinery, records the call in the audit log, and returns the
+  structured result. **DOT holds no MCP transport and no Google token**; the runtime does
+  every part of that work exactly as it does for an LLM-driven tool call in a topology.
 
 Every call carries the runtime bearer token as `Authorization: Bearer <SWARMKIT_RUNTIME_TOKEN>`
 and the owner's identity as an `X-Owner` header (the runtime's `AuthProvider` picks this up
@@ -573,10 +609,21 @@ Explicitly tracked as dependent PRs (each small, each landable independently):
 - **Runtime PR — Usage aggregation endpoint.** Optional: a `/audit/aggregate` that groups by
   day / provider / topology server-side. If it doesn't ship, DOT does the aggregation client-
   side (per `getUsageAggregate` above). Worth having eventually; not blocking for MVP.
+- **Runtime PR — MCP tool invocation on behalf of an owner (fast-lane endpoint).** DOT's
+  fast lane needs to call an MCP tool by name with the owner's credential resolved by the
+  runtime. Whether the runtime ships this today (either as an equivalent of `swarmkit
+  mcp-serve`'s tool-forwarding semantics or as a dedicated REST route like
+  `POST /api/mcp/:serverId/invoke`) needs verification. If not: small addition that reuses
+  the same credential-resolution + audit-recording machinery topologies already exercise
+  when an LLM calls a tool. **Critical property: this endpoint must NOT return the
+  resolved token to DOT** — it invokes the tool server-side and returns only the tool's
+  result. DOT holding a Google token would violate the single-place-for-credentials
+  constraint that this whole design turns on.
 
-None of these four block PR 5 from starting — the scaffold + login + brief commits can
+None of these five block PR 5 from starting — the scaffold + login + brief commits can
 land against the runtime as it is. Settings, Connections, Activity, and Usage wait on
-whichever runtime additions are needed.
+whichever runtime additions are needed, and the fast-lane commit waits on the tool-
+invocation endpoint (or its equivalent already shipping).
 
 ## Env config
 
