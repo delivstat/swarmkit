@@ -137,6 +137,33 @@ and revokes it upstream where the provider supports revocation. The store is key
 and owner, independently of `workspace.yaml`: edit the entry and the token stays; delete the token
 and the entry stays.
 
+## Invoking a tool without a topology run
+
+**`POST /api/mcp/{server_id}/invoke`** (from runtime `1.260.0`) lets an external client — a
+first-party app on top of the runtime, a small script, a scheduled trigger that just needs one
+call — invoke an MCP tool with per-user credential resolution done by the runtime. Same
+credential path an LLM tool-call inside a topology takes; the difference is only that no
+topology has to be started, so no LLM tokens burn on tool-selection scaffolding.
+
+```
+POST /api/mcp/gmail/invoke
+Authorization: Bearer <runtime-client-token>
+X-Owner: srijith@delivstat.com
+{ "tool": "search_threads", "arguments": { "query": "is:unread newer_than:1d" } }
+
+→ { "result": { "content": [...], "isError": false, "structuredContent": {...} } }
+```
+
+`X-Owner` names the identity whose stored credentials should be resolved. Omitting it defaults
+to the calling identity — the natural per-user case. Naming a *different* identity requires the
+new `mcp:invoke:any-owner` admin scope; a mismatch without it is a 403. Widening is deliberate,
+scope-gated, and audited via the calling identity so the trail records who acted on whose
+behalf.
+
+The response body carries the tool's own result and nothing else — no session id, no transport
+detail, and never the resolved OAuth token. A caller who wants direct-tool access without
+holding provider credentials is exactly the use case this endpoint exists for.
+
 ## Remote agents (A2A)
 
 A remote agent is not a server entry: it is an `agent` skill with a `card_url`
