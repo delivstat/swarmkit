@@ -85,6 +85,26 @@ const FIXTURES = {
 const OWNER_CREDS = new Map(); // owner -> { provider -> { expires_at, expired } }
 const PENDING = new Map(); // state -> { returnTo, provider }
 
+// Workspace-config projection the Settings page reads/writes (design/details/dot-app.md §3.5).
+const WORKSPACE_CONFIG = {
+	triggers: {
+		"morning-brief": { time: "07:30", timezone: "America/Los_Angeles" },
+	},
+	defaults: { model: { provider: "ollama", name: "llama3.1:8b" } },
+	topologies: { "morning-brief": { input: { item_cap: 10 } } },
+};
+
+function mergeDeep(target, patch) {
+	for (const [k, v] of Object.entries(patch ?? {})) {
+		if (v && typeof v === "object" && !Array.isArray(v)) {
+			if (!target[k] || typeof target[k] !== "object") target[k] = {};
+			mergeDeep(target[k], v);
+		} else {
+			target[k] = v;
+		}
+	}
+}
+
 function ownerFrom(req) {
 	return req.headers["x-owner"] ?? "owner";
 }
@@ -162,6 +182,15 @@ const server = createServer((req, res) => {
 		}
 		res.writeHead(302, { Location: pending.returnTo });
 		return res.end();
+	}
+	if (req.method === "GET" && p === "/api/workspace-config") {
+		return json(res, 200, WORKSPACE_CONFIG);
+	}
+	if (req.method === "PATCH" && p === "/api/workspace-config") {
+		return readBody(req).then((patch) => {
+			mergeDeep(WORKSPACE_CONFIG, patch);
+			return json(res, 200, WORKSPACE_CONFIG);
+		});
 	}
 	const disconnect = /^\/api\/oauth\/credentials\/([^/]+)$/.exec(p);
 	if ((req.method === "DELETE" || req.method === "POST") && disconnect) {

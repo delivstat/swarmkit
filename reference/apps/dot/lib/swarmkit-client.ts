@@ -75,6 +75,35 @@ export class SwarmKitClient {
 		return body.auth_url;
 	}
 
+	async getWorkspaceConfig<T = unknown>(): Promise<T> {
+		const url = new URL("/api/workspace-config", this.opts.baseUrl);
+		const res = await fetch(url, { headers: this.headers() });
+		if (!res.ok) {
+			throw new SwarmKitError(
+				`getWorkspaceConfig failed: ${res.status}`,
+				res.status,
+			);
+		}
+		return (await res.json()) as T;
+	}
+
+	async patchWorkspaceConfig<T = unknown>(patch: unknown): Promise<T> {
+		const url = new URL("/api/workspace-config", this.opts.baseUrl);
+		const res = await fetch(url, {
+			method: "PATCH",
+			headers: this.headers(),
+			body: JSON.stringify(patch),
+		});
+		if (!res.ok) {
+			const txt = await res.text().catch(() => "");
+			throw new SwarmKitError(
+				`patchWorkspaceConfig failed: ${res.status} ${txt}`,
+				res.status,
+			);
+		}
+		return (await res.json()) as T;
+	}
+
 	async disconnectOAuth(provider: string): Promise<void> {
 		const url = new URL(
 			`/api/oauth/credentials/${encodeURIComponent(provider)}`,
