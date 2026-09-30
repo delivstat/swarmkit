@@ -17,9 +17,16 @@ A standalone web application that serves the DOT workspace to its owner. Renders
 brief, exposes per-item delegation (buttons + scoped chat), and — from Sprint 3+ — the sandbox
 review flow for authored artefacts and the recursive-authoring surface.
 
+**DOT is the owner's daily driver — the SwarmKit portal is the debug/power surface.** A normal
+day the owner never opens the portal. They open the portal when DOT itself looks wrong (a run
+failed strangely, an audit question needs answering with more depth than DOT surfaces, a raw
+YAML edit needs making). That split shapes every design decision below: anything the owner
+touches daily belongs in DOT and lives inside DOT's own UI; anything the owner touches monthly
+or in an emergency stays in the portal.
+
 Not a general-purpose portal. Not a replacement for `packages/ui/` (which is SwarmKit's own
-platform-observability surface). The app exists to make the DOT workspace *usable* rather than
-just runnable.
+platform-observability surface). But not a thin shell either — the app owns the user-facing
+surface of the DOT workspace end-to-end.
 
 ## Users
 
@@ -31,23 +38,36 @@ owner's experience, not against a multi-user or hosted-SaaS shape.
 
 In scope for this design note (Sprint 1–5 of the parent plan):
 
-- Today's morning brief page (card stack).
-- History strip (previous 7 briefs).
-- Per-item card with buttons + right-rail scoped chat surface.
-- Connections page (list Gmail + Google Calendar status, click through to portal's Connections
-  for the OAuth handshake).
-- Drafts drawer (Sprint 2+).
-- Authoring review flow (Sprint 3+).
-- Plugin registry view (Sprint 4+).
-- Login page + session management.
+- **Today's morning brief page** (card stack).
+- **History strip** (previous 7 briefs).
+- **Per-item card** with buttons + right-rail scoped chat surface.
+- **Connections page** — Gmail + Google Calendar status, connect / reconnect / disconnect
+  **inline** (the browser stays on DOT throughout the OAuth handshake; runtime does the
+  token exchange but the user-facing flow feels native to DOT).
+- **Settings page** — the user-facing prefs that a normal owner tunes without ever editing
+  workspace YAML: morning brief schedule, LLM provider + model, item-cap on the ranker,
+  notification preferences (Sprint 2+ when notifications exist), quiet hours if any. Writes
+  back through the runtime's workspace-config surface; the app never edits `workspace.yaml`
+  directly.
+- **Activity page** — a thin proxy of the runtime's audit log, scoped to the owner: recent
+  morning-brief runs, recent per-item runs, promote/rollback events (Sprint 2+). "What
+  happened this morning?" is answerable without opening the SwarmKit portal.
+- **Drafts drawer** (Sprint 2+).
+- **Authoring review flow** (Sprint 3+).
+- **Plugin registry view** (Sprint 4+).
+- **Login page** + session management.
 
-Out of scope for the BRD (called out separately below or deferred):
+Out of scope for the BRD (called out separately below or deferred to the portal):
 
 - Push notifications, email digests, webhook triggers to the app (the run trigger is a
-  scheduled trigger in the workspace, per [[dot-workspace]] §Frontend).
+  scheduled trigger in the workspace).
 - Multi-user account management, user roles, tenancy.
-- Any settings that duplicate workspace YAML (settings live in the runtime, not the app).
-- Dashboards, analytics, reporting.
+- Deep workspace editing — the archetype YAML, the topology structure, the credential
+  definitions. That is a power surface and stays in the SwarmKit portal / on disk.
+- Dashboards, analytics, cross-run reporting. The Activity page shows recent runs; anything
+  richer than that lives in the portal's audit tools.
+- Runtime health / fleet / control-plane views. If DOT itself is broken those live in the
+  portal.
 
 ## Success criteria
 
@@ -220,12 +240,67 @@ not the chat pane.
 - Status: **Connected as `<owner>`** with expiry / **Not connected** / **Expired — reconnect**.
 - Action button — Connect, Reconnect, Disconnect.
 
-Every action delegates to the SwarmKit runtime's `/oauth/*` endpoints (the same the portal's
-own Connections page uses). The app never touches OAuth tokens directly.
+The OAuth flow feels native to DOT — **the browser stays on DOT throughout**. Mechanism:
+
+1. Owner clicks Connect. DOT's backend calls the runtime's `/oauth/:provider/start` with
+   `return_to=<DOT origin>/connections?connected=<provider>`.
+2. Runtime returns Google's OAuth URL (Google's redirect URI is on the runtime, unchanged).
+3. DOT redirects the browser to Google.
+4. Google → runtime callback → token exchange → token stored per-owner → runtime issues a
+   302 to the `return_to` URL back on DOT.
+5. DOT's `/connections` page reloads with success state.
+
+DOT never sees a Google token; the runtime's OAuth store is unchanged from [[mcp-oauth]].
+What changes is only that the OAuth start endpoint learns to accept a `return_to` (a small
+runtime addition, tracked as a dependent PR — see "Runtime dependencies" in Part 3).
 
 Mobile: full-width rows stacked. Desktop: same, capped at 720 px.
 
-### 5. Drafts (Sprint 2+)
+### 5. Settings
+
+`/settings`. The prefs a normal owner tunes without ever editing YAML. Groups:
+
+- **Brief schedule** — a time picker (defaults to 07:30 local). Writes back to the workspace's
+  trigger config through the runtime's workspace-config surface.
+- **Model provider** — a dropdown of installed providers (Ollama, OpenRouter, whichever
+  cloud providers have credentials wired) + a model name field. Applies to DOT's aggregator,
+  ranker, drafter, prepper archetypes. Overrides the `defaults.model` on each; the archetypes
+  themselves stay YAML-canonical.
+- **Ranker item cap** — a number (default 10, per the workspace's `output_schema`). Passed as
+  input to the `morning-brief` topology.
+- **Notification preferences** (Sprint 2+ when notifications exist) — email/webhook, quiet
+  hours.
+
+Every setting is a small typed field; no rich text, no complex forms. Save on change (debounced)
+with an inline "Saved" indicator. Mobile: single column, generous vertical spacing so touch
+targets are unambiguous. Desktop: two-column form at 800 px.
+
+**Not in Settings** — anything the SwarmKit portal owns because it's a power/debug affordance:
+archetype YAML, topology structure, credential store contents, MCP server registration
+beyond the two DOT ships with. If the owner needs those, DOT surfaces a "Advanced (in the
+SwarmKit portal)" link at the bottom of the page rather than pretending they don't exist.
+
+### 6. Activity
+
+`/activity`. A thin proxy of the runtime's audit log, scoped to the owner. Lists recent runs:
+
+- Latest morning brief (with a link to view its ranked items).
+- Recent per-item runs (draft-reply, prep-meeting, etc.) with the item they were about.
+- Sprint 2+: promote / rollback events on authored artefacts.
+
+Each row: run time, topology, one-line result summary, status pill (ok / failed / partial).
+Tapping a row opens a detail view showing the per-step audit trail — but only the fields
+useful to a daily user (which archetypes ran, elapsed time, any errors). Full detail
+(model calls, tokens, policy decisions) is a "See full audit in the portal" link that goes
+to the portal's audit view for the run id.
+
+The Activity page answers "what happened this morning?" without opening the portal. Deeper
+questions ("why did this fail?") still delegate.
+
+Mobile: single-column list; row detail is a bottom sheet or new full-screen page. Desktop:
+list on the left, detail on the right when a row is selected.
+
+### 7. Drafts (Sprint 2+)
 
 `/drafts`. List of authored-but-not-promoted artefacts (archetypes, topologies, plugin
 manifests). Each row: title, `authored at`, source topology, status. Tapping opens the artefact
@@ -233,7 +308,7 @@ in a preview + "Sandbox" / "Promote" / "Refine" / "Discard" affordances.
 
 Not sketched in detail in this design note — Sprint 2 gets its own sub-note.
 
-### 6. Plugins (Sprint 4+)
+### 8. Plugins (Sprint 4+)
 
 `/plugins`. List of active DOT plugin manifests. Tapping opens the manifest's YAML in a
 read-only viewer (owner edits by authoring, not by direct edit). "Disable" affordance flips
@@ -339,8 +414,12 @@ Every endpoint is JSON in / JSON out unless noted.
 | POST | `/api/items/:id/handle` | Invoke `handle-item` topology; SSE stream. Body: `{ suggested_action, user_intent? }`. |
 | POST | `/api/items/:id/chat` | Same as handle, but with `user_intent` as the sole payload — the scoped-chat variant. |
 | GET | `/api/connections` | Provider status for Gmail + Calendar. |
-| GET | `/api/connections/:provider/connect-url` | Returns the SwarmKit runtime's OAuth start URL for the given provider; the owner's browser opens it. |
+| POST | `/api/connections/:provider/connect` | Kicks off the OAuth flow. Backend calls runtime `/oauth/:provider/start` with `return_to=<DOT>/connections?connected=:provider`; returns the Google URL for the browser to redirect to. |
 | POST | `/api/connections/:provider/disconnect` | Delegates to the runtime's disconnect endpoint. |
+| GET | `/api/settings` | Current user-facing prefs, projected from the workspace config the runtime holds. |
+| PATCH | `/api/settings` | Apply a partial settings update; DOT translates to a workspace-config patch and forwards. |
+| GET | `/api/activity` | Recent runs for the owner, scoped to DOT's topologies (`morning-brief`, `handle-item`). Optional `?cursor=` for paging. |
+| GET | `/api/activity/:runId` | Detail for a single run — the user-facing shape (which archetypes, elapsed, errors), not the full audit. |
 | GET | `/api/drafts` | Sprint 2+. |
 | GET | `/api/plugins` | Sprint 4+. |
 
@@ -404,18 +483,49 @@ then reads status through `/api/oauth/my-credentials`. DOT never sees a Google t
 
 ## Runtime integration
 
-DOT's backend uses a thin `SwarmKitClient` (`lib/swarmkit-client.ts`) with three methods that
-cover every call the app needs:
+DOT's backend uses a thin `SwarmKitClient` (`lib/swarmkit-client.ts`) with the methods DOT needs:
 
 - `getRun(topologyId, runId?)` — fetch the most recent run's audit-log-committed output for
   the given topology + owner. Wraps `GET /api/runs?topology=&owner=&latest=true`.
 - `startRun(topologyId, input, principal)` — POST to `/api/runs` with an SSE response, forwards
   chunks to the caller.
+- `listRuns(owner, topologies?, cursor?)` — for the Activity page. Wraps `GET /audit` with
+  filters.
 - `getMyCredentials()` — GET `/api/oauth/my-credentials` (from #982).
+- `startOAuth(provider, returnTo)` — POST runtime's `/oauth/:provider/start` with a return
+  URL, receives Google's auth URL back.
+- `disconnectOAuth(provider)` — DELETE runtime's `/api/oauth/credentials/:id`.
+- `getWorkspaceConfig()` / `patchWorkspaceConfig(patch)` — for Settings. Wraps the runtime's
+  workspace config surface.
 
 Every call carries the runtime bearer token as `Authorization: Bearer <SWARMKIT_RUNTIME_TOKEN>`
 and the owner's identity as an `X-Owner` header (the runtime's `AuthProvider` picks this up
 into `current_principal`, letting per-user credentials resolve to the right Google token).
+
+## Runtime dependencies
+
+DOT depends on runtime surfaces that partially exist and partially need to be added. The
+audit surface is confirmed (`/audit?limit=` returns per-run entries; seen live during the
+Minder rehearsal). The OAuth start endpoint exists per [[mcp-oauth]] but I do not know
+whether it accepts a `return_to` parameter today — if not, that is a small runtime PR
+tracked as a Sprint 1 dependency of PR 5. Same for workspace-config PATCH: `packages/ui/`
+already writes workspace edits from the portal, so the endpoint exists; whether the shape
+DOT's Settings page needs (a JSON-patch-like partial update) matches what ships is worth
+verifying before PR 5's Settings commit lands.
+
+Explicitly tracked as dependent PRs (each small, each landable independently):
+
+- **Runtime PR — `return_to` on OAuth start.** If the shipped endpoint does not already
+  accept + honour a `return_to` parameter, add it. Trivial change (2–3 lines + a signed-URL
+  check so the parameter cannot be used as an open-redirect vector).
+- **Runtime PR — `swarmkit auth issue-client-token`.** Already tracked as Q2 in Part 7. If a
+  shipped equivalent exists (a persistent API token surface), point at that instead.
+- **Runtime PR — Owner-scoped `/audit?owner=<>` filter.** Confirm the audit endpoint accepts
+  an owner filter today. If not, small runtime addition.
+
+None of these three block PR 5 from starting — the scaffold + login + brief commits can
+land against the runtime as it is. Settings and Connections wait on whichever runtime
+additions are needed.
 
 ## Env config
 
@@ -568,10 +678,17 @@ each independently reviewable:
    ad-hoc trigger. Verify: end-to-end against a mock runtime returning a canned brief.
 5. **Per-item detail** — `/item/[id]/page.tsx`, `ActionButtons`, `ChatPane`, `ResultPanel`,
    `/api/items/[id]/handle` + `/chat`. Verify: end-to-end for each `suggested_action`.
-6. **Connections** — `/connections/page.tsx`, `/api/connections/*` routes. Verify: OAuth
-   redirect flows to the runtime.
-7. **Dockerfile + compose + `just dot-up`** — build + smoke tests + GHA image workflow.
-8. **README + `docs/dot-quickstart.md`** — how to install, connect accounts, run the app.
+6. **Connections** — `/connections/page.tsx`, `/api/connections/*` routes including the
+   inline OAuth flow (with `return_to` back to DOT). Verify: full connect / disconnect
+   round-trip against a mock runtime that fakes Google's consent.
+7. **Settings** — `/settings/page.tsx`, `/api/settings` GET + PATCH, workspace-config
+   translation in `SwarmKitClient`. Verify: change schedule + LLM provider, refresh, values
+   persist through the runtime.
+8. **Activity** — `/activity/page.tsx`, `/api/activity` list + detail, audit-log projection
+   into the user-facing shape. Verify: list renders, detail expands, "See full audit in the
+   portal" link is present.
+9. **Dockerfile + compose + `just dot-up`** — build + smoke tests + GHA image workflow.
+10. **README + `docs/dot-quickstart.md`** — how to install, connect accounts, run the app.
 
 Each commit ships with the tests it enables.
 
