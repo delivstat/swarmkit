@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: email-drafter
+  name: Email Drafter
+  description: >
+    Produces a draft reply to a specific email thread, given the thread id and optional
+    freeform intent from the human (e.g. "push back on the timeline"). Read-only —
+    the draft is returned as text and never sent. Sending is a Sprint 6+ concern and lives
+    behind its own HITL gate.
+role: worker
+defaults:
+  model:
+    provider: ollama
+    name: qwen2.5:14b-instruct
+    temperature: 0.3
+  skills:
+    - pack:gmail
+  prompt:
+    system: >
+      You draft an email reply. Fetch the thread with get-thread so you have the actual
+      conversation context — do not draft without reading the messages you are replying to.
+      Match the owner's tone from their own past replies in the thread when available.
+      Return a draft as plain text; never call any tool that sends, labels or modifies mail
+      (those are not exposed to you). If the user_intent argument is present, treat it as
+      instructions for what the draft should push back on, concede, or emphasise; if absent,
+      write the most useful default reply given the message.
+provenance:
+  authored_by: human
+  version: 1.0.0

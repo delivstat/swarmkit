@@ -1,0 +1,50 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: dot
+  name: DOT — Daily Optimization Tracker
+  description: >
+    A personal-workflow reference workspace: pulls the owner's morning context from Gmail and
+    Google Calendar, ranks actionable items, and delegates per-item work behind HITL gates.
+    Read-only in Sprint 1 — sending, labelling and scheduling are deferred to later sprints
+    (see design/details/dot-workspace.md). Consumed by the companion app at reference/apps/dot/
+    when that ships in PR 5.
+
+# Two per-user OAuth credentials. Both entries reserve the identity a signed-in owner will bind
+# in the portal (Connections → Connect Gmail / Connect Google Calendar). A scheduled morning
+# brief needs credentials explicitly designated for unattended use — that is a deliberate
+# second registration per [[mcp-oauth]], not the same entry.
+credentials:
+  gmail:
+    source: oauth
+    config:
+      endpoint: https://gmailmcp.googleapis.com/mcp/v1
+      owner: ${DOT_OWNER}
+  google-calendar:
+    source: oauth
+    config:
+      endpoint: https://calendarmcp.googleapis.com/mcp/v1
+      owner: ${DOT_OWNER}
+
+mcp_servers:
+  - id: gmail
+    transport: http
+    endpoint: https://gmailmcp.googleapis.com/mcp/v1
+    credentials_ref: gmail
+    permission: readonly
+  - id: google-calendar
+    transport: http
+    endpoint: https://calendarmcp.googleapis.com/mcp/v1
+    credentials_ref: google-calendar
+    permission: readonly
+
+# No workspace-level `model_providers` block. Ollama ships as one of SwarmKit's declaratively-
+# configured providers (packages/runtime/.../model_providers/providers/ollama.yaml) — a
+# workspace only registers custom or plugin-provided providers. DOT's archetypes each declare
+# their own `defaults.model.provider: ollama` inline, so the demonstration works without a
+# cloud key. Override per archetype (or via env) for a cloud model.
+
+storage:
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state

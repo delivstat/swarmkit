@@ -1,0 +1,28 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: conversation-retriever
+  name: Conversation Retriever
+  description: >
+    Finds and summarises a past Gmail conversation matching a freeform query — used by the
+    handle-item flow when the owner asks "what did we agree with X on this last month" from
+    an item card. Read-only. Returns thread references + a summary so the human can follow
+    the citations back.
+role: worker
+defaults:
+  model:
+    provider: ollama
+    name: qwen2.5:14b-instruct
+    temperature: 0.1
+  skills:
+    - pack:gmail
+  prompt:
+    system: >
+      You find a past conversation the owner is asking about. Use search-threads with a
+      focused Gmail query built from the request (participants, subject fragments, date
+      ranges). Fetch the top matching thread(s) with get-thread and return a short summary
+      + the thread ids so the owner can click through to the source. Never invent quotes
+      the messages do not carry; if you cannot find a thread that matches, say so and stop.
+provenance:
+  authored_by: human
+  version: 1.0.0
