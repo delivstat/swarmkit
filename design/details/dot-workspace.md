@@ -29,8 +29,9 @@ workflow tools, and DOT is the first.
 - **Not Minder-shaped.** Minder is a product built with SwarmKit and lives in its own repo. DOT is
   a reference workspace + supporting MCP bundles, distributed like `code-review.yaml` and
   `knowledge-curator.yaml` — in-tree.
-- **Not a Gmail / Google Calendar reimplementation.** The MCP bundles wrap Google's own APIs
-  through the OAuth flow SwarmKit already supports; they add no business logic.
+- **Not a Gmail / Google Calendar reimplementation.** The MCP bundles curate existing servers
+  (Google's own remote MCP servers by default, community options as fallback) and add manifests +
+  liveness probes. Zero API-wrapper code lives in swarmkit-skills.
 - **Not send-first.** The MVP is deliberately read-only. Read-write staging is called out below
   and is a separate design conversation.
 
@@ -40,22 +41,45 @@ Three artifacts, in dependency order:
 
 ### 1. Two OAuth-authenticated MCP bundles (in `swarmkit-skills`)
 
-Neither exists today. Currently the catalogue has 13 bundles / 40 skills and no Google surface.
+**We do not build the MCP servers. We bundle existing ones.** The MCP ecosystem in 2026 has
+mature first-party and community servers for both surfaces; writing our own would waste effort
+and put swarmkit-skills in the business of maintaining Gmail/Calendar API compatibility, which is
+not a business it wants to be in.
 
-- **`gmail`** — read-only MVP:
-  - `list_recent(hours=24, limit=50)` → summary list of recent messages
-  - `get_message(id)` → full body, headers, attachments-list
-  - `search(query, limit=20)` → Gmail search syntax passthrough
-  - OAuth scope: `gmail.readonly`
-- **`google-calendar`** — read-only MVP:
-  - `list_events(window="today+tomorrow", calendar="primary")` → events in a window
-  - `get_event(id)` → full event with attendees, description, conferencing
-  - `find_free(participants[], duration_minutes, window)` → free-slot search (read-only, does not
-    schedule)
-  - OAuth scope: `calendar.readonly`
+- **Google's own remote MCP servers (developer preview, August 2026):**
+  - Gmail: `gmailmcp.googleapis.com` — [Google's docs](https://docs.cloud.google.com/mcp/authenticate-mcp)
+  - Calendar: the Google Workspace remote MCP suite covers Gmail, Calendar, Drive, Docs, Sheets,
+    Slides, Chat — [configure guide](https://developers.google.com/workspace/calendar/api/guides/configure-mcp-server)
+  - Both implement the MCP authorization spec revision **2026-07-28**, which aligns with OAuth 2 +
+    OpenID Connect and — importantly — is the same spec [[mcp-oauth]] targets in the runtime's
+    OAuth store. First-party, no adapter needed.
+  - **Read-only caveat**: as of the August 2026 preview, Google's Gmail MCP cannot send. That
+    matches Phase 1's read-only stance exactly; when Phase 2 lands and we need sending, we either
+    wait for Google to lift the preview restriction or add a send-only community bundle then.
 
-Both bundles use `source: oauth` with `identity: per-user` (from [[mcp-oauth]]); a workspace using
-them requires a per-user connection through the portal before any run.
+- **Community options if we prefer self-hosted for MVP:**
+  - Gmail: [GongRzhe/Gmail-MCP-Server](https://github.com/GongRzhe/Gmail-MCP-Server) (auto-auth,
+    Claude Desktop-shaped) or [jasonsum/gmail-mcp-server](https://github.com/jasonsum/gmail-mcp-server)
+    (Python, cleaner Python integration).
+  - Calendar: [nspady/google-calendar-mcp](https://github.com/nspady/google-calendar-mcp) is the
+    most-referenced community server; [j3k0/mcp-google-workspace](https://github.com/j3k0/mcp-google-workspace)
+    bundles Gmail + Calendar in one server (could halve our surface).
+
+- **What lands in swarmkit-skills, then, is TWO bundles that are curation + probe + manifest**,
+  not implementations:
+  - `packs/gmail/pack.yaml` — declares which upstream MCP server to point at (Google's remote by
+    default; community fallback documented), the OAuth flow, the small subset of tools we
+    actually consume from the workspace (\`list_recent\`, \`get_message\`, \`search\`), and a nightly
+    liveness probe (per \`feedback_skills_catalogue_curation\` — probe don't transcribe).
+  - `packs/google-calendar/pack.yaml` — same shape, pointing at the Calendar server.
+
+The workspace consumes each through `source: oauth` with `identity: per-user` per [[mcp-oauth]];
+a run requires a per-user connection through the portal before it can call either.
+
+**Decision to record in the bundle** (belongs in the manifest's rationale, not this design note):
+default to Google's official server when both exist and both work, with a documented fallback to
+the community option for anyone who wants to self-host or needs a capability the preview server
+does not have yet.
 
 ### 2. The `dot` reference workspace (in `reference/workspaces/dot/`)
 
@@ -161,16 +185,18 @@ Every question has a proposed default so the code path is unambiguous if the own
 
 ## Split for reviewability
 
-Per the umbrella issue #990, six PRs:
+Per the umbrella issue #990, updated after MCP-ecosystem discovery — five PRs (down from six):
 
 1. This design note (design-only PR, reviewed before implementation).
-2. `swarmkit-skills/gmail` bundle (OAuth + `list_recent` + `get_message` + `search`).
-3. `swarmkit-skills/google-calendar` bundle (OAuth + `list_events` + `get_event` + `find_free`).
-4. `reference/workspaces/dot/` scaffold: aggregator + ranker + morning-brief topology.
-5. `handle-item` topology + per-item archetypes + HITL gate scaffold (still no-op in read-only).
-6. `docs/dot-quickstart.md` + `just demo-dot` fixture-based demo.
+2. `swarmkit-skills/gmail` bundle — pack.yaml pointing at Google's remote server (with community
+   fallback), OAuth wiring against SwarmKit's existing `source: oauth`, nightly probe.
+3. `swarmkit-skills/google-calendar` bundle — same shape, Calendar surface.
+4. `reference/workspaces/dot/` scaffold: aggregator + ranker + morning-brief topology + handle-item
+   sub-topology + per-item archetypes + HITL gate scaffold (no-op in read-only).
+5. `docs/dot-quickstart.md` + `just demo-dot` fixture-based demo.
 
-Each is small enough to review; each PR references this design note.
+The old PRs 4 and 5 merge — the archetypes and handle-item topology are small enough to land
+together against a design that has already been agreed. Each PR references this design note.
 
 ## Test plan
 
