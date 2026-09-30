@@ -1,9 +1,9 @@
 // Thin client for the SwarmKit runtime. Every call carries the runtime bearer (identifying the
-// caller as the owner's client_id — design/details/dot-app.md §Auth model surface 2) and, when
+// caller as the owner's client_id — design/details/dot-app.md §Auth model surface 2) plus, when
 // widening beyond the caller, an X-Owner header the runtime uses to resolve per-user creds.
 //
-// Only endpoints commit 2 needs are stubbed. Commits 4–9 grow the surface (invokeMcpTool, brief,
-// items, connections, settings, activity, usage).
+// Commit 4 fills in invokeMcpTool for the fast lane; later commits grow the surface (getRun,
+// startRun, listRuns, getUsageAggregate, workspace config, OAuth).
 
 export interface SwarmKitClientOptions {
 	baseUrl: string;
@@ -14,11 +14,32 @@ export interface SwarmKitClientOptions {
 export class SwarmKitClient {
 	constructor(private readonly opts: SwarmKitClientOptions) {}
 
-	async whoami(): Promise<{ ok: boolean }> {
-		const res = await fetch(new URL("/api/auth/whoami", this.opts.baseUrl), {
+	// Fast lane. Wraps POST /api/mcp/{server_id}/invoke (runtime v1.260.0+). The runtime
+	// resolves the owner's OAuth token from its store, calls the tool on their behalf and
+	// audit-logs it. Nothing about DOT sees a Google token.
+	async invokeMcpTool<T = unknown>(
+		serverId: string,
+		tool: string,
+		args: Record<string, unknown>,
+	): Promise<T> {
+		const url = new URL(
+			`/api/mcp/${encodeURIComponent(serverId)}/invoke`,
+			this.opts.baseUrl,
+		);
+		const res = await fetch(url, {
+			method: "POST",
 			headers: this.headers(),
+			body: JSON.stringify({ tool, arguments: args }),
 		});
-		return { ok: res.ok };
+		if (!res.ok) {
+			const detail = await res.text().catch(() => "");
+			throw new SwarmKitError(
+				`invokeMcpTool ${serverId}.${tool} failed: ${res.status} ${detail}`,
+				res.status,
+			);
+		}
+		const body = (await res.json()) as { result: T };
+		return body.result;
 	}
 
 	private headers(): Record<string, string> {
@@ -27,6 +48,16 @@ export class SwarmKitClient {
 			"X-Owner": this.opts.owner,
 			"Content-Type": "application/json",
 		};
+	}
+}
+
+export class SwarmKitError extends Error {
+	constructor(
+		message: string,
+		public readonly status: number,
+	) {
+		super(message);
+		this.name = "SwarmKitError";
 	}
 }
 

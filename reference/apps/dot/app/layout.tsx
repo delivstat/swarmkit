@@ -1,5 +1,6 @@
 import { GeistSans } from "geist/font/sans";
 import type { Metadata, Viewport } from "next";
+import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,7 +26,9 @@ export default function RootLayout({
 	// `dark` locks the neutral-dark palette. A future toggle flips this via next-themes or similar.
 	return (
 		<html lang="en" className={`dark ${GeistSans.className}`}>
-			<body>{children}</body>
+			<body>
+				<Providers>{children}</Providers>
+			</body>
 		</html>
 	);
 }
