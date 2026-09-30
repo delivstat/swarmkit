@@ -112,7 +112,7 @@ aggregator's context and dispatches to the right per-item archetype (draft an em
 meeting, retrieve a past conversation). Each per-item action goes through a HITL gate before any
 outbound effect.
 
-### 3. Frontend — what the user actually sees
+### 3. Frontend — what the user actually sees, and where it lives
 
 **In read-only Phase 1, without a UI, the artifacts already exist.** A morning-brief run produces:
 
@@ -121,41 +121,62 @@ outbound effect.
 - Per-item context bundles the handle-item topology can pick up.
 
 That is enough to be inspectable in the portal's existing runs view. It is not enough to be
-*useful* — nobody starts their morning by reading a JSON blob in a run tree. So the frontend
-decision is between three real options:
+*useful* — nobody starts their morning by reading a JSON blob in a run tree.
 
-- **Option A — portal-mounted panel.** Add a first-class `Brief` tab to `swarmkit-webui` that
-  renders the latest morning-brief output for the signed-in user, with per-item click-through to
-  invoke the handle-item topology. Cheapest to build; lives with the runtime; benefits every user
-  who runs DOT. Bounds what the panel can do to what the portal already knows how to render.
-- **Option B — separate first-party app.** A dedicated SPA (call it `dot-app`) sitting alongside
-  the portal, using SwarmKit's HTTP API as its backend the same way a product built on the
-  runtime would. Freer to iterate on the UX (morning-ritual affordances, notifications, per-item
-  chat), harder to keep in step with runtime API changes, adds a repo to maintain. This is the
-  shape products like Minder use — swarmkit-runtime as a library + a domain-specific webapp on
-  top.
-- **Option C — start with A, plan for B.** Ship the portal panel first (unblocks personal use,
-  validates the shape), extract to a standalone app when the UX diverges enough from the portal
-  that the panel starts fighting its container.
+**But DOT is a product, not a SwarmKit feature.** Baking a `/dot` panel into `packages/ui/` would
+mix concerns SwarmKit's own architecture avoids: the portal is for platform observability (runs,
+audit, credentials, workspace config); a personal-productivity morning ritual is a different
+domain and deserves its own container. There is no plugin/extension mechanism for portal panels
+today, and building one just for DOT is bad shape — the runtime already exposes an HTTP API that
+any frontend can talk to, which is the same seam Minder-style products use.
 
-**Recommendation: C.** The frontend is the fastest to iterate part of the whole project, and the
-worst possible mistake is to build a full app around a workspace before the workspace shape is
-right. A portal panel forces us to defend "would we really want a separate app for this?" every
-iteration — a question worth asking many times before answering yes. The panel is cheap; extract
-it only when it earns extraction.
+So the frontend is a **separate application**. Three questions decide the rest:
 
-Concretely for MVP:
+**Where does the app's source live?**
 
-- One Next.js page in `packages/ui/` (the existing portal) at route `/dot`, feature-flagged
-  behind the presence of the DOT workspace in the runtime.
-- Renders the latest morning-brief run for the signed-in user (uses the existing `/api/runs`
-  endpoint filtered by `topology_id=morning-brief`).
-- One card per item, each with a `[Handle]` button that POSTs to the runtime's run-start endpoint
-  with the handle-item topology + the picked item id.
-- A right-rail per-item chat surface (see next section).
+- **Option A — `reference/apps/dot/` in this repo, as a peer to `packages/ui/`.** Built with
+  `pnpm` as its own package, deployed separately from `swarmkit serve`. Discovered next to the
+  reference workspace it's the frontend for. Same repo means CI can smoke-test the two together;
+  no new repo to maintain; establishes a pattern (reference *apps*, plural) other reference
+  workspaces can adopt when they want their own UI. **This is the first "reference app" —
+  worth naming as a pattern.**
+- **Option B — `apps/dot/` in swarmkit-skills.** Would live with the two MCP bundles, keeping
+  everything DOT-shaped together. Awkward fit though: swarmkit-skills is a *catalogue* of skills
+  and MCP wrappers, not an app registry, and adding front-end apps expands its scope in a way its
+  current curation-and-probe discipline does not cover.
+- **Option C — a new `dot-app` repo.** Full independence, own release cadence. Adds a repo, adds
+  a deploy story, adds cross-repo API-drift risk against SwarmKit's runtime. Worth doing when DOT
+  is a shipped product with users; overkill for the first reference.
 
-The app-shaped extraction (Option B) becomes its own design note if and when the panel starts
-feeling like a container fight.
+**Recommendation: A.** `reference/apps/dot/` — a peer package in this repo, built separately from
+the portal, deployed separately from the runtime, discoverable next to the workspace it belongs
+to. This is a new pattern (SwarmKit does not have a reference-app tree today) and it should be
+introduced with a short paragraph in `README.md` naming what the pattern is and when a workspace
+should have one.
+
+**How does the app get deployed?**
+
+- Built to a static bundle (`pnpm build` → `.next/` static export), shipped as either a small
+  Docker image or a static-site upload.
+- Talks to a SwarmKit runtime over HTTPS. Configurable base URL. Uses SwarmKit's OAuth flow for
+  its own auth (the user signs in to the runtime through the app's redirect; DOT gets a session
+  token; every API call to the runtime carries the user's identity). No auth reimplemented.
+- No dependency on being co-hosted with `swarmkit serve`. Runtime can be on one box; DOT app can
+  be on a laptop, a personal server, or a hosted URL.
+
+**What's in the MVP app itself?**
+
+- One page: today's brief. Latest morning-brief run for the signed-in user, rendered as a card
+  stack.
+- Per-item card with source snippet + buttons for the common per-item actions (Draft reply,
+  Retrieve related, Prep response, Summarise thread).
+- Right-rail scoped chat surface per item (see next section).
+- A tiny history strip along the top: last 7 briefs, click to jump back.
+
+That's it for MVP. No settings screen (settings are workspace YAML in the runtime). No
+notifications (the run trigger is a schedule in the workspace). No dashboards. The app is small
+on purpose — the whole point of the "reference *app*" pattern is that most of the intelligence
+lives in the workspace, not the UI.
 
 ### 4. Conversational — the delegation surface
 
@@ -268,10 +289,12 @@ Every question has a proposed default so the code path is unambiguous if the own
   — the reference topology gets published from the first working run rather than being written
   speculatively. *Default: owner-first.*
 
-- **Q6 — Frontend shape.**
-  Options as described in the Frontend section: (A) portal-mounted panel now, (B) separate first-
-  party app now, (C) portal panel now → extract to standalone app when the UX diverges enough to
-  justify the container fight. *Default: C — portal panel now, plan for extraction.*
+- **Q6 — Where does the app's source live?**
+  Frontend is definitely a separate app, not a portal panel — that decision was made after review
+  (DOT is a product, not a SwarmKit feature; the portal is for platform observability). What's
+  open: (A) `reference/apps/dot/` in this repo, establishing a new "reference app" pattern; (B)
+  `apps/dot/` in swarmkit-skills, wrong-shape fit for a catalogue; (C) its own `dot-app` repo,
+  full independence. *Default: A — peer package in this repo, deploys separately.*
 
 - **Q7 — Conversational surface.**
   Options: (a) buttons-only per item, (b) scoped chat only per item, (c) both, buttons-first.
@@ -288,8 +311,10 @@ Per the umbrella issue #990, updated after MCP-ecosystem discovery and the front
 3. `swarmkit-skills/google-calendar` bundle — same shape, Calendar surface.
 4. `reference/workspaces/dot/` scaffold: aggregator + ranker + morning-brief topology + handle-item
    sub-topology + per-item archetypes + HITL gate scaffold (no-op in read-only).
-5. `packages/ui/` — the `/dot` panel: latest morning-brief render, per-item buttons for the common
-   actions, scoped chat surface for freeform intent. Feature-flagged on workspace presence.
+5. `reference/apps/dot/` — a standalone Next.js app (peer to `packages/ui/`, not part of it):
+   today's brief page, per-item cards with buttons, scoped chat surface, history strip. Talks to
+   the SwarmKit runtime over HTTP. Deploys independently. Establishes the "reference app"
+   pattern; introduce it with a paragraph in `README.md`.
 6. `docs/dot-quickstart.md` + `just demo-dot` fixture-based demo.
 
 Each PR references this design note. The panel (PR 5) is the piece most likely to iterate after
