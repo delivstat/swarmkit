@@ -171,13 +171,50 @@ should have one.
 
 **How does the app get deployed?**
 
-- Built to a static bundle (`pnpm build` → `.next/` static export), shipped as either a small
-  Docker image or a static-site upload.
-- Talks to a SwarmKit runtime over HTTPS. Configurable base URL. Uses SwarmKit's OAuth flow for
-  its own auth (the user signs in to the runtime through the app's redirect; DOT gets a session
-  token; every API call to the runtime carries the user's identity). No auth reimplemented.
-- No dependency on being co-hosted with `swarmkit serve`. Runtime can be on one box; DOT app can
-  be on a laptop, a personal server, or a hosted URL.
+Same pattern every long-lived service in the surrounding ecosystem uses — **hosted Docker image
++ Dockerfile in the source tree + docker-compose.yml that composes it**. A `.next/` static
+export was under-specified: even the read-only DOT needs a server process for OAuth session
+cookies and API-proxy hygiene, and the operational story of "which port, restarts on crash,
+easy update path" wants Docker whether or not the app itself is trivial.
+
+Concrete shape:
+
+- `reference/apps/dot/Dockerfile` — Node runtime, `pnpm build`, `pnpm start` at container start.
+  Multi-stage build to keep the shipped image ~150 MB rather than dragging node_modules.
+- `reference/apps/dot/docker-compose.yml` — the DOT app as one service. Two profiles:
+  - **default** — DOT alone, pointing at an external `SWARMKIT_URL` (someone else's runtime, or
+    another compose stack).
+  - **`all-in-one`** — DOT + SwarmKit runtime side-by-side in the same stack, for the
+    single-owner case where both live on the same box.
+- Published image: `ghcr.io/delivstat/dot-app` (matching the org's existing package publishing
+  pattern), tagged per release, immutable.
+- Env the container reads:
+  - `SWARMKIT_URL` — required, no default (fail loudly at start if unset; a silent default is
+    worse than a startup error).
+  - `SESSION_SECRET` — required, no default, generated with `openssl rand -hex 32` at install.
+    Same discipline as the fleet panel's `SWARMKIT_CONTROL_PLANE_SECRET_KEY` (per
+    `feedback_fleet_panel_secret_key`); an ephemeral secret on every restart invalidates every
+    open session.
+  - `PORT` — default 3400; documented so a reverse proxy can be pointed at it.
+- One published port; no volumes required (DOT is stateless — every state item lives in the
+  runtime or in a browser cookie).
+- No dependency on being co-hosted with `swarmkit serve`. `SWARMKIT_URL` can be any reachable
+  runtime — same host, another host on the LAN, a tunnelled personal runtime, anything.
+
+**How does the user's browser get to it?**
+
+Same pattern as the fleet UI (`reference_fleet_launch_scripts`): the container binds a port, the
+user opens `http://<host>:3400`, DOT's own login flow redirects them to the SwarmKit runtime's
+OAuth for authentication (the user signs in to the runtime; DOT gets a session token for that
+identity), every API call to the runtime carries the user's identity. No auth reimplemented in
+DOT.
+
+**One-command up:**
+
+A `just dot-up` target at the repo root that runs `docker compose up -d` in
+`reference/apps/dot/`, matching the ergonomics of `./minder up` and the fleet launch scripts.
+This is small and worth having from day one — the operational story is much of what makes a
+reference app a *reference*.
 
 **What's in the MVP app itself?**
 
@@ -480,8 +517,11 @@ Per the umbrella issue #990, updated for the owner-only scope + self-extending d
 4. `reference/workspaces/dot/` scaffold: aggregator + ranker + morning-brief topology +
    handle-item sub-topology + per-item archetypes + HITL gate scaffold (no-op in read-only).
 5. `reference/apps/dot/` — a standalone Next.js app (peer to `packages/ui/`, not part of it):
-   today's brief page, per-item cards with buttons, scoped chat surface, history strip. Talks to
-   the SwarmKit runtime over HTTP. Deploys independently. Establishes the "reference app"
+   today's brief page, per-item cards with buttons, scoped chat surface, history strip. Ships as
+   a **hosted Docker image (`ghcr.io/delivstat/dot-app`) with a Dockerfile in the source tree and
+   a `docker-compose.yml`** (default profile: DOT alone pointing at an external `SWARMKIT_URL`;
+   `all-in-one` profile: DOT + SwarmKit runtime side-by-side). `just dot-up` target for one-
+   command deployment. Talks to the SwarmKit runtime over HTTP. Establishes the "reference app"
    pattern; introduce it with a paragraph in `README.md`.
 6. **Sandbox lifecycle for authored artefacts** — the `status: draft` marker on authored
    artefacts, the runtime's sandbox-run mode (side-effect writes refused), the audit log
