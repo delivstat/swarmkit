@@ -22,6 +22,9 @@ if (!password) {
 }
 const salt = randomBytes(16);
 const hash = scryptSync(password, salt, KEYLEN, { N, r: R, p: P });
-process.stdout.write(
-	`scrypt$${N}$${R}$${P}$${salt.toString("base64")}$${hash.toString("base64")}\n`,
-);
+const raw = `scrypt$${N}$${R}$${P}$${salt.toString("base64")}$${hash.toString("base64")}`;
+// Next.js's env loader (@next/env) does $VAR expansion on .env files, so the
+// unescaped '$' segments in our hash get eaten. Print the value pre-escaped and
+// double-quoted so the user can paste it straight after `DOT_OWNER_PASSWORD_HASH=`.
+const escaped = raw.replaceAll("$", "\\$");
+process.stdout.write(`"${escaped}"\n`);
