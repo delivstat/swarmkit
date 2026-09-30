@@ -1,13 +1,17 @@
-// Login — the unauthenticated entry point. Scaffold; the form + POST /api/auth/login land in
-// commit 2. See design/details/dot-app.md §3.1.
-export default function Login() {
+import { LoginForm } from "./login-form";
+
+export default async function Login({
+	searchParams,
+}: { searchParams: Promise<{ next?: string }> }) {
+	const { next } = await searchParams;
 	return (
 		<main className="flex min-h-screen items-center justify-center px-4">
 			<div className="w-full max-w-sm">
 				<h1 className="text-2xl font-semibold tracking-tight">DOT — sign in</h1>
-				<p className="mt-2 text-sm text-muted-foreground">
-					Scaffold. Form lands in commit 2.
+				<p className="mt-1 text-sm text-muted-foreground">
+					Owner-only. Credentials come from your <code>.env</code>.
 				</p>
+				<LoginForm next={next ?? "/"} />
 			</div>
 		</main>
 	);

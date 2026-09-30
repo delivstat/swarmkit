@@ -5,12 +5,13 @@ served as a Docker image. Full design at [`design/details/dot-app.md`](../../../
 
 ## Status
 
-**Scaffold** (commit 1 of PR 5). `pnpm dev` boots a blank shell of every route; each route
-carries a placeholder saying which subsequent commit will fill it in.
+**Auth** (commit 2 of PR 5). `/login` + `/api/auth/{login,logout,whoami}` +
+signed-cookie sessions + owner-scoped middleware. Copy `.env.example` to `.env`,
+mint a password hash with `scripts/hash-password.mjs`, and `pnpm dev` gets you to
+a real sign-in round-trip. Every non-`/login` route redirects to sign-in.
 
 Next commits (per the design note's split):
 
-2. **Auth** — `/login` form, `/api/auth/*` routes, session cookie helpers.
 3. **Today's brief (static)** — card stack against a hardcoded fixture.
 4. **Today's brief (live)** — wires to the runtime's `POST /api/mcp/{server_id}/invoke` (shipped
    in v1.260.0) for the fast-lane pre-fetch.
@@ -22,12 +23,20 @@ Next commits (per the design note's split):
 10. **Dockerfile + compose + a one-command boot target** — deployment surface.
 11. **README + `docs/dot-quickstart.md`** — end-to-end quickstart.
 
-## Local dev (when there is something to see)
+## Local dev
 
 ```bash
+cp reference/apps/dot/.env.example reference/apps/dot/.env
+# fill in DOT_OWNER_PASSWORD_HASH + SESSION_SECRET (instructions in the file)
 pnpm install
 pnpm --filter @swarmkit/dot dev
-# → http://localhost:3400
+# → http://localhost:3400 → /login
+```
+
+Mint a password hash without leaking to shell history:
+
+```bash
+printf '%s' 'your password' | node reference/apps/dot/scripts/hash-password.mjs
 ```
 
 ## Layout
