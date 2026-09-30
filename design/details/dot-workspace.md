@@ -2,9 +2,10 @@
 
 **Status:** design (issue #990).
 **Design references:** [[mcp-oauth]] for the per-user OAuth binding; §8.5 (`GovernanceProvider`),
-§8.7 (structural approval scopes) for the HITL gates. The DOT concept originates in the "Pro User
-Files" article on the Daily Optimization Tracker — the mechanism is generic; the topology is the
-point.
+§8.7 (structural approval scopes) for the HITL gates. The DOT concept originates in
+[*How Dominique Rebuilt Her Morning Around AI*](https://www.linkedin.com/pulse/how-dominique-rebuilt-her-morning-around-ai-chaithra-madan-qpmbc/)
+by Chaithra Madan — the mechanism there is generic; what this note designs is a SwarmKit
+implementation of it as a shipped reference.
 
 ## Goal
 
@@ -26,9 +27,12 @@ workflow tools, and DOT is the first.
 
 - **Not an email client, calendar app, or virtual assistant.** DOT sits alongside those, reading
   them; it does not replace them.
-- **Not Minder-shaped.** Minder is a product built with SwarmKit and lives in its own repo. DOT is
-  a reference workspace + supporting MCP bundles, distributed like `code-review.yaml` and
-  `knowledge-curator.yaml` — in-tree.
+- **Not a monolithic vertical product.** Products built on top of SwarmKit (the runtime as a
+  library, a custom domain UI on top) live in their own repos and ship as products. DOT is
+  distributed as a reference workspace + supporting MCP bundles, in-tree, next to
+  `code-review.yaml` and `knowledge-curator.yaml`. The optional first-party app in front of it
+  (see below) is scoped to what the reference needs to be *usable*, not to compete with any
+  domain-specific product.
 - **Not a Gmail / Google Calendar reimplementation.** The MCP bundles curate existing servers
   (Google's own remote MCP servers by default, community options as fallback) and add manifests +
   liveness probes. Zero API-wrapper code lives in swarmkit-skills.
@@ -100,18 +104,99 @@ reference/workspaces/dot/
 
 The morning-brief topology has a `supervisor-leader` root, a `context-aggregator` worker (calls
 Gmail + Calendar MCPs), and an `item-ranker` worker whose output is a structured list of ≤10
-items. The output is committed to the audit trail and surfaced to the human via the portal — no
-autonomous action taken yet.
+items. The output is committed to the audit trail and surfaced to the human (where — see the
+frontend section below); no autonomous action is taken.
 
 The handle-item topology is invoked when the human picks an item. It takes the item id + the
 aggregator's context and dispatches to the right per-item archetype (draft an email, prep a
 meeting, retrieve a past conversation). Each per-item action goes through a HITL gate before any
 outbound effect.
 
-### 3. Documentation + demo
+### 3. Frontend — what the user actually sees
+
+**In read-only Phase 1, without a UI, the artifacts already exist.** A morning-brief run produces:
+
+- A ranked list of ≤10 items with source references (message ids, event ids, thread ids).
+- A structured JSON output committed to the audit log.
+- Per-item context bundles the handle-item topology can pick up.
+
+That is enough to be inspectable in the portal's existing runs view. It is not enough to be
+*useful* — nobody starts their morning by reading a JSON blob in a run tree. So the frontend
+decision is between three real options:
+
+- **Option A — portal-mounted panel.** Add a first-class `Brief` tab to `swarmkit-webui` that
+  renders the latest morning-brief output for the signed-in user, with per-item click-through to
+  invoke the handle-item topology. Cheapest to build; lives with the runtime; benefits every user
+  who runs DOT. Bounds what the panel can do to what the portal already knows how to render.
+- **Option B — separate first-party app.** A dedicated SPA (call it `dot-app`) sitting alongside
+  the portal, using SwarmKit's HTTP API as its backend the same way a product built on the
+  runtime would. Freer to iterate on the UX (morning-ritual affordances, notifications, per-item
+  chat), harder to keep in step with runtime API changes, adds a repo to maintain. This is the
+  shape products like Minder use — swarmkit-runtime as a library + a domain-specific webapp on
+  top.
+- **Option C — start with A, plan for B.** Ship the portal panel first (unblocks personal use,
+  validates the shape), extract to a standalone app when the UX diverges enough from the portal
+  that the panel starts fighting its container.
+
+**Recommendation: C.** The frontend is the fastest to iterate part of the whole project, and the
+worst possible mistake is to build a full app around a workspace before the workspace shape is
+right. A portal panel forces us to defend "would we really want a separate app for this?" every
+iteration — a question worth asking many times before answering yes. The panel is cheap; extract
+it only when it earns extraction.
+
+Concretely for MVP:
+
+- One Next.js page in `packages/ui/` (the existing portal) at route `/dot`, feature-flagged
+  behind the presence of the DOT workspace in the runtime.
+- Renders the latest morning-brief run for the signed-in user (uses the existing `/api/runs`
+  endpoint filtered by `topology_id=morning-brief`).
+- One card per item, each with a `[Handle]` button that POSTs to the runtime's run-start endpoint
+  with the handle-item topology + the picked item id.
+- A right-rail per-item chat surface (see next section).
+
+The app-shaped extraction (Option B) becomes its own design note if and when the panel starts
+feeling like a container fight.
+
+### 4. Conversational — the delegation surface
+
+The article's core loop is conversational: *"Draft this email... find that conversation... prep
+for the meeting."* The design question is: **what is the conversational surface, and what does it
+have access to?**
+
+Three shapes to choose from:
+
+- **Predefined actions per item.** Each item card carries a fixed set of buttons — `Draft reply`,
+  `Retrieve related`, `Prep response`, `Summarise thread`. Click → runs a specific per-item
+  archetype. No free-form input.
+- **Scoped chat per item.** Each item card has an inline chat surface. The user types
+  ("draft the reply but push back on the timeline"). That prompt goes to a chat archetype that
+  has access to the item's context + the workspace's Gmail/Calendar tools, and runs the
+  handle-item topology with the free-form intent as an argument. Not "chat with DOT the AI"; chat
+  *about this item*.
+- **Both.** Buttons for the 3-5 common cases (fast path, no typing needed), scoped chat for
+  everything else. The chat drops the friction floor without making common actions require
+  typing.
+
+**Recommendation: both, buttons-first.** The article's user experience is built on speed —
+Dominique picks an item and delegates *now*, she doesn't compose a prompt every time. Buttons win
+for the common cases; scoped chat covers the long tail.
+
+Mechanism: the per-item chat is not a new primitive. Every SwarmKit archetype that takes a
+`prompt` argument can drive this — a `handle-item` invocation with `{item_id, user_intent:
+"draft the reply but push back on the timeline"}` compiles to the same topology run a button
+would. The chat surface is a small React component in the panel; the backend is the runtime we
+already have.
+
+**What the conversation is *not*:** it is not a general-purpose assistant. There is no
+"Chat with DOT" surface at the top of the app. Every chat is scoped to an item, uses only that
+item's context (plus workspace-level Gmail/Calendar access), and produces artifacts (drafts,
+prep notes) that the human reviews before anything reaches an outbound channel. The scoping is a
+feature — it bounds what a compromised prompt can do to what one specific item is about.
+
+### 5. Documentation + demo
 
 - `docs/dot-quickstart.md` — how to connect Gmail + Calendar through the portal, run the morning
-  brief, inspect the run tree.
+  brief, use the panel, inspect the run tree.
 - `just demo-dot` — end-to-end target that runs against a demo account fixture (a small pre-canned
   set of inbox + calendar JSON responses); no real accounts needed for CI.
 
@@ -183,9 +268,19 @@ Every question has a proposed default so the code path is unambiguous if the own
   — the reference topology gets published from the first working run rather than being written
   speculatively. *Default: owner-first.*
 
+- **Q6 — Frontend shape.**
+  Options as described in the Frontend section: (A) portal-mounted panel now, (B) separate first-
+  party app now, (C) portal panel now → extract to standalone app when the UX diverges enough to
+  justify the container fight. *Default: C — portal panel now, plan for extraction.*
+
+- **Q7 — Conversational surface.**
+  Options: (a) buttons-only per item, (b) scoped chat only per item, (c) both, buttons-first.
+  Neither is a general-purpose "Chat with DOT" surface — the scoping is a feature. *Default: c —
+  buttons for common actions, chat for the long tail.*
+
 ## Split for reviewability
 
-Per the umbrella issue #990, updated after MCP-ecosystem discovery — five PRs (down from six):
+Per the umbrella issue #990, updated after MCP-ecosystem discovery and the frontend decision:
 
 1. This design note (design-only PR, reviewed before implementation).
 2. `swarmkit-skills/gmail` bundle — pack.yaml pointing at Google's remote server (with community
@@ -193,10 +288,13 @@ Per the umbrella issue #990, updated after MCP-ecosystem discovery — five PRs 
 3. `swarmkit-skills/google-calendar` bundle — same shape, Calendar surface.
 4. `reference/workspaces/dot/` scaffold: aggregator + ranker + morning-brief topology + handle-item
    sub-topology + per-item archetypes + HITL gate scaffold (no-op in read-only).
-5. `docs/dot-quickstart.md` + `just demo-dot` fixture-based demo.
+5. `packages/ui/` — the `/dot` panel: latest morning-brief render, per-item buttons for the common
+   actions, scoped chat surface for freeform intent. Feature-flagged on workspace presence.
+6. `docs/dot-quickstart.md` + `just demo-dot` fixture-based demo.
 
-The old PRs 4 and 5 merge — the archetypes and handle-item topology are small enough to land
-together against a design that has already been agreed. Each PR references this design note.
+Each PR references this design note. The panel (PR 5) is the piece most likely to iterate after
+first use — deliberately scoped small so we can rewrite it once we have real morning-run
+experience.
 
 ## Test plan
 
