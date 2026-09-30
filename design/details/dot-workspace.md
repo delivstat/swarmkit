@@ -9,19 +9,29 @@ implementation of it as a shipped reference.
 
 ## Goal
 
-A reference workspace, shipped as YAML, that pulls a user's morning context (inbox, calendar,
-recent conversations), surfaces a ranked list of actionable items, and — with human approval —
-delegates each item to a small archetype (draft, retrieve, summarise, propose). Two things at
-once:
+A reference workspace + companion application, primarily for the workspace owner's own use, that:
 
-1. A genuinely useful personal-productivity tool for someone who copies the workspace and connects
-   their accounts.
+- Pulls the owner's morning context (inbox, calendar, recent conversations).
+- Surfaces a ranked list of actionable items.
+- Delegates each item to a small archetype (draft, retrieve, summarise, propose) with human
+  approval before any outbound effect.
+- **Extends itself.** Both DOT's SwarmKit workspace (new archetypes / topologies / MCP
+  integrations) and DOT's own UI (new per-item plugins) can be authored *from within the app*,
+  through SwarmKit's shipped authoring machinery — see "Self-extending" below.
+
+Three things at once:
+
+1. A genuinely useful personal-productivity tool for the owner.
 2. The flagship demonstration of SwarmKit's per-user OAuth surface (#976, #982) — currently
    shipped, currently unshowcased.
+3. **A living proof of SwarmKit's third pillar** — "swarms grow through human-approved
+   authoring" — applied recursively: DOT grows its own capabilities by authoring, and grows the
+   app itself by authoring.
 
-The mechanism is the point. If everything a DOT does can be expressed as topology + archetypes +
-credentials + HITL gates, then SwarmKit is the right platform for a whole class of personal
-workflow tools, and DOT is the first.
+The mechanism is the point. If everything a DOT does — including extending itself — can be
+expressed as topology + archetypes + credentials + HITL gates + workspace-scoped plugin
+manifests, then SwarmKit is the right platform for a whole class of personal workflow tools, and
+DOT is the first.
 
 ## Non-goals
 
@@ -38,6 +48,11 @@ workflow tools, and DOT is the first.
   liveness probes. Zero API-wrapper code lives in swarmkit-skills.
 - **Not send-first.** The MVP is deliberately read-only. Read-write staging is called out below
   and is a separate design conversation.
+- **Not a general-purpose product.** Owner-first, and owner-only for the foreseeable future. If
+  DOT ever grows a wider user base that changes the calculus (governance for shared plugins,
+  migration for user-authored manifests, safety review for authored artefacts), that becomes its
+  own design conversation. The current design is deliberately not paying for those affordances
+  yet.
 
 ## Shape
 
@@ -221,6 +236,151 @@ feature — it bounds what a compromised prompt can do to what one specific item
 - `just demo-dot` — end-to-end target that runs against a demo account fixture (a small pre-canned
   set of inbox + calendar JSON responses); no real accounts needed for CI.
 
+## Self-extending — the recursive authoring loop
+
+The most interesting property of a DOT built on SwarmKit isn't the morning brief. It's that
+**the app can extend itself, using SwarmKit's own authoring machinery, at two layers.** This is
+SwarmKit's third pillar — "swarms grow through human-approved authoring" — applied recursively.
+
+### Layer 1 — DOT authors new SwarmKit workspace capabilities
+
+The owner, using DOT: *"I want to prep for board meetings differently — pull the deck, the last
+three financial reports, the last board pack."*
+
+DOT invokes SwarmKit's `skill-authoring` topology (`reference/topologies/skill-authoring.yaml` —
+already shipped). The authoring topology proposes a new archetype + supporting topology, the
+owner reviews, publishes to DOT's workspace. Next time an item in the morning brief is a board
+meeting, the new archetype runs.
+
+- **Zero framework work to enable this.** `skill-authoring` exists; the runtime knows how to
+  execute it; the workspace can be extended live.
+- **DOT app's role**: knows how to invoke `skill-authoring` and where in its workspace the
+  authored artifacts land. Renders the review step in-app so the owner never leaves the DOT
+  container to author.
+
+### Layer 2 — DOT authors its own UI plugins
+
+The owner, using DOT: *"Whenever an item is a customer support ticket, add a button that shows
+the customer's account state alongside the ticket."*
+
+**DOT plugins are workspace YAML manifests.** No JavaScript ever ships to extend DOT. A plugin
+manifest declares which items it applies to, what button it adds, what topology to invoke on
+click, and how to render the result — from a fixed set of `render_as` templates the manifest
+chooses from. The DOT app hot-reads its plugin registry from the workspace.
+
+Sketch of the schema (real one is a separate design note — see below):
+
+```yaml
+apiVersion: dot/v1
+kind: DotPlugin
+metadata: { id: board-meeting-prep }
+applies_to:
+  item_type: meeting                    # 'email' | 'meeting' | 'task' | future kinds
+  matches: "board of directors"         # optional regex / prompt-classifier
+button_label: "Prep the board pack"
+invoke_topology: board-meeting-prep     # a topology in the same workspace
+render_as: card_with_attachments        # from a fixed set of built-in templates
+```
+
+Adding a Layer-2 capability = author a plugin manifest. **A dedicated `dot-authoring` topology
+lives in DOT's workspace** for this purpose. It is authored via `skill-authoring` in the first
+place (same primitive; recursion closes cleanly). Once it exists, the owner in DOT can say *"add a
+plugin that does X"*, `dot-authoring` produces a manifest + supporting topology, the owner
+reviews, DOT hot-reloads.
+
+### Sandbox — authored artefacts are draft until the owner promotes them
+
+**Nothing an authoring topology produces goes live automatically.** This is the load-bearing
+safety property for the whole recursive story. An authored archetype, topology, or plugin
+manifest lands in a **draft** state; it becomes **active** only after the owner has run it in the
+sandbox at least once and explicitly promoted it. Without this, one bad authoring prompt is one
+broken morning brief away, and the promise of "extend on demand" turns into "break on demand."
+
+Concrete lifecycle for every authored artefact:
+
+1. **Authored** — the topology (`skill-authoring` or `dot-authoring`) writes the artefact into
+   the workspace with a `status: draft` marker. Draft artefacts are visible in the DOT app but
+   segregated: a "Drafts" affordance rather than appearing on regular items automatically.
+2. **Sandboxed** — the owner triggers the draft explicitly against a chosen item (or a
+   past-brief item that has been kept for replay). The runtime executes it in an isolated run —
+   same as any other run, but the outputs are labelled "sandbox" and side-effect writes (Gmail
+   send, Calendar mutate) are refused by the runtime even in Phase 4+ where those would normally
+   be allowed. Sandboxed runs land in the audit log with an explicit `sandbox: true` flag.
+3. **Reviewed** — the owner reads the sandbox output, decides one of:
+   - **Promote** — set `status: active`. The DOT app hot-reloads; from now on the plugin fires
+     on qualifying items, or the archetype is resolvable by name in the workspace.
+   - **Refine** — hand the sandbox output back to the authoring topology as a critique
+     (*"the summary missed X, add a step that Y"*), which produces a new draft that supersedes
+     the first.
+   - **Discard** — delete the draft. No trace beyond the audit log.
+4. **Rollback** — an active plugin/artefact can be flipped back to `draft` with a click. Not a
+   destructive delete; the definition survives so the owner can refine and re-promote.
+
+This maps onto existing SwarmKit machinery:
+
+- **Canary** — the runtime already has canary topology promotion endpoints (`/canary/*` in the
+  HTTP API). The same pattern applies to DOT: an authored topology is a canary until promoted.
+- **Approvals queue** — `/api/ops/approvals` already exists; a `promote_to_active` action fits
+  naturally as a review item.
+- **Audit log** — every draft, every sandbox run, every promote/refine/discard/rollback lands in
+  the audit log so nothing about the recursive loop is invisible.
+
+The DOT app's job is to expose all four states as first-class UI: a Drafts drawer, a
+one-click sandbox trigger, a promote/refine/discard triple on each sandboxed result, a rollback
+affordance on active plugins.
+
+### Why this is architecturally clean, not just clever
+
+- **Both layers use the same primitive.** Workspace YAML + an authoring topology → draft
+  artefact → sandbox → owner promotes → active. There is no second mechanism.
+- **UI-as-data.** Layer 2 is a direct extension of SwarmKit's topology-as-data pillar into the
+  application layer.
+- **Governance is uniform.** Every authored artefact — SwarmKit-side or DOT-side — hits the same
+  draft/sandbox/promote flow, the same audit log, the same validator. No new governance seam to
+  design; the sandbox is a `status` field + a runtime check, not a new subsystem.
+- **The sandbox is what makes "self-extending" not "self-breaking."** Without it, recursive
+  authoring is a Rube Goldberg machine one prompt away from failure. With it, the failure mode
+  of a bad draft is a bad sandbox run — visible, disposable, no impact on the working app.
+- **Owner-only removes migration pain.** User-authored plugins in a shared product would need
+  schema-migration discipline for every version bump. Owner-only means the owner rewrites their
+  own three manifests if the schema changes. Cheap.
+
+### Staging into sprints, not phases
+
+Because the owner is also the developer and the only user, "phases" collapse into "commits I
+merge as they land." What still matters is dependency order:
+
+- **Sprint 1** — MCP bundles (Gmail + Calendar) + read-only workspace (aggregate → rank →
+  present) + minimal DOT app (brief page, a fixed handful of built-in per-item buttons).
+- **Sprint 2** — **Draft/sandbox/promote lifecycle for workspace artefacts.** The `status: draft`
+  marker + the runtime's sandbox-run mode + the app's Drafts drawer + promote/refine/discard/
+  rollback affordances. Ships BEFORE any authoring feature lands so the safety property is
+  established as invariant, not retrofitted.
+- **Sprint 3** — **Layer 1 self-authoring wired into DOT.** DOT can invoke `skill-authoring` to
+  produce draft archetypes/topologies. Sandbox lifecycle from Sprint 2 covers them from day one.
+- **Sprint 4** — Plugin manifest schema + registry + hot-reload. Fixed `render_as` templates.
+  Manifests start as `status: draft` and go through the same sandbox → promote flow. Owner writes
+  a plugin manifest by hand first to prove the schema is right against a real case.
+- **Sprint 5** — `dot-authoring` topology in the workspace. Recursive loop closes: the owner asks
+  DOT to author a new DOT capability, DOT does, it lands as a draft, sandbox runs, owner
+  reviews, DOT hot-reloads.
+- **Sprint 6+** — send-with-approval and schedule-with-approval, invoking Gmail / Calendar mutate
+  scopes with human confirmation before every outbound effect. Sandboxed drafts continue to be
+  refused these scopes even in this phase — the sandbox is stricter than production, always.
+
+### What follows (deliberately not this design note)
+
+- **The plugin manifest schema** — load-bearing decision; needs its own note before Sprint 3
+  code. Draft the schema against three concrete plugin ideas (e.g. board-meeting-prep,
+  customer-ticket-context, weekly-writeup) so the schema is shaped by real cases rather than
+  imagined ones.
+- **The `dot-plugins` repo split** — probably worth doing when the third or fourth plugin arrives
+  (plugins accumulate, workspace stays tidy, plugin repo becomes the natural sharing surface if
+  and when other people show up). Not now.
+- **The `render_as` template catalogue** — starts as ~three built-ins (`card_with_attachments`,
+  `card_with_metrics`, `card_with_chat`); grows as plugin cases push for new shapes. Every new
+  template is a small first-party addition; plugins never define their own rendering code.
+
 ## OAuth path — where the existing seam does the work
 
 The OAuth story is entirely reuse. From [[mcp-oauth]] and the shipped implementation:
@@ -284,10 +444,9 @@ Every question has a proposed default so the code path is unambiguous if the own
   a documented cloud override.*
 
 - **Q5 — Who is the user for MVP?**
-  Options: (a) the workspace owner personally (real run against real accounts, evidence the
-  platform works), (b) a public reference (people copy and run). Proposed: **(a) first, then (b)**
-  — the reference topology gets published from the first working run rather than being written
-  speculatively. *Default: owner-first.*
+  **Committed: owner-only** for the foreseeable future. Not planning around a public user base;
+  self-authoring is the point of the experiment, and the sandbox mechanism (below) is what makes
+  it safe for one user rather than what it would need to be safe for many.
 
 - **Q6 — Where does the app's source live?**
   Frontend is definitely a separate app, not a portal panel — that decision was made after review
@@ -301,25 +460,48 @@ Every question has a proposed default so the code path is unambiguous if the own
   Neither is a general-purpose "Chat with DOT" surface — the scoping is a feature. *Default: c —
   buttons for common actions, chat for the long tail.*
 
+- **Q8 — Sandbox mechanism for authored artefacts.**
+  Options: (a) reuse SwarmKit's existing canary mechanism (`/canary/*` endpoints) — draft
+  artefacts are canary-promoted; free but constrained to canary's shape; (b) add a `status`
+  field to each authored artefact + a runtime sandbox-run mode + a promote/refine/discard flow —
+  more work now, purpose-built for the DOT case; (c) both — canary for topologies, `status` for
+  DOT plugin manifests. Proposed: **(c)** — canary is the right shape for topology-level
+  artefacts and already ships; DOT plugin manifests are simpler and don't need canary's full
+  weight. *Default: c — canary for SwarmKit-side artefacts, status field for DOT-side.*
+
 ## Split for reviewability
 
-Per the umbrella issue #990, updated after MCP-ecosystem discovery and the frontend decision:
+Per the umbrella issue #990, updated for the owner-only scope + self-extending direction:
 
 1. This design note (design-only PR, reviewed before implementation).
 2. `swarmkit-skills/gmail` bundle — pack.yaml pointing at Google's remote server (with community
    fallback), OAuth wiring against SwarmKit's existing `source: oauth`, nightly probe.
 3. `swarmkit-skills/google-calendar` bundle — same shape, Calendar surface.
-4. `reference/workspaces/dot/` scaffold: aggregator + ranker + morning-brief topology + handle-item
-   sub-topology + per-item archetypes + HITL gate scaffold (no-op in read-only).
+4. `reference/workspaces/dot/` scaffold: aggregator + ranker + morning-brief topology +
+   handle-item sub-topology + per-item archetypes + HITL gate scaffold (no-op in read-only).
 5. `reference/apps/dot/` — a standalone Next.js app (peer to `packages/ui/`, not part of it):
    today's brief page, per-item cards with buttons, scoped chat surface, history strip. Talks to
    the SwarmKit runtime over HTTP. Deploys independently. Establishes the "reference app"
    pattern; introduce it with a paragraph in `README.md`.
-6. `docs/dot-quickstart.md` + `just demo-dot` fixture-based demo.
+6. **Sandbox lifecycle for authored artefacts** — the `status: draft` marker on authored
+   artefacts, the runtime's sandbox-run mode (side-effect writes refused), the audit log
+   `sandbox: true` flag. Ships BEFORE any authoring feature so the safety property is invariant,
+   not retrofitted. Uses canary for topologies (already shipped) + a small `status` field for DOT
+   plugin manifests (per Q8).
+7. **Layer 1 authoring wired into DOT** — DOT app invokes `skill-authoring`; drafts land in the
+   Drafts drawer; sandbox / promote / refine / discard / rollback affordances.
+8. **DOT plugin manifest schema + registry + hot-reload** — the schema drafted against three
+   concrete plugin ideas (board-meeting-prep, customer-ticket-context, weekly-writeup); the
+   fixed `render_as` template catalogue starts at ~3.
+9. **`dot-authoring` topology + Layer 2 recursive loop closed** — the owner asks DOT to author a
+   new DOT capability, `dot-authoring` produces a draft plugin manifest, sandbox → promote →
+   hot-reload.
+10. `docs/dot-quickstart.md` + `just demo-dot` fixture-based demo.
 
-Each PR references this design note. The panel (PR 5) is the piece most likely to iterate after
-first use — deliberately scoped small so we can rewrite it once we have real morning-run
-experience.
+The app (PR 5) is the piece most likely to iterate after first use — deliberately scoped small
+so we can rewrite it as the recursive loop teaches us what an "extend-me" DOT app actually needs.
+The plugin manifest schema (PR 8) gets its own design note before code, drafted against three
+real plugin cases.
 
 ## Test plan
 
