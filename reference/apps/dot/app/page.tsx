@@ -1,12 +1,40 @@
-// Today's brief — the default authenticated route. Scaffold only in this commit; the card stack
-// and refresh affordance land in the "brief static" commit. See design/details/dot-app.md §3.
+import { HistoryStrip } from "@/components/history-strip";
+import { ItemCard } from "@/components/item-card";
+import { orderedItems, staticBrief, staticHistory } from "@/lib/fixtures";
+import { formatBriefDate } from "@/lib/format";
+
+// Static render (design/details/dot-app.md §Commit split step 3). Commit 4 swaps the fixture
+// for a real fetch against POST /api/mcp/{server_id}/invoke via the runtime proxy.
 export default function TodaysBrief() {
+	const items = orderedItems(staticBrief);
 	return (
-		<main className="mx-auto max-w-screen-md px-4 py-8 md:py-12">
-			<h1 className="text-2xl font-semibold tracking-tight md:text-3xl">DOT</h1>
-			<p className="mt-2 text-sm text-muted-foreground">
-				Scaffold. Today's brief lands in commit 4 (per
-				design/details/dot-app.md).
+		<main className="mx-auto max-w-screen-md px-4 py-6 md:py-10">
+			<header className="flex items-center justify-between gap-3">
+				<div>
+					<p className="text-xs uppercase tracking-wide text-muted-foreground">
+						DOT · today's brief
+					</p>
+					<h1 className="text-xl font-semibold tracking-tight md:text-2xl">
+						{formatBriefDate(staticBrief.generatedAt)}
+					</h1>
+				</div>
+				<button
+					type="button"
+					className="inline-flex min-h-11 items-center rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+					disabled
+					aria-label="Refresh brief"
+				>
+					Refresh
+				</button>
+			</header>
+			<section aria-label="Ranked items" className="mt-6 space-y-3">
+				{items.map((item) => (
+					<ItemCard key={item.id} item={item} />
+				))}
+			</section>
+			<HistoryStrip entries={staticHistory} />
+			<p className="mt-8 text-xs text-muted-foreground">
+				Static fixture. Live wiring lands in commit 4.
 			</p>
 		</main>
 	);
