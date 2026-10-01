@@ -106,6 +106,29 @@ export class SwarmKitClient {
 		return (await res.json()) as AuditDetail;
 	}
 
+	async getUsageSummary(): Promise<unknown> {
+		return this.json("/api/usage/summary");
+	}
+
+	async getUsageDaily(window: number): Promise<unknown> {
+		return this.json(`/api/usage/daily?window=${window}`);
+	}
+
+	async getUsageBreakdown(by: string, window: string): Promise<unknown> {
+		return this.json(
+			`/api/usage/breakdown?by=${encodeURIComponent(by)}&window=${encodeURIComponent(window)}`,
+		);
+	}
+
+	private async json<T = unknown>(path: string): Promise<T> {
+		const url = new URL(path, this.opts.baseUrl);
+		const res = await fetch(url, { headers: this.headers() });
+		if (!res.ok) {
+			throw new SwarmKitError(`${path} failed: ${res.status}`, res.status);
+		}
+		return (await res.json()) as T;
+	}
+
 	async getWorkspaceConfig<T = unknown>(): Promise<T> {
 		const url = new URL("/api/workspace-config", this.opts.baseUrl);
 		const res = await fetch(url, { headers: this.headers() });

@@ -85,6 +85,84 @@ const FIXTURES = {
 const OWNER_CREDS = new Map(); // owner -> { provider -> { expires_at, expired } }
 const PENDING = new Map(); // state -> { returnTo, provider }
 
+// Usage fixtures (design/details/dot-app.md §3.7). Deterministic pseudo-random daily series.
+function hashInt(seed, i) {
+	const x = Math.sin(seed * 9301 + i * 49297) * 0.5 + 0.5;
+	return x;
+}
+
+function usageDaily(window) {
+	const days = [];
+	const start = Date.now() - (window - 1) * 86_400_000;
+	for (let i = 0; i < window; i++) {
+		const d = new Date(start + i * 86_400_000);
+		const base = 0.12 + hashInt(1, i) * 0.9 + (i > window - 3 ? 0.3 : 0);
+		const tokensIn = Math.round(2500 + hashInt(2, i) * 9500);
+		const tokensOut = Math.round(900 + hashInt(3, i) * 3100);
+		days.push({
+			date: d.toISOString().slice(0, 10),
+			tokensIn,
+			tokensOut,
+			costUsd: Math.round(base * 100) / 100,
+		});
+	}
+	return { days };
+}
+
+function sumRange(window) {
+	return usageDaily(window).days.reduce(
+		(acc, d) => ({
+			tokensIn: acc.tokensIn + d.tokensIn,
+			tokensOut: acc.tokensOut + d.tokensOut,
+			costUsd: Math.round((acc.costUsd + d.costUsd) * 100) / 100,
+		}),
+		{ tokensIn: 0, tokensOut: 0, costUsd: 0 },
+	);
+}
+
+function usageSummary() {
+	const todaySrc = usageDaily(1).days[0];
+	const today = {
+		tokensIn: todaySrc.tokensIn,
+		tokensOut: todaySrc.tokensOut,
+		costUsd: todaySrc.costUsd,
+	};
+	const now = new Date();
+	const mtd = sumRange(now.getUTCDate());
+	const last30 = sumRange(30);
+	return { today, monthToDate: mtd, last30Days: last30 };
+}
+
+function usageBreakdown(by) {
+	if (by === "topology") {
+		return {
+			by,
+			rows: [
+				{
+					label: "morning-brief",
+					tokensIn: 42000,
+					tokensOut: 14000,
+					costUsd: 7.84,
+				},
+				{
+					label: "handle-item",
+					tokensIn: 71000,
+					tokensOut: 23500,
+					costUsd: 12.3,
+				},
+			],
+		};
+	}
+	return {
+		by,
+		rows: [
+			{ label: "anthropic", tokensIn: 61000, tokensOut: 18200, costUsd: 11.4 },
+			{ label: "openai", tokensIn: 32000, tokensOut: 11200, costUsd: 5.6 },
+			{ label: "ollama", tokensIn: 20000, tokensOut: 8100, costUsd: 0 },
+		],
+	};
+}
+
 // Audit-log fixtures for the Activity page (design/details/dot-app.md §3.6).
 const AUDIT_ENTRIES = [
 	{
@@ -254,6 +332,17 @@ const server = createServer((req, res) => {
 		}
 		res.writeHead(302, { Location: pending.returnTo });
 		return res.end();
+	}
+	if (req.method === "GET" && p === "/api/usage/summary") {
+		return json(res, 200, usageSummary());
+	}
+	if (req.method === "GET" && p === "/api/usage/daily") {
+		const window = Number(url.searchParams.get("window") ?? 30);
+		return json(res, 200, usageDaily(window));
+	}
+	if (req.method === "GET" && p === "/api/usage/breakdown") {
+		const by = url.searchParams.get("by") ?? "provider";
+		return json(res, 200, usageBreakdown(by));
 	}
 	if (req.method === "GET" && p === "/audit") {
 		const topologies = url.searchParams.getAll("topology");
