@@ -1,6 +1,6 @@
 # HTTP API
 
-Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 103 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
+Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 106 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
 
 Paths are relative to the server root. `{...}` segments are path parameters.
 
@@ -140,6 +140,9 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 | `PUT` | `/api/funnels/{funnel_id}` | Replace a funnel's YAML; validated before it is written. |
 | `GET` | `/api/funnels/{funnel_id}/yaml` | A funnel's YAML as written on disk. |
 | `POST` | `/api/mcp/{server_id}/invoke` | Invoke an MCP tool on the named server, with the owner's credential resolved by the |
+| `GET` | `/api/oauth/clients` | Registered OAuth clients, scrubbed of secrets. |
+| `POST` | `/api/oauth/clients` | Register an OAuth client the runtime will use to drive logins against a provider that |
+| `DELETE` | `/api/oauth/clients` | Forget a registered OAuth client. Takes the endpoint as a query parameter so the |
 | `GET` | `/api/oauth/credentials` | Stored tokens, as metadata. Never bytes. |
 | `DELETE` | `/api/oauth/credentials/{credential_id}` | Forget a token, and revoke it upstream where the provider supports revocation. |
 | `POST` | `/api/oauth/login` | Begin a login. Returns the URL the portal should open in a popup. |
