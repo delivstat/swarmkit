@@ -417,6 +417,12 @@ demo-code-review:
     @echo "── swarmkit run (code-review-swarm) ──"
     @uv run swarmkit run reference/ code-review --input "Review PR #49 on the repo delivstat/swarmkit. Fetch the PR details and provide a code review." --no-color
 
+# Persistent OAuth clients demo — register a Google-style client once, then drive a full
+# login round-trip through the runtime's OAuth routes against a mock provider.
+# Proves the client_secret stays encrypted at rest and never crosses the HTTP boundary.
+demo-oauth-desktop:
+    uv run python examples/oauth-persistent-client/demo.py
+
 # Build the Docker sandbox image for sandboxed MCP servers (design §8.8).
 # Swarm-authored servers run inside this container with --network=none.
 build-sandbox-image:
