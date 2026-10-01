@@ -1,3 +1,4 @@
+import { TopNav } from "@/components/top-nav";
 import { GeistSans } from "geist/font/sans";
 import type { Metadata, Viewport } from "next";
 import { Providers } from "./providers";
@@ -27,7 +28,10 @@ export default function RootLayout({
 	return (
 		<html lang="en" className={`dark ${GeistSans.className}`}>
 			<body>
-				<Providers>{children}</Providers>
+				<Providers>
+					<TopNav />
+					{children}
+				</Providers>
 			</body>
 		</html>
 	);
