@@ -426,6 +426,29 @@ build-sandbox-image:
 run *args:
     uv run swarmkit {{args}}
 
+# ---- DOT reference app (reference/apps/dot) ----
+
+# Boot DOT alone (connects to an external runtime whose URL + token sit in .env).
+dot-up:
+    docker compose -f reference/apps/dot/docker-compose.yml up -d
+
+# Boot DOT + a bundled swarmkit-runtime container on the same host.
+dot-up-all:
+    docker compose -f reference/apps/dot/docker-compose.yml --profile all-in-one up -d
+
+dot-down:
+    docker compose -f reference/apps/dot/docker-compose.yml down
+
+dot-logs:
+    docker compose -f reference/apps/dot/docker-compose.yml logs -f dot
+
+# Standalone dev stack: Next.js dev server + the mock SwarmKit runtime, both backgrounded.
+# Lets you demo DOT without the real runtime (design/details/dot-app.md Q4 default (b)).
+dot-dev:
+    cd reference/apps/dot && pnpm install
+    cd reference/apps/dot && pnpm mock-runtime &
+    cd reference/apps/dot && pnpm dev
+
 # ---- Cleanup ----
 
 clean:
