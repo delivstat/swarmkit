@@ -24,8 +24,16 @@ describe("session", () => {
 	it("rejects a tampered signature", async () => {
 		const { value } = await signSession("owner@example.com");
 		const [body, sig] = value.split(".");
-		const tampered = `${body}.${sig?.slice(0, -1)}A`;
-		expect(await verifySession(tampered)).toBeNull();
+		if (!sig) throw new Error("signSession produced no signature");
+		// Flip a middle char. Tampering the LAST char of a base64url-encoded HMAC-SHA256
+		// (43 chars) is non-deterministic — the final char only carries 2 significant bits plus
+		// 4 padding bits, so 4 of its 64 possible values decode to the same digest. Middle chars
+		// are fully meaningful.
+		const i = Math.floor(sig.length / 2);
+		const orig = sig[i];
+		const replacement = orig === "A" ? "B" : "A";
+		const tampered = `${sig.slice(0, i)}${replacement}${sig.slice(i + 1)}`;
+		expect(await verifySession(`${body}.${tampered}`)).toBeNull();
 	});
 
 	it("rejects an expired cookie", async () => {
