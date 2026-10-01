@@ -1,0 +1,49 @@
+name: dot-image
+
+# Build and publish the DOT reference-app image to GHCR on dot-v* tags. The runtime image lives
+# in a separate workflow and ships on its own cadence.
+on:
+  push:
+    tags:
+      - "dot-v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          REF="${{ github.ref_name }}"
+          echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "ref=${REF#dot-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: reference/apps/dot/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/dot-app:latest
+            ghcr.io/${{ github.repository_owner }}/dot-app:${{ steps.tags.outputs.ref }}
+            ghcr.io/${{ github.repository_owner }}/dot-app:${{ steps.tags.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

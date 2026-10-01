@@ -1,0 +1,34 @@
+# Default profile ("dot" only): DOT connects to an external runtime whose URL + token sit in
+# .env. all-in-one profile also boots a SwarmKit runtime container on the same network.
+#
+# Boot:
+#   just dot-up              # DOT alone
+#   just dot-up-all          # DOT + runtime
+#   just dot-down            # tear everything down
+#   just dot-logs            # tail DOT's logs
+
+services:
+  dot:
+    image: ghcr.io/delivstat/dot-app:latest
+    build:
+      context: ../../..
+      dockerfile: reference/apps/dot/Dockerfile
+    ports:
+      - "3400:3400"
+    env_file: .env
+    environment:
+      SWARMKIT_RUNTIME_URL: ${SWARMKIT_RUNTIME_URL:-http://swarmkit:8000}
+    restart: unless-stopped
+    depends_on:
+      swarmkit:
+        condition: service_started
+        required: false
+
+  swarmkit:
+    profiles: [all-in-one]
+    image: ghcr.io/delivstat/swarmkit-runtime:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
