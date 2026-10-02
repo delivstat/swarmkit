@@ -65,6 +65,16 @@ build: build-py build-js
 build-py:
     uv build --all-packages
 
+# Regenerate every CI-checked docs artifact in one shot. Adding an HTTP route silently breaks
+# both `docs/site/reference/http-api.md` (via scripts/gen_reference.py) and `llms-full.txt` +
+# `docs/site/llms-full.txt` (via scripts/build_llms_full.py); forgetting either turns CI red.
+# Run this after any change that affects routes, CLI commands, or published reference pages.
+regen-docs:
+    uv run python scripts/gen_reference.py
+    uv run python scripts/build_llms_full.py
+    cp llms.txt docs/site/llms.txt
+    @echo "regenerated: docs/site/reference/*.md, llms-full.txt, docs/site/llms-full.txt, docs/site/llms.txt"
+
 build-js:
     pnpm run build
 
@@ -416,6 +426,12 @@ demo-run:
 demo-code-review:
     @echo "── swarmkit run (code-review-swarm) ──"
     @uv run swarmkit run reference/ code-review --input "Review PR #49 on the repo delivstat/swarmkit. Fetch the PR details and provide a code review." --no-color
+
+# Persistent OAuth clients demo — register a Google-style client once, then drive a full
+# login round-trip through the runtime's OAuth routes against a mock provider.
+# Proves the client_secret stays encrypted at rest and never crosses the HTTP boundary.
+demo-oauth-desktop:
+    uv run python examples/oauth-persistent-client/demo.py
 
 # Build the Docker sandbox image for sandboxed MCP servers (design §8.8).
 # Swarm-authored servers run inside this container with --network=none.

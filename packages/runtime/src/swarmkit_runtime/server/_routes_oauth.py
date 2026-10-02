@@ -29,6 +29,7 @@ from swarmkit_runtime.oauth import (
     generate_verifier,
     register_client,
 )
+from swarmkit_runtime.oauth._client_store import CLIENT_TYPES, ClientStore
 
 logger = logging.getLogger("swarmkit.oauth")
 
@@ -41,6 +42,7 @@ class OAuthService:
 
     store: TokenStore
     pending: PendingLogins
+    clients: ClientStore | None = None
 
 
 def _owner_of(request: Request) -> str:
@@ -108,18 +110,30 @@ def _close_window(message: str, *, ok: bool) -> HTMLResponse:
 
 
 async def prepare_login(
-    body: dict[str, Any], redirect_uri: str, owner: str
+    body: dict[str, Any],
+    redirect_uri: str,
+    owner: str,
+    *,
+    clients: ClientStore | None = None,
 ) -> tuple[PendingLogin, str]:
     """Discover, register if needed, and build the authorization URL.
 
     Separate from the route so the discovery-and-registration path is testable without an app,
     which is where the fiddly parts are.
+
+    Resolution order for the OAuth client identity:
+      1. Body-supplied `client_id` wins (explicit over implicit). Logged at INFO so operators
+         can spot drift from a persistent registration.
+      2. Dynamic client registration via the provider's metadata.
+      3. A persistent client registered via `POST /api/oauth/clients` (if the client store is
+         bound). Carries a `client_secret` through to the token exchange when present.
     """
     credential_id = str(body.get("credential_id", "")).strip()
     endpoint = str(body.get("endpoint", "")).strip()
     if not credential_id or not endpoint:
         raise HTTPException(400, "credential_id and endpoint are required")
 
+    client_secret: str | None = None
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
         try:
             metadata = await discover_metadata(endpoint, client=client)
@@ -127,18 +141,28 @@ async def prepare_login(
             raise HTTPException(400, str(exc)) from exc
 
         client_id = str(body.get("client_id", "")).strip()
+        stored = clients.get(endpoint) if clients else None
+        if client_id and stored:
+            logger.info(
+                "OAuth login for %s: body client_id overrides persistent registration",
+                endpoint,
+            )
         if not client_id:
             try:
                 client_id = await register_client(
                     metadata, redirect_uri=redirect_uri, client=client
                 )
             except PermissionError as exc:
-                raise HTTPException(400, str(exc)) from exc
+                if not stored:
+                    raise HTTPException(400, str(exc)) from exc
+        if not client_id and stored:
+            client_id = stored.client_id
+            client_secret = stored.client_secret
         if not client_id:
             raise HTTPException(
                 400,
-                "This provider does not support dynamic client registration. Register SwarmKit "
-                "with it and pass the client_id.",
+                "This provider does not support dynamic client registration. Register the "
+                "OAuth client via POST /api/oauth/clients, or pass client_id in the login body.",
             )
 
     verifier = generate_verifier()
@@ -149,7 +173,13 @@ async def prepare_login(
         endpoint=endpoint,
         owner=owner,
         redirect_uri=redirect_uri,
-        metadata={**metadata, "client_id": client_id},
+        metadata={
+            **metadata,
+            "client_id": client_id,
+            # Kept in memory on the PendingLogin only; dropped once the window closes or the
+            # callback consumes it. The authoritative home is the ClientStore.
+            "client_secret": client_secret or "",
+        },
     )
     scopes = body.get("scopes") or metadata.get("scopes_supported") or []
     url = authorization_url(
@@ -165,7 +195,7 @@ async def prepare_login(
     return login, url
 
 
-def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:
+def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:  # noqa: PLR0915
     @app.get("/api/oauth/credentials")
     async def list_credentials() -> dict[str, Any]:
         """Stored tokens, as metadata. Never bytes."""
@@ -241,7 +271,9 @@ def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:
         # drifts from the actual origin fails at the redirect with a provider-side error nobody
         # can read.
         redirect_uri = str(request.base_url).rstrip("/") + CALLBACK_PATH
-        login, url = await prepare_login(body, redirect_uri, _owner_of(request))
+        login, url = await prepare_login(
+            body, redirect_uri, _owner_of(request), clients=service.clients
+        )
         service.pending.add(login)
         return {"authorization_url": url, "state": login.state}
 
@@ -273,6 +305,7 @@ def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:
                     code=code,
                     verifier=login.verifier,
                     client_id=str(login.metadata.get("client_id", "")),
+                    client_secret=str(login.metadata.get("client_secret", "")) or None,
                     redirect_uri=login.redirect_uri,
                     client=client,
                 )
@@ -300,6 +333,73 @@ def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:
         """Forget a token, and revoke it upstream where the provider supports revocation."""
         async with httpx.AsyncClient(timeout=10.0) as client:
             return await service.store.delete(credential_id, _owner_of(request), client=client)
+
+    @app.get("/api/oauth/clients")
+    async def list_oauth_clients() -> dict[str, Any]:
+        """Registered OAuth clients, scrubbed of secrets.
+
+        See design/details/oauth-persistent-clients.md.
+        """
+        if service.clients is None:
+            return {"clients": []}
+        return {
+            "clients": [
+                {
+                    "endpoint": c.endpoint,
+                    "client_id": c.client_id,
+                    "client_type": c.client_type,
+                    "display_name": c.display_name,
+                    "scopes": c.scopes,
+                    "created_at": c.created_at,
+                }
+                for c in service.clients.list_display()
+            ]
+        }
+
+    @app.post("/api/oauth/clients")
+    async def register_oauth_client(request: Request) -> dict[str, Any]:
+        """Register an OAuth client the runtime will use to drive logins against a provider that
+        does not support dynamic client registration.
+        """
+        if service.clients is None:
+            raise HTTPException(503, "persistent OAuth clients disabled (no workspace path)")
+        body = await request.json()
+        endpoint = str(body.get("endpoint", "")).strip()
+        client_id = str(body.get("client_id", "")).strip()
+        client_type = str(body.get("client_type", "")).strip() or "desktop"
+        display_name = str(body.get("display_name", "")).strip() or endpoint
+        secret = body.get("client_secret")
+        scopes = body.get("scopes") or []
+        if not endpoint or not client_id:
+            raise HTTPException(400, "endpoint and client_id are required")
+        if client_type not in CLIENT_TYPES:
+            raise HTTPException(400, f"client_type must be one of {CLIENT_TYPES}")
+        display = service.clients.save(
+            endpoint=endpoint,
+            client_id=client_id,
+            client_secret=str(secret) if secret else None,
+            client_type=client_type,
+            display_name=display_name,
+            scopes=[str(s) for s in scopes],
+        )
+        return {
+            "endpoint": display.endpoint,
+            "client_id": display.client_id,
+            "client_type": display.client_type,
+            "display_name": display.display_name,
+            "scopes": display.scopes,
+            "created_at": display.created_at,
+        }
+
+    @app.delete("/api/oauth/clients")
+    async def delete_oauth_client(endpoint: str) -> dict[str, Any]:
+        """Forget a registered OAuth client. Takes the endpoint as a query parameter so the
+        URL-encoded form matches what POST /api/oauth/clients accepted.
+        """
+        if service.clients is None:
+            raise HTTPException(503, "persistent OAuth clients disabled (no workspace path)")
+        deleted = service.clients.delete(endpoint)
+        return {"deleted": deleted}
 
     @app.get("/auth/mcp/probe")
     async def probe(endpoint: str) -> dict[str, Any]:

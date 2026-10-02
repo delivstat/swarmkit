@@ -220,17 +220,26 @@ async def exchange_code(
     client_id: str,
     redirect_uri: str,
     client: httpx.AsyncClient,
+    client_secret: str | None = None,
 ) -> dict[str, Any]:
-    """Redeem an authorization code. Returns the provider's token response verbatim."""
+    """Redeem an authorization code. Returns the provider's token response verbatim.
+
+    `client_secret` is required by providers whose OAuth client type is "confidential" — Google's
+    Desktop and Web app client types both demand it even alongside PKCE. Public clients (DCR-
+    registered MCP servers) omit it; it stays out of the request body entirely in that case.
+    """
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "client_id": client_id,
+        "code_verifier": verifier,
+    }
+    if client_secret:
+        data["client_secret"] = client_secret
     resp = await client.post(
         metadata["token_endpoint"],
-        data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": redirect_uri,
-            "client_id": client_id,
-            "code_verifier": verifier,
-        },
+        data=data,
         headers={"Accept": "application/json"},
     )
     if resp.status_code >= 400:
@@ -245,19 +254,23 @@ async def refresh_token(
     refresh: str,
     client_id: str,
     client: httpx.AsyncClient,
+    client_secret: str | None = None,
 ) -> dict[str, Any]:
     """Exchange a refresh token for a new access token.
 
     Raises `PermissionError` when the provider refuses — that is the signal to park the run and ask
     a human, rather than to retry.
     """
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh,
+        "client_id": client_id,
+    }
+    if client_secret:
+        data["client_secret"] = client_secret
     resp = await client.post(
         metadata["token_endpoint"],
-        data={
-            "grant_type": "refresh_token",
-            "refresh_token": refresh,
-            "client_id": client_id,
-        },
+        data=data,
         headers={"Accept": "application/json"},
     )
     if resp.status_code >= 400:

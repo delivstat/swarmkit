@@ -24,6 +24,7 @@ from swarmkit_runtime.auth import AuthRequest as AuthReq
 from swarmkit_runtime.canary import router_for_workspace
 from swarmkit_runtime.errors import ResolutionErrors
 from swarmkit_runtime.oauth import PendingLogins, TokenStore
+from swarmkit_runtime.oauth._client_store import ClientStore
 from swarmkit_runtime.persistence import storage_for_workspace
 from swarmkit_runtime.telemetry import configure_telemetry, load_telemetry_config
 
@@ -457,7 +458,11 @@ def create_app(  # noqa: PLR0915
     _register_event_stream_routes(app)
     _register_oauth_routes(
         app,
-        OAuthService(store=TokenStore(workspace_path), pending=PendingLogins()),
+        OAuthService(
+            store=TokenStore(workspace_path),
+            pending=PendingLogins(),
+            clients=ClientStore(workspace_path),
+        ),
     )
     _register_review_routes(app, workspace_path)
     _register_fleet_routes(app)
