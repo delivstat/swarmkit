@@ -85,6 +85,23 @@ const FIXTURES = {
 const OWNER_CREDS = new Map(); // owner -> { provider -> { expires_at, expired } }
 const PENDING = new Map(); // state -> { returnTo, provider }
 
+// Which skills need each credential (SwarmKit #1007). Mirrors what the real runtime builds
+// from workspace archetypes + swarmkit-skills bundle manifests. Hard-coded here because the
+// mock doesn't actually load a workspace.
+const USED_BY = {
+	gmail: [
+		{ id: "search-threads", name: "Gmail — Search Threads" },
+		{ id: "get-thread", name: "Gmail — Get Thread" },
+		{ id: "get-message", name: "Gmail — Get Message" },
+	],
+	"google-calendar": [
+		{ id: "list-events", name: "Calendar — List Events" },
+		{ id: "list-calendars", name: "Calendar — List Calendars" },
+		{ id: "get-event", name: "Calendar — Get Event" },
+		{ id: "suggest-time", name: "Calendar — Suggest Time" },
+	],
+};
+
 // Usage fixtures (design/details/dot-app.md §3.7). Deterministic pseudo-random daily series.
 function hashInt(seed, i) {
 	const x = Math.sin(seed * 9301 + i * 49297) * 0.5 + 0.5;
@@ -291,6 +308,8 @@ const server = createServer((req, res) => {
 				owner,
 				expires_at: meta.expires_at,
 				expired: meta.expired,
+				// `used_by` mirrors the real runtime's shape (SwarmKit #1007). Fixtures below.
+				used_by: USED_BY[provider] ?? [],
 			}),
 		);
 		return json(res, 200, { credentials: creds });

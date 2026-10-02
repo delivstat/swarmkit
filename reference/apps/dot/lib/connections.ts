@@ -13,8 +13,17 @@ export type ConnectionStatus =
 	| { state: "expired"; owner: string }
 	| { state: "not_connected" };
 
+export interface SkillRef {
+	id: string;
+	name: string;
+}
+
 export interface ConnectionRow {
 	provider: Provider;
 	label: string;
 	status: ConnectionStatus;
+	/** Skills in the active workspace that need this credential — populated from the runtime's
+	 * `used_by` field on `/api/oauth/my-credentials` (SwarmKit #1007). Drives the "Used by N
+	 * skills" chip + the pre-disconnect warning that names the top skills about to break. */
+	usedBy: SkillRef[];
 }

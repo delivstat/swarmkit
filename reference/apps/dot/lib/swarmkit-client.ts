@@ -189,6 +189,8 @@ export interface MyCredential {
 	owner: string;
 	expires_at: string | null;
 	expired: boolean;
+	/** Skills that need this credential (SwarmKit #1007). Omitted on older runtimes. */
+	used_by?: { id: string; name: string }[];
 }
 
 export interface AuditListResult {
