@@ -147,6 +147,115 @@ def test_a_global_connection_carries_no_personal_state(tmp_path: Path) -> None:
     assert github["connected"] is None
 
 
+# --- used_by: skills requiring a credential --------------------------------------------------
+
+
+def _workspace_with_skill_requiring(tmp_path: Path, credential_id: str) -> Path:
+    """A workspace with one declared mcp_tool skill carrying an explicit
+    requires_credentials — the sweet-spot shape for the used_by index."""
+    ws = _workspace(tmp_path)
+    _add_calendar_server(ws, credential_id)
+    skills = ws / "skills"
+    skills.mkdir(exist_ok=True)
+    (skills / "calendar-list.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "apiVersion": "swarmkit/v1",
+                "kind": "Skill",
+                "metadata": {
+                    "id": "calendar-list",
+                    "name": "Calendar — list events",
+                    "description": "Lists upcoming events via the calendar MCP server.",
+                },
+                "category": "capability",
+                "implementation": {
+                    "type": "mcp_tool",
+                    "server": "calendar",
+                    "tool": "list_events",
+                },
+                "requires_credentials": [credential_id],
+                "provenance": {"authored_by": "human", "version": "1.0.0"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return ws
+
+
+def _client_no_rewrite(ws: Path, who: str) -> TestClient:
+    """Like `_client`, but does not rewrite workspace.yaml — needed when the test has already
+    added mcp_servers / skills blocks that the base `_workspace` fixture would clobber."""
+    return TestClient(create_app(ws, auth_provider=NoneAuthProvider(identity=who)))
+
+
+def test_my_credentials_carries_used_by_from_requires_credentials(tmp_path: Path) -> None:
+    """Explicit `requires_credentials` on a skill surfaces as a per-credential used_by chip."""
+    ws = tmp_path / "ws"
+    _workspace_with_skill_requiring(ws, "calendar")
+
+    with _client_no_rewrite(ws, "alice") as client:
+        rows = client.get("/api/oauth/my-credentials").json()["credentials"]
+
+    cal = next(c for c in rows if c["credential_id"] == "calendar")
+    assert cal["used_by"] == [{"id": "calendar-list", "name": "Calendar — list events"}]
+    # Credentials with no skills requiring them stay quiet.
+    github = next(c for c in rows if c["credential_id"] == "github")
+    assert github["used_by"] == []
+
+
+def _add_calendar_server(ws: Path, credential_id: str) -> None:
+    """Append an mcp_servers entry so the resolver accepts skills targeting `calendar`."""
+    data = yaml.safe_load((ws / "workspace.yaml").read_text())
+    data["mcp_servers"] = [
+        {
+            "id": "calendar",
+            "transport": "http",
+            "endpoint": "https://stub.example/mcp",
+            "credentials_ref": credential_id,
+            "permission": "readonly",
+        }
+    ]
+    (ws / "workspace.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
+
+
+def test_used_by_falls_back_from_server_credentials_ref(tmp_path: Path) -> None:
+    """A mcp_tool skill without requires_credentials still maps to its server's credentials_ref,
+    so catalogue skills that haven't migrated to the explicit field keep showing up."""
+    ws = tmp_path / "ws"
+    _workspace(ws)
+    _add_calendar_server(ws, "calendar")
+    skills = ws / "skills"
+    skills.mkdir(exist_ok=True)
+    (skills / "calendar-get.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "apiVersion": "swarmkit/v1",
+                "kind": "Skill",
+                "metadata": {
+                    "id": "calendar-get",
+                    "name": "Calendar — get event",
+                    "description": "Reads an event via the calendar MCP server.",
+                },
+                "category": "capability",
+                "implementation": {
+                    "type": "mcp_tool",
+                    "server": "calendar",
+                    "tool": "get_event",
+                },
+                # No requires_credentials — fallback should infer `calendar` from the server.
+                "provenance": {"authored_by": "human", "version": "1.0.0"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with _client_no_rewrite(ws, "alice") as client:
+        rows = client.get("/api/oauth/my-credentials").json()["credentials"]
+
+    cal = next(c for c in rows if c["credential_id"] == "calendar")
+    assert {"id": "calendar-get", "name": "Calendar — get event"} in cal["used_by"]
+
+
 def test_declared_connections_are_listed_before_anyone_connects(tmp_path: Path) -> None:
     """The page has to show what the agent will use as you, or there is nothing to click."""
     ws = tmp_path / "ws"

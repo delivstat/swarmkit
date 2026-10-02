@@ -67,6 +67,34 @@ def _declared_credentials(request: Request) -> dict[str, Any]:
     return {str(key): _as_mapping(value) for key, value in dict(raw).items()}
 
 
+def _used_by_index(request: Request) -> dict[str, list[dict[str, str]]]:
+    """``{credential_id: [{id, name}, …]}`` — skills in the loaded workspace that require each
+    credential (design/details/skill-requires-credentials.md).
+
+    Returns an empty mapping when no workspace is loaded or the registry cannot be read; the
+    route still works, each row's `used_by` just reads as `[]`.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    from swarmkit_runtime.skills._registry import workspace_skills  # noqa: PLC0415
+
+    workspace_path = getattr(request.app.state, "workspace_path", None)
+    if not isinstance(workspace_path, Path):
+        return {}
+    try:
+        skills = workspace_skills(workspace_path)
+    except Exception as exc:
+        logger.debug("used_by index: workspace_skills failed (%s): %s", type(exc).__name__, exc)
+        return {}
+    index: dict[str, list[dict[str, str]]] = {}
+    for skill in skills:
+        for cred in skill.requires_credentials:
+            index.setdefault(cred, []).append({"id": skill.id, "name": skill.name})
+    for rows in index.values():
+        rows.sort(key=lambda r: r["id"])
+    return index
+
+
 def _as_mapping(entry: Any) -> dict[str, Any]:
     """A credential entry as a plain dict.
 
@@ -246,6 +274,7 @@ def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:  # noqa
         owner = _owner_of(request)
         declared = _declared_credentials(request)
         mine = {m.credential_id: m for m in service.store.list_metadata() if m.owner == owner}
+        used_by_index = _used_by_index(request)
 
         rows: list[dict[str, Any]] = []
         for credential_id, entry in sorted(declared.items()):
@@ -264,6 +293,10 @@ def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:  # noqa
                     "expires_at": token.expires_at if token else None,
                     "seconds_remaining": token.seconds_remaining if token else None,
                     "expired": token.expired if token else None,
+                    # Skills that need this credential — see
+                    # design/details/skill-requires-credentials.md. Powers the
+                    # "Used by N skills" chip + the disconnect warning.
+                    "used_by": used_by_index.get(credential_id, []),
                 }
             )
         return {"owner": owner, "credentials": rows}

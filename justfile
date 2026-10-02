@@ -433,6 +433,12 @@ demo-code-review:
 demo-oauth-desktop:
     uv run python examples/oauth-persistent-client/demo.py
 
+# skill ↔ credential reverse index — shows that /api/oauth/my-credentials carries a
+# `used_by` list of skills requiring each credential, with explicit requires_credentials
+# and the mcp_tool fallback both resolving.
+demo-skill-requires-credentials:
+    uv run python examples/skill-requires-credentials/demo.py
+
 # Build the Docker sandbox image for sandboxed MCP servers (design §8.8).
 # Swarm-authored servers run inside this container with --network=none.
 build-sandbox-image:
