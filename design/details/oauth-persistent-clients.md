@@ -183,4 +183,29 @@ output is a short transcript suitable for pasting into the PR body.
   #1000). *Proposed default:* encrypted in storage, no file-path alternative.
 - **Q3 — Multi-tenant extension.** A hosted install may want per-owner OAuth clients (so
   usage counts and quotas attribute correctly). *Proposed default:* out of scope here;
-  single-client-per-endpoint today. Revisit when a hosted-SaaS deployment surfaces.
+  single-client-per-issuer today. Revisit when a hosted-SaaS deployment surfaces.
+
+---
+
+## Update: issuer-keyed (#1003)
+
+The first implementation (#1002) keyed `oauth_clients` by MCP endpoint URL. A follow-up
+question surfaced the right grain: Gmail + Calendar MCP servers live at different endpoints
+but share one authorization server (`accounts.google.com`), and one GCP OAuth client with
+both scopes serves both APIs. Endpoint-keying forced the operator to paste the same
+credentials into two rows, which is noise.
+
+Change (#1003):
+
+- `oauth_clients` is now keyed by **issuer** (the authorization-server URL, from the
+  `discover_metadata` response), one row per OAuth provider.
+- `prepare_login` discovers the issuer first, then looks up the stored client.
+- `POST /api/oauth/clients` accepts either `issuer` (direct) or `endpoint` (server derives
+  the issuer via discovery). One registration serves every Google API in the workspace.
+- `GET`/`DELETE` operate on `issuer`.
+- `ClientRecord.endpoint` → `ClientRecord.issuer` throughout; display rows match.
+- Schema file bumped `oauth_clients.db` → `oauth_clients_v2.db` to avoid confusing old
+  endpoint-keyed state (safe: #1002 landed hours before, no production users).
+
+Everything else — encryption at rest, the "secret never crosses HTTP" discipline, the
+override order (body `client_id` → DCR → persistent client) — stays.

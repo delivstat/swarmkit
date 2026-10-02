@@ -146,7 +146,7 @@ def main() -> int:
         print(f"  {json.dumps(creds, indent=2)}")
 
         print("\n─── 7. On-disk DB contains the client_secret only as ciphertext ───")
-        db = (workspace / ".swarmkit" / "state" / "oauth_clients.db").read_bytes()
+        db = (workspace / ".swarmkit" / "state" / "oauth_clients_v2.db").read_bytes()
         plaintext_present = b"GOCSPX-redacted-secret" in db
         print(f"  plaintext present in oauth_clients.db? {plaintext_present}")
 
