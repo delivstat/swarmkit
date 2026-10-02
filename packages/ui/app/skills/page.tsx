@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import type { JsonSchema } from "@/lib/schema-form";
-import type { SkillItem } from "@/lib/types";
+import type { ActivateSkillResult, SkillItem } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 import { useRefOptions } from "@/lib/use-ref-options";
 import { cn } from "@/lib/utils";
@@ -258,31 +258,11 @@ export default function SkillsPage() {
 					{data && (
 						<div className="grid grid-cols-2 gap-3">
 							{data.map((skill) => (
-								<Card key={skill.id}>
-									<div className="flex items-center justify-between">
-										<span className="font-medium">{skill.id}</span>
-										<div className="flex items-center gap-2">
-											<Badge
-												variant="outline"
-												className={cn(
-													"border-current",
-													CATEGORY_COLORS[skill.category] ??
-														"text-muted-foreground",
-												)}
-											>
-												{skill.category || "unknown"}
-											</Badge>
-											<Button
-												type="button"
-												variant="outline"
-												size="sm"
-												onClick={() => setEditingSkill(skill.id)}
-											>
-												View
-											</Button>
-										</div>
-									</div>
-								</Card>
+								<SkillCard
+									key={skill.id}
+									skill={skill}
+									onView={() => setEditingSkill(skill.id)}
+								/>
 							))}
 						</div>
 					)}
@@ -303,5 +283,99 @@ export default function SkillsPage() {
 				/>
 			)}
 		</div>
+	);
+}
+
+/** One row in the Workspace tab. The Check button hits POST /api/skills/{id}/activate
+ * (SwarmKit #1012). A 200 flashes 'Ready for you'; a 409 shows the missing credentials
+ * inline with a link to the setup topology (where known). */
+function SkillCard({
+	skill,
+	onView,
+}: { skill: SkillItem; onView: () => void }) {
+	const [checking, setChecking] = useState(false);
+	const [result, setResult] = useState<ActivateSkillResult | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	async function check() {
+		setChecking(true);
+		setError(null);
+		try {
+			setResult(await api.activateSkill(skill.id));
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setChecking(false);
+		}
+	}
+
+	return (
+		<Card>
+			<div className="flex items-center justify-between">
+				<span className="font-medium">{skill.id}</span>
+				<div className="flex items-center gap-2">
+					<Badge
+						variant="outline"
+						className={cn(
+							"border-current",
+							CATEGORY_COLORS[skill.category] ?? "text-muted-foreground",
+						)}
+					>
+						{skill.category || "unknown"}
+					</Badge>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={checking}
+						onClick={check}
+						title="Can I run this right now, as me?"
+					>
+						{checking ? "Checking…" : "Check"}
+					</Button>
+					<Button type="button" variant="outline" size="sm" onClick={onView}>
+						View
+					</Button>
+				</div>
+			</div>
+			{error && (
+				<p className="mt-2 text-xs text-destructive" role="alert">
+					{error}
+				</p>
+			)}
+			{result?.ok === true && (
+				<p className="mt-2 text-xs text-success">
+					Ready for you.
+					{result.requiresCredentials.length > 0
+						? ` Uses: ${result.requiresCredentials.join(", ")}.`
+						: ""}
+				</p>
+			)}
+			{result?.ok === false && (
+				<div className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs">
+					<p className="font-medium text-warning">
+						Not ready — missing credentials for you:
+					</p>
+					<ul className="mt-1 space-y-0.5 pl-2">
+						{result.missing.map((m) => (
+							<li key={m.credential_id}>
+								· {m.credential_id}
+								{m.setup_topology ? (
+									<>
+										{" — "}
+										<a
+											href={`/runs/new?topology=${encodeURIComponent(m.setup_topology)}`}
+											className="underline underline-offset-2 hover:text-foreground"
+										>
+											Set up
+										</a>
+									</>
+								) : null}
+							</li>
+						))}
+					</ul>
+				</div>
+			)}
+		</Card>
 	);
 }

@@ -173,3 +173,64 @@ describe("skill registry endpoints", () => {
 		expect(callOf(fetchMock)[0]).toMatch(/\/api\/skills\/check$/);
 	});
 });
+
+describe("api.activateSkill (SwarmKit #1012)", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("returns ok=true + requiresCredentials on 200", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						ok: true,
+						skill_id: "gmail-search",
+						requires_credentials: ["gmail"],
+					}),
+					{ status: 200 },
+				),
+			),
+		);
+		const res = await api.activateSkill("gmail-search");
+		expect(res).toEqual({ ok: true, requiresCredentials: ["gmail"] });
+	});
+
+	it("returns ok=false + missing[] on 409", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						detail: {
+							error: "missing_credentials",
+							missing: [
+								{
+									credential_id: "gmail",
+									issuer: "https://accounts.google.com",
+									setup_topology: "google-workspace-setup",
+								},
+							],
+						},
+					}),
+					{ status: 409 },
+				),
+			),
+		);
+		const res = await api.activateSkill("gmail-search");
+		expect(res.ok).toBe(false);
+		if (!res.ok) {
+			expect(res.missing).toHaveLength(1);
+			expect(res.missing[0]?.setup_topology).toBe("google-workspace-setup");
+		}
+	});
+
+	it("throws on 404", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(new Response("", { status: 404 })),
+		);
+		await expect(api.activateSkill("nope")).rejects.toThrow(/skill not found/);
+	});
+});

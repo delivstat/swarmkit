@@ -168,6 +168,20 @@ export interface SkillAddResult {
 }
 
 /** GET /api/skills/check — one row per mcp_tool skill. */
+export interface MissingCredential {
+	credential_id: string;
+	/** Authorization server (RFC 8414). Omitted when the runtime can't infer it from the
+	 * endpoint — the UI should still name the credential_id. */
+	issuer?: string;
+	/** Setup topology that will register this credential (SwarmKit #1012 SETUP_TOPOLOGIES map).
+	 * Omitted when the provider's issuer isn't in the map. */
+	setup_topology?: string;
+}
+
+export type ActivateSkillResult =
+	| { ok: true; requiresCredentials: string[] }
+	| { ok: false; missing: MissingCredential[] };
+
 export interface SkillCheckRow {
 	skill_id: string;
 	server_id: string;

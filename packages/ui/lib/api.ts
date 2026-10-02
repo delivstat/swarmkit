@@ -1,5 +1,6 @@
 import type {
 	A2AProbe,
+	ActivateSkillResult,
 	ArchetypeDetail,
 	AuditEvent,
 	CanaryStatus,
@@ -299,6 +300,43 @@ export const api = {
 		),
 	checkSkills: () => get<SkillCheckRow[]>("/api/skills/check"),
 	skillDetail: (id: string) => get<SkillDetail>(`/api/skills/${id}`),
+	/** POST /api/skills/{id}/activate — preflight for a skill (SwarmKit #1012). 409 is a
+	 * legitimate response (the caller is missing a credential), not an error, so a bespoke
+	 * fetch here rather than the throw-on-non-2xx `post` helper. */
+	activateSkill: async (id: string): Promise<ActivateSkillResult> => {
+		const res = await fetch(
+			`${BASE}/api/skills/${encodeURIComponent(id)}/activate`,
+			{
+				method: "POST",
+				headers: authHeaders({ "Content-Type": "application/json" }),
+			},
+		);
+		if (res.status === 200) {
+			const body = (await res.json()) as {
+				skill_id: string;
+				requires_credentials: string[];
+			};
+			return { ok: true, requiresCredentials: body.requires_credentials };
+		}
+		if (res.status === 409) {
+			const body = (await res.json()) as {
+				detail: {
+					error: string;
+					missing: {
+						credential_id: string;
+						issuer?: string;
+						setup_topology?: string;
+					}[];
+				};
+			};
+			return { ok: false, missing: body.detail.missing };
+		}
+		if (res.status === 404) {
+			throw new Error("skill not found");
+		}
+		on401(res.status);
+		throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+	},
 	saveTopology: (id: string, yaml: string, dryRun = false) =>
 		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
 			`/api/topologies/${id}`,
