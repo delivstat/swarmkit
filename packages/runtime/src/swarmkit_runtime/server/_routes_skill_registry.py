@@ -24,7 +24,7 @@ class ImportRequest(BaseModel):
     dry_run: bool = False
 
 
-def _register_skill_registry_routes(app: FastAPI) -> None:
+def _register_skill_registry_routes(app: FastAPI) -> None:  # noqa: PLR0915
     @app.get("/api/skill-catalogue")
     async def skill_catalogue(
         request: Request, q: str = "", refresh: bool = False
@@ -126,6 +126,70 @@ def _register_skill_registry_routes(app: FastAPI) -> None:
 
         return [r.__dict__ for r in await check_skills(request.app.state.workspace_path)]
 
+    @app.post("/api/skills/{skill_id}/activate")
+    async def activate_skill(skill_id: str, request: Request) -> dict[str, Any]:
+        """Preflight check: can the signed-in caller run this skill right now?
+
+        Returns 200 when every ``requires_credentials`` entry has a token in the OAuth store
+        for the caller. Returns 409 ``missing_credentials`` with a per-credential pointer to
+        the setup topology (``google-workspace-setup`` for Google-shaped issuers; GitHub /
+        Notion / etc. follow the same shape) when any required credential is missing.
+
+        See design/details/skill-requires-credentials.md §Activation refusal. The route changes
+        no state — nothing is "activated" server-side; the name reflects the UI question
+        ("activate this skill?") rather than a store write. A 200 means the skill is runnable
+        for THIS caller right now; a 409 names what the caller needs to connect.
+
+        Shape:
+
+        ```
+        200 { "ok": true, "skill_id": "...", "requires_credentials": [...] }
+        409 { "error": "missing_credentials",
+              "missing": [{ "credential_id": "...", "issuer": "...",
+                            "setup_topology": "google-workspace-setup" }] }
+        404 { "detail": "skill_not_found: ..." }
+        ```
+        """
+        from pathlib import Path  # noqa: PLC0415
+
+        from swarmkit_runtime.oauth._store import TokenStore  # noqa: PLC0415
+        from swarmkit_runtime.resolver import resolve_workspace  # noqa: PLC0415
+        from swarmkit_runtime.skills._registry import workspace_skills  # noqa: PLC0415
+
+        workspace_path = request.app.state.workspace_path
+        assert isinstance(workspace_path, Path)
+
+        skills = workspace_skills(workspace_path)
+        skill = next((s for s in skills if s.id == skill_id), None)
+        if skill is None:
+            raise HTTPException(404, f"skill_not_found: {skill_id}")
+
+        requires = list(skill.requires_credentials)
+        if not requires:
+            return {"ok": True, "skill_id": skill_id, "requires_credentials": []}
+
+        owner = _owner_of_request(request)
+        ws = resolve_workspace(workspace_path)
+        store = TokenStore(workspace_path)
+        credentials_block = dict(getattr(ws.raw, "credentials", None) or {})
+        missing: list[dict[str, Any]] = []
+        for credential_id in requires:
+            cred_entry = credentials_block.get(credential_id)
+            endpoint = _credential_endpoint(cred_entry)
+            if store.metadata(credential_id, owner) is None:
+                missing.append(_missing_entry(credential_id, endpoint))
+
+        if missing:
+            raise HTTPException(
+                status_code=409,
+                detail={"error": "missing_credentials", "missing": missing},
+            )
+        return {
+            "ok": True,
+            "skill_id": skill_id,
+            "requires_credentials": requires,
+        }
+
 
 async def _reload(request: Request) -> None:
     """Pick the new file(s) up the way a CRUD write does, so the Skills page sees them."""
@@ -133,3 +197,60 @@ async def _reload(request: Request) -> None:
     from ._services import ArtifactService  # noqa: PLC0415
 
     await swap_runtime(request.app, ArtifactService(request.app.state.workspace_path).reload())
+
+
+#: Known OAuth authorization servers (`issuer`) → setup topology that connects them. Hand-maintained
+#: for providers whose MCP servers do not support dynamic client registration — the ones where
+#: #1000 part 2 (`google-workspace-setup`) and its siblings do the GCP-console walkthrough. New
+#: providers extend this map alongside their own `<provider>-setup` reference workspace.
+SETUP_TOPOLOGIES: dict[str, str] = {
+    "https://accounts.google.com": "google-workspace-setup",
+}
+
+
+def _owner_of_request(request: Request) -> str:
+    """The signed-in caller's identity — same resolution as the OAuth routes use."""
+    identity = getattr(request.state, "identity", None)
+    return str(getattr(identity, "client_id", "") or "local")
+
+
+def _credential_endpoint(entry: Any) -> str | None:
+    """Walk the workspace's ``credentials.<id>.config.endpoint`` without caring whether the
+    resolver returned a pydantic model or a dict."""
+    if entry is None:
+        return None
+    config = getattr(entry, "config", None)
+    if config is None and hasattr(entry, "model_dump"):
+        config = entry.model_dump(mode="json").get("config")
+    if config is None and isinstance(entry, dict):
+        config = entry.get("config")
+    if config is None:
+        return None
+    if hasattr(config, "endpoint"):
+        return str(config.endpoint) if config.endpoint else None
+    if isinstance(config, dict):
+        return str(config.get("endpoint")) if config.get("endpoint") else None
+    return None
+
+
+def _missing_entry(credential_id: str, endpoint: str | None) -> dict[str, Any]:
+    """One row of the 409 payload — identifies the credential, the issuer it belongs to, and
+    the setup topology that will register it."""
+    issuer = _issuer_from_endpoint(endpoint) if endpoint else None
+    row: dict[str, Any] = {"credential_id": credential_id}
+    if issuer:
+        row["issuer"] = issuer
+        setup = SETUP_TOPOLOGIES.get(issuer)
+        if setup:
+            row["setup_topology"] = setup
+    return row
+
+
+def _issuer_from_endpoint(endpoint: str) -> str | None:
+    """Best-effort issuer resolution without hitting the network — the endpoint URL's origin
+    normalised to the OAuth issuer the catalogue bundles use. Google's remote MCP endpoints all
+    issue through ``https://accounts.google.com``.
+    """
+    if "googleapis.com" in endpoint:
+        return "https://accounts.google.com"
+    return None
