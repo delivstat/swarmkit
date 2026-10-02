@@ -21,6 +21,7 @@ import type {
 	CredentialEntry,
 	EventSinkEntry,
 	McpServerEntry,
+	MyCredential,
 	OAuthCredential,
 	RemoteAgentEntry,
 	WorkspaceConfig,
@@ -56,6 +57,12 @@ export interface ConnectionRow {
 	/** One sentence a person can act on. Never "error". */
 	detail: string;
 	permission?: string;
+	/** Skills that need this credential (SwarmKit #1007). Carried from `MyCredential.used_by` on
+	 * `GET /api/oauth/my-credentials`. Powers the "Used by *N* skills" chip + the pre-disconnect
+	 * warning that names the top skills about to break. Empty for rows with no credential, for
+	 * rows whose credential has no requirers, and when the runtime is too old to carry the
+	 * field. */
+	usedBy: { id: string; name: string }[];
 }
 
 function credentialOf(
@@ -148,6 +155,7 @@ export function serverRow(
 	server: McpServerEntry,
 	credentials: CredentialEntry[],
 	viewerConnected?: Record<string, boolean>,
+	usedByIndex?: Record<string, { id: string; name: string }[]>,
 ): ConnectionRow {
 	const credential = credentialOf(server.credentials_ref, credentials);
 	const { status, detail } = statusFor(
@@ -166,6 +174,7 @@ export function serverRow(
 		status,
 		detail,
 		permission: server.permission,
+		usedBy: credential ? (usedByIndex?.[credential.id] ?? []) : [],
 	};
 }
 
@@ -179,6 +188,7 @@ export function sinkRow(
 	sink: EventSinkEntry,
 	index: number,
 	credentials: CredentialEntry[],
+	usedByIndex?: Record<string, { id: string; name: string }[]>,
 ): ConnectionRow {
 	const credential = credentialOf(sink.credentials_ref, credentials);
 	const { status, detail } = statusFor(
@@ -195,19 +205,36 @@ export function sinkRow(
 		identity: identityOf(credential),
 		status,
 		detail,
+		usedBy: credential ? (usedByIndex?.[credential.id] ?? []) : [],
 	};
 }
 
 export function connectionRows(
 	config: WorkspaceConfig,
 	viewerConnected?: Record<string, boolean>,
+	usedByIndex?: Record<string, { id: string; name: string }[]>,
 ): ConnectionRow[] {
 	return [
 		...config.mcp_servers.map((s) =>
-			serverRow(s, config.credentials, viewerConnected),
+			serverRow(s, config.credentials, viewerConnected, usedByIndex),
 		),
-		...(config.events ?? []).map((e, i) => sinkRow(e, i, config.credentials)),
+		...(config.events ?? []).map((e, i) =>
+			sinkRow(e, i, config.credentials, usedByIndex),
+		),
 	];
+}
+
+/** Build the `{credential_id → skills}` lookup from a `my-credentials` payload (SwarmKit #1007). */
+export function usedByIndexFrom(
+	credentials: Pick<MyCredential, "credential_id" | "used_by">[],
+): Record<string, { id: string; name: string }[]> {
+	const index: Record<string, { id: string; name: string }[]> = {};
+	for (const c of credentials) {
+		if (c.used_by && c.used_by.length > 0) {
+			index[c.credential_id] = c.used_by;
+		}
+	}
+	return index;
 }
 
 /**
@@ -245,6 +272,7 @@ export function usersOf(
 export function remoteAgentRow(
 	agent: RemoteAgentEntry,
 	credentials: CredentialEntry[],
+	usedByIndex?: Record<string, { id: string; name: string }[]>,
 ): ConnectionRow {
 	const credential = credentialOf(
 		agent.credentials_ref ?? undefined,
@@ -268,6 +296,7 @@ export function remoteAgentRow(
 				? "Remote agent with no credential — it will be called unauthenticated."
 				: detail,
 		permission: agent.permission,
+		usedBy: credential ? (usedByIndex?.[credential.id] ?? []) : [],
 	};
 }
 

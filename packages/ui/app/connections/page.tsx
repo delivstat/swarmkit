@@ -34,10 +34,12 @@ import {
 	remoteAgentSkillYaml,
 	suggestedAgentSkillId,
 	tokenView,
+	usedByIndexFrom,
 	usersOf,
 } from "@/lib/connections";
 import type {
 	A2AProbe,
+	MyCredential,
 	OAuthCredential,
 	RemoteAgentEntry,
 	WorkspaceConfig,
@@ -593,20 +595,30 @@ export default function ConnectionsPage() {
 	const [config, setConfig] = useState<WorkspaceConfig | null>(null);
 	const [tokens, setTokens] = useState<OAuthCredential[]>([]);
 	const [agents, setAgents] = useState<RemoteAgentEntry[]>([]);
+	// Index of skills requiring each credential (SwarmKit #1007). Fed to connectionRows() to
+	// surface "Used by N" on each row and warn before disconnect. Comes from the same
+	// `/api/oauth/my-credentials` the /connect page reads, so an older runtime leaves it empty.
+	const [usedByIndex, setUsedByIndex] = useState<
+		Record<string, { id: string; name: string }[]>
+	>({});
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [dialog, setDialog] = useState<"credential" | "agent" | null>(null);
 
 	const load = useCallback(async () => {
 		try {
-			const [cfg, oauth, remote] = await Promise.all([
+			const [cfg, oauth, remote, mine] = await Promise.all([
 				api.workspaceConfig(),
 				api.oauthCredentials().catch(() => ({ credentials: [] })),
 				api.remoteAgents().catch(() => []),
+				api
+					.myCredentials()
+					.catch(() => ({ owner: "", credentials: [] as MyCredential[] })),
 			]);
 			setConfig(cfg);
 			setTokens(oauth.credentials);
 			setAgents(remote);
+			setUsedByIndex(usedByIndexFrom(mine.credentials));
 			setError(null);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));
@@ -636,8 +648,10 @@ export default function ConnectionsPage() {
 
 	const rows: ConnectionRow[] = config
 		? [
-				...connectionRows(config),
-				...agents.map((a) => remoteAgentRow(a, config.credentials)),
+				...connectionRows(config, undefined, usedByIndex),
+				...agents.map((a) =>
+					remoteAgentRow(a, config.credentials, usedByIndex),
+				),
 			]
 		: [];
 	const attention = needsAttention(rows);
@@ -778,7 +792,18 @@ export default function ConnectionsPage() {
 												)}
 											</td>
 											<td className="px-4 py-2 text-xs text-muted-foreground">
-												{users.length ? users.join(", ") : "—"}
+												<div>{users.length ? users.join(", ") : "—"}</div>
+												{(usedByIndex[c.id]?.length ?? 0) > 0 && (
+													<div
+														className="mt-0.5 text-[10px] uppercase tracking-wide"
+														title={usedByIndex[c.id]
+															?.map((s) => s.name)
+															.join("\n")}
+													>
+														{usedByIndex[c.id]?.length} skill
+														{usedByIndex[c.id]?.length === 1 ? "" : "s"}
+													</div>
+												)}
 											</td>
 											<td className="px-4 py-2 text-right">
 												<Button
