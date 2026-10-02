@@ -119,7 +119,10 @@ def test_register_script_posts_to_the_runtime_and_prints_body() -> None:
     server = http.server.HTTPServer(("127.0.0.1", 0), _MockOAuthClientsHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
-        host, port = server.server_address
+        # server.server_address is typed as 4-tuple (IPv6 shape) in typeshed; the first two
+        # entries are host + port in the IPv4 case we created above.
+        host = str(server.server_address[0])
+        port = int(server.server_address[1])
         code, stdout, stderr = _run_script(
             json.dumps(PLAN),
             env={
