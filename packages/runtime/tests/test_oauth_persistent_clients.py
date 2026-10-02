@@ -350,9 +350,9 @@ def test_delete_oauth_client_requires_endpoint(tmp_path: Path, _key: None) -> No
     )
     # Delete takes the issuer (not the endpoint) now — one row per authorization server,
     # same row served every Google API in the workspace.
-    assert tc.delete(
-        "/api/oauth/clients", params={"issuer": AUTH_META["issuer"]}
-    ).json() == {"deleted": True}
+    assert tc.delete("/api/oauth/clients", params={"issuer": AUTH_META["issuer"]}).json() == {
+        "deleted": True
+    }
     assert tc.get("/api/oauth/clients").json() == {"clients": []}
 
 
