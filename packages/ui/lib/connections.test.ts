@@ -10,6 +10,7 @@ import {
 	sinkRow,
 	suggestedAgentSkillId,
 	tokenView,
+	usedByIndexFrom,
 	usersOf,
 } from "./connections";
 import type {
@@ -441,5 +442,58 @@ describe("needsAttention with per-user connections", () => {
 
 		expect(attention).toHaveLength(1);
 		expect(attention[0]?.status).toBe("unresolved");
+	});
+});
+
+describe("used_by on connections (SwarmKit #1007)", () => {
+	const CRED = {
+		id: "gmail",
+		source: "oauth",
+		config: { endpoint: "https://x" },
+		resolves: true,
+	} as const;
+
+	it("carries usedBy from the index onto server rows", () => {
+		const row = serverRow(
+			{
+				id: "gmail",
+				transport: "http",
+				endpoint: "https://x",
+				credentials_ref: "gmail",
+			},
+			[CRED],
+			undefined,
+			{ gmail: [{ id: "search-threads", name: "Search Threads" }] },
+		);
+		expect(row.usedBy).toEqual([
+			{ id: "search-threads", name: "Search Threads" },
+		]);
+	});
+
+	it("defaults usedBy to [] when no index is provided", () => {
+		const row = serverRow(
+			{
+				id: "gmail",
+				transport: "http",
+				endpoint: "https://x",
+				credentials_ref: "gmail",
+			},
+			[CRED],
+		);
+		expect(row.usedBy).toEqual([]);
+	});
+
+	it("usedByIndexFrom builds the lookup, skipping credentials with no requirers", () => {
+		const index = usedByIndexFrom([
+			{
+				credential_id: "gmail",
+				used_by: [{ id: "search-threads", name: "Search Threads" }],
+			},
+			{ credential_id: "calendar", used_by: [] },
+			{ credential_id: "github" },
+		]);
+		expect(index).toEqual({
+			gmail: [{ id: "search-threads", name: "Search Threads" }],
+		});
 	});
 });

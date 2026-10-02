@@ -42,6 +42,19 @@ function expiryNote(credential: MyCredential): string | null {
 	return null;
 }
 
+/** Pre-disconnect confirmation that names the top skills about to break (SwarmKit #1007). */
+function confirmDisconnect(credential: MyCredential): boolean {
+	const usedBy = credential.used_by ?? [];
+	if (usedBy.length === 0) {
+		return window.confirm(`Disconnect ${credential.credential_id}?`);
+	}
+	const top = usedBy.slice(0, 3).map((s) => s.name);
+	const extra = usedBy.length > 3 ? ` and ${usedBy.length - 3} more` : "";
+	return window.confirm(
+		`Disconnect ${credential.credential_id}?\n\nThis will stop working for ${top.join(", ")}${extra}.`,
+	);
+}
+
 export default function ConnectPage() {
 	const [rows, setRows] = useState<MyCredential[] | null>(null);
 	const [owner, setOwner] = useState<string>("");
@@ -82,6 +95,7 @@ export default function ConnectPage() {
 
 	const disconnect = useCallback(
 		async (credential: MyCredential) => {
+			if (!confirmDisconnect(credential)) return;
 			setBusy(credential.credential_id);
 			setError(null);
 			try {
@@ -159,12 +173,15 @@ export default function ConnectPage() {
 										</span>
 									</CardHeader>
 									<CardContent className="flex flex-wrap items-center justify-between gap-3">
-										<p className="text-sm text-muted-foreground">
-											{note ??
-												(credential.connected
-													? "This agent acts as you here."
-													: "Not connected — this agent cannot reach your data here yet.")}
-										</p>
+										<div className="min-w-0 space-y-1">
+											<p className="text-sm text-muted-foreground">
+												{note ??
+													(credential.connected
+														? "This agent acts as you here."
+														: "Not connected — this agent cannot reach your data here yet.")}
+											</p>
+											<UsedByLine usedBy={credential.used_by ?? []} />
+										</div>
 										<div className="flex gap-2">
 											<Button
 												size="sm"
@@ -210,6 +227,34 @@ export default function ConnectPage() {
 						your operator manages. Nothing for you to do.
 					</p>
 				</section>
+			) : null}
+		</div>
+	);
+}
+
+/** "Used by N skills" line + collapsible list of what disconnecting would break. Reads from
+ * `MyCredential.used_by` (SwarmKit #1007); older runtimes omit it and this component
+ * renders nothing. */
+function UsedByLine({ usedBy }: { usedBy: { id: string; name: string }[] }) {
+	const [open, setOpen] = useState(false);
+	if (usedBy.length === 0) return null;
+	const label = `${usedBy.length} skill${usedBy.length === 1 ? "" : "s"}`;
+	return (
+		<div className="text-xs text-muted-foreground">
+			<button
+				type="button"
+				onClick={() => setOpen((v) => !v)}
+				aria-expanded={open}
+				className="inline-flex items-center gap-1 hover:text-foreground"
+			>
+				<span aria-hidden>{open ? "▾" : "▸"}</span> Used by {label}
+			</button>
+			{open ? (
+				<ul className="mt-1 space-y-0.5 pl-4">
+					{usedBy.map((s) => (
+						<li key={s.id}>· {s.name}</li>
+					))}
+				</ul>
 			) : null}
 		</div>
 	);

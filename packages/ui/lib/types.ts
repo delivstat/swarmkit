@@ -683,6 +683,11 @@ export interface MyCredential {
 	expires_at: number | null;
 	seconds_remaining: number | null;
 	expired: boolean | null;
+	/** Skills in the loaded workspace that need this credential (SwarmKit #1007). Explicit from
+	 * `skill.requires_credentials`, with a `mcp_tool` server-prefix fallback for catalogue skills
+	 * that haven't migrated. Powers the "Used by N skills" chip + disconnect warning. Absent on
+	 * older runtimes; readers must default to `[]`. */
+	used_by?: { id: string; name: string }[];
 }
 
 export interface McpServerEntry {
