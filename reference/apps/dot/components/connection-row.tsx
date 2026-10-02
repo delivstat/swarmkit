@@ -1,9 +1,11 @@
 "use client";
 
-import type { ConnectionRow as Row } from "@/lib/connections";
+import type { ConnectionRow as Row, SkillRef } from "@/lib/connections";
 import { useState } from "react";
 
-// A single provider row on /connections (design/details/dot-app.md §3.4).
+// A single provider row on /connections (design/details/dot-app.md §3.4). Shows "Used by N
+// skills" per credential (SwarmKit #1007) and warns before disconnect with the top names about
+// to break.
 export function ConnectionRow({
 	row,
 	onChanged,
@@ -13,6 +15,7 @@ export function ConnectionRow({
 }) {
 	const [busy, setBusy] = useState<"connect" | "disconnect" | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [usedByOpen, setUsedByOpen] = useState(false);
 
 	async function connect() {
 		setBusy("connect");
@@ -33,7 +36,7 @@ export function ConnectionRow({
 	}
 
 	async function disconnect() {
-		if (!window.confirm(`Disconnect ${row.label}?`)) return;
+		if (!confirmDisconnect(row.label, row.usedBy)) return;
 		setBusy("disconnect");
 		setError(null);
 		try {
@@ -61,9 +64,16 @@ export function ConnectionRow({
 	return (
 		<article className="rounded-lg border border-border bg-card p-4 shadow-sm">
 			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div>
+				<div className="min-w-0">
 					<h3 className="text-base font-semibold">{row.label}</h3>
 					<StatusLine status={row.status} />
+					{row.usedBy.length > 0 && (
+						<UsedByChip
+							usedBy={row.usedBy}
+							open={usedByOpen}
+							onToggle={() => setUsedByOpen((v) => !v)}
+						/>
+					)}
 				</div>
 				<button
 					type="button"
@@ -84,6 +94,33 @@ export function ConnectionRow({
 				</p>
 			)}
 		</article>
+	);
+}
+
+function UsedByChip({
+	usedBy,
+	open,
+	onToggle,
+}: { usedBy: SkillRef[]; open: boolean; onToggle: () => void }) {
+	const label = `${usedBy.length} skill${usedBy.length === 1 ? "" : "s"}`;
+	return (
+		<div className="mt-2">
+			<button
+				type="button"
+				onClick={onToggle}
+				aria-expanded={open}
+				className="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+			>
+				<span aria-hidden>{open ? "▾" : "▸"}</span> Used by {label}
+			</button>
+			{open && (
+				<ul className="mt-2 space-y-0.5 pl-2 text-xs text-muted-foreground">
+					{usedBy.map((s) => (
+						<li key={s.id}>· {s.name}</li>
+					))}
+				</ul>
+			)}
+		</div>
 	);
 }
 
@@ -111,6 +148,15 @@ function StatusLine({ status }: { status: Row["status"] }) {
 		);
 	}
 	return <p className="mt-1 text-sm text-muted-foreground">Not connected.</p>;
+}
+
+function confirmDisconnect(label: string, usedBy: SkillRef[]): boolean {
+	if (usedBy.length === 0) return window.confirm(`Disconnect ${label}?`);
+	const top = usedBy.slice(0, 3).map((s) => s.name);
+	const extra = usedBy.length > 3 ? ` and ${usedBy.length - 3} more` : "";
+	return window.confirm(
+		`Disconnect ${label}?\n\nThis will stop working for ${top.join(", ")}${extra}.`,
+	);
 }
 
 async function humanError(res: Response): Promise<Error> {

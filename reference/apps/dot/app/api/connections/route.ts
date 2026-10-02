@@ -25,7 +25,12 @@ export async function GET(): Promise<Response> {
 		const creds = await client.getMyCredentials();
 		const rows: ConnectionRow[] = PROVIDERS.map(({ id, label }) => {
 			const cred = creds.find((c) => c.provider === id);
-			return { provider: id, label, status: toStatus(cred, payload.owner) };
+			return {
+				provider: id,
+				label,
+				status: toStatus(cred, payload.owner),
+				usedBy: cred?.used_by ?? [],
+			};
 		});
 		return NextResponse.json({ rows });
 	} catch (e) {
