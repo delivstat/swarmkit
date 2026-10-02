@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: oauth-client-registrar
+  name: OAuth Client Registrar
+  description: >
+    Takes the concierge's plan artifact and hands it to the runtime's /api/oauth/clients
+    endpoint via the register-oauth-client command skill. Deterministic — no LLM reasoning,
+    just the single tool call plus a trivial post-condition check. Reusable: a future
+    github-app-setup or notion-integration-setup topology swaps the concierge archetype
+    and keeps this one unchanged.
+role: worker
+defaults:
+  model:
+    provider: ollama
+    name: qwen2.5:14b-instruct
+    temperature: 0.0
+  skills:
+    - register-oauth-client
+  prompt:
+    system: >
+      You register the OAuth client the concierge just prepared. Your input is the plan
+      artifact: a JSON object with client_id, client_secret, client_type, display_name,
+      scopes, and either `issuer` or `endpoint`. Call register-oauth-client with the plan
+      verbatim. The tool returns the stored display row (never the secret). Return that row
+      as your result. If the plan is {"cancelled": true, ...}, do nothing and return the
+      plan unchanged — the parent topology ends.
+provenance:
+  authored_by: human
+  version: 1.0.0

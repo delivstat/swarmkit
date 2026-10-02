@@ -1,0 +1,59 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: register-oauth-client
+  name: Register OAuth client
+  description: >
+    Hands a client registration plan to the runtime's /api/oauth/clients endpoint. Called
+    by the oauth-client-registrar archetype at the end of the google-workspace-setup
+    conversation. The plan carries issuer or endpoint, client_id, client_secret,
+    client_type ('desktop' recommended) and the scope list.
+category: capability
+inputs:
+  type: object
+  properties:
+    issuer:
+      type: string
+      description: Authorization-server URL. Either this or `endpoint` is required.
+    endpoint:
+      type: string
+      description: MCP server URL. If provided, the runtime discovers the issuer from it.
+    client_id:
+      type: string
+      description: The GCP OAuth 2.0 Client ID.
+    client_secret:
+      type: string
+      description: The GCP OAuth 2.0 Client Secret (Desktop app client type carries one).
+    client_type:
+      enum: [desktop, web, dcr]
+      default: desktop
+    display_name:
+      type: string
+      description: Operator-facing name for the registration (shown in the Connections page).
+    scopes:
+      type: array
+      items:
+        type: string
+      description: Scopes the client will request (e.g. gmail.readonly, calendar.readonly).
+  required: [client_id, client_type]
+outputs:
+  type: object
+  properties:
+    issuer: { type: string }
+    client_id: { type: string }
+    client_type: { type: string }
+    display_name: { type: string }
+    scopes:
+      type: array
+      items: { type: string }
+    created_at: { type: number }
+  required: [issuer, client_id, client_type]
+implementation:
+  type: command
+  pack: credential-setup-tools
+  command: register-oauth-client
+iam:
+  required_scopes: [oauth_clients:write]
+provenance:
+  authored_by: human
+  version: 1.0.0
