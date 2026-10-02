@@ -34,18 +34,18 @@ def _key(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_client_store_round_trips_a_secret(tmp_path: Path, _key: None) -> None:
     store = ClientStore(tmp_path)
     display = store.save(
-        endpoint="https://gmail.googleapis.com/mcp/v1",
+        issuer="https://accounts.google.com",
         client_id="123.apps.googleusercontent.com",
         client_secret="hunter2",
         client_type="desktop",
         display_name="Google (DOT appliance)",
-        scopes=["gmail.readonly"],
+        scopes=["gmail.readonly", "calendar.readonly"],
     )
     assert display.client_type == "desktop"
     # Display never carries the secret.
     assert not hasattr(display, "client_secret")
 
-    record = store.get("https://gmail.googleapis.com/mcp/v1")
+    record = store.get("https://accounts.google.com")
     assert record is not None
     assert record.client_secret == "hunter2"
     assert record.client_id == "123.apps.googleusercontent.com"
@@ -55,7 +55,7 @@ def test_client_store_rejects_unknown_client_type(tmp_path: Path, _key: None) ->
     store = ClientStore(tmp_path)
     with pytest.raises(ValueError, match="client_type"):
         store.save(
-            endpoint="https://x",
+            issuer="https://x",
             client_id="c",
             client_secret=None,
             client_type="installed",
@@ -66,14 +66,14 @@ def test_client_store_rejects_unknown_client_type(tmp_path: Path, _key: None) ->
 def test_client_store_replaces_existing_row(tmp_path: Path, _key: None) -> None:
     store = ClientStore(tmp_path)
     store.save(
-        endpoint="https://x",
+        issuer="https://x",
         client_id="first",
         client_secret="s1",
         client_type="desktop",
         display_name="first",
     )
     store.save(
-        endpoint="https://x",
+        issuer="https://x",
         client_id="second",
         client_secret="s2",
         client_type="web",
@@ -89,7 +89,7 @@ def test_client_store_replaces_existing_row(tmp_path: Path, _key: None) -> None:
 def test_client_store_delete(tmp_path: Path, _key: None) -> None:
     store = ClientStore(tmp_path)
     store.save(
-        endpoint="https://x",
+        issuer="https://x",
         client_id="c",
         client_secret=None,
         client_type="desktop",
@@ -104,14 +104,14 @@ def test_client_store_secret_is_encrypted_on_disk(tmp_path: Path, _key: None) ->
     """A naive `grep` on the SQLite file must not find the plaintext secret."""
     store = ClientStore(tmp_path)
     store.save(
-        endpoint="https://x",
+        issuer="https://x",
         client_id="c",
         client_secret="hunter2-plaintext",
         client_type="desktop",
         display_name="x",
     )
     store.close()
-    db_bytes = (tmp_path / ".swarmkit" / "state" / "oauth_clients.db").read_bytes()
+    db_bytes = (tmp_path / ".swarmkit" / "state" / "oauth_clients_v2.db").read_bytes()
     assert b"hunter2-plaintext" not in db_bytes
 
 
@@ -348,10 +348,49 @@ def test_delete_oauth_client_requires_endpoint(tmp_path: Path, _key: None) -> No
             "display_name": "x",
         },
     )
-    assert tc.delete("/api/oauth/clients", params={"endpoint": ENDPOINT}).json() == {
+    # Delete takes the issuer (not the endpoint) now — one row per authorization server,
+    # same row served every Google API in the workspace.
+    assert tc.delete("/api/oauth/clients", params={"issuer": AUTH_META["issuer"]}).json() == {
         "deleted": True
     }
     assert tc.get("/api/oauth/clients").json() == {"clients": []}
+
+
+def test_one_registration_serves_multiple_endpoints_for_same_issuer(
+    tmp_path: Path, _key: None
+) -> None:
+    """The point of issuer-keyed. Register once with the Gmail MCP endpoint; the Calendar
+    MCP endpoint (which the test doesn't bother to serve) would resolve to the same issuer
+    and reuse the same client_id/client_secret.
+    """
+    tc = _client_with_stores(tmp_path)
+    # Register by endpoint — server discovers the issuer.
+    res = tc.post(
+        "/api/oauth/clients",
+        json={
+            "endpoint": ENDPOINT,
+            "client_id": "shared-client-id",
+            "client_secret": "shared-secret",
+            "client_type": "desktop",
+            "display_name": "Google",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["issuer"] == AUTH_META["issuer"]
+
+    # One row covers the issuer, not the specific endpoint.
+    listing = tc.get("/api/oauth/clients").json()["clients"]
+    assert len(listing) == 1
+    assert listing[0]["issuer"] == AUTH_META["issuer"]
+    # Login against the Gmail endpoint uses the stored client.
+    res = tc.post(
+        "/api/oauth/login",
+        json={"credential_id": "gmail", "endpoint": ENDPOINT},
+    )
+    assert res.status_code == 200
+    state = res.json()["state"]
+    res = tc.get(f"/auth/mcp/callback?state={state}&code=x")
+    assert "Connected gmail" in res.text
 
 
 @pytest.fixture

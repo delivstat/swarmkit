@@ -141,11 +141,17 @@ async def prepare_login(
             raise HTTPException(400, str(exc)) from exc
 
         client_id = str(body.get("client_id", "")).strip()
-        stored = clients.get(endpoint) if clients else None
+        # Issuer-keyed lookup (design/details/oauth-persistent-clients.md "Update: issuer-keyed").
+        # One GCP OAuth client can serve every Google API in the workspace instead of needing
+        # one row per MCP endpoint. The authorization-server URL comes straight from the
+        # discovery metadata we already have in hand.
+        issuer = str(metadata.get("issuer", "")).strip() or endpoint
+        stored = clients.get(issuer) if clients else None
         if client_id and stored:
             logger.info(
-                "OAuth login for %s: body client_id overrides persistent registration",
+                "OAuth login for %s (issuer %s): body client_id overrides persistent registration",
                 endpoint,
+                issuer,
             )
         if not client_id:
             try:
@@ -345,7 +351,7 @@ def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:  # noqa
         return {
             "clients": [
                 {
-                    "endpoint": c.endpoint,
+                    "issuer": c.issuer,
                     "client_id": c.client_id,
                     "client_type": c.client_type,
                     "display_name": c.display_name,
@@ -360,22 +366,46 @@ def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:  # noqa
     async def register_oauth_client(request: Request) -> dict[str, Any]:
         """Register an OAuth client the runtime will use to drive logins against a provider that
         does not support dynamic client registration.
+
+        The body carries EITHER ``issuer`` (the authorization-server URL — the honest grain)
+        OR ``endpoint`` (an MCP server URL, from which the runtime discovers the issuer).
+        Operators who paste a GCP OAuth client with the Gmail MCP URL get the issuer resolved
+        to ``https://accounts.google.com`` automatically, so the same registration serves
+        every Google API in the workspace.
         """
         if service.clients is None:
             raise HTTPException(503, "persistent OAuth clients disabled (no workspace path)")
         body = await request.json()
+        issuer = str(body.get("issuer", "")).strip()
         endpoint = str(body.get("endpoint", "")).strip()
         client_id = str(body.get("client_id", "")).strip()
         client_type = str(body.get("client_type", "")).strip() or "desktop"
-        display_name = str(body.get("display_name", "")).strip() or endpoint
         secret = body.get("client_secret")
         scopes = body.get("scopes") or []
-        if not endpoint or not client_id:
-            raise HTTPException(400, "endpoint and client_id are required")
+        if not client_id:
+            raise HTTPException(400, "client_id is required")
+        if not issuer and not endpoint:
+            raise HTTPException(400, "issuer or endpoint is required")
         if client_type not in CLIENT_TYPES:
             raise HTTPException(400, f"client_type must be one of {CLIENT_TYPES}")
+        if not issuer:
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                try:
+                    metadata = await discover_metadata(endpoint, client=client)
+                except LookupError as exc:
+                    raise HTTPException(
+                        400,
+                        f"cannot discover issuer from endpoint {endpoint}: {exc}",
+                    ) from exc
+            issuer = str(metadata.get("issuer", "")).strip()
+            if not issuer:
+                raise HTTPException(
+                    400,
+                    f"endpoint {endpoint} discovered no issuer; pass issuer explicitly",
+                )
+        display_name = str(body.get("display_name", "")).strip() or issuer
         display = service.clients.save(
-            endpoint=endpoint,
+            issuer=issuer,
             client_id=client_id,
             client_secret=str(secret) if secret else None,
             client_type=client_type,
@@ -383,7 +413,7 @@ def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:  # noqa
             scopes=[str(s) for s in scopes],
         )
         return {
-            "endpoint": display.endpoint,
+            "issuer": display.issuer,
             "client_id": display.client_id,
             "client_type": display.client_type,
             "display_name": display.display_name,
@@ -392,13 +422,11 @@ def _register_oauth_routes(app: FastAPI, service: OAuthService) -> None:  # noqa
         }
 
     @app.delete("/api/oauth/clients")
-    async def delete_oauth_client(endpoint: str) -> dict[str, Any]:
-        """Forget a registered OAuth client. Takes the endpoint as a query parameter so the
-        URL-encoded form matches what POST /api/oauth/clients accepted.
-        """
+    async def delete_oauth_client(issuer: str) -> dict[str, Any]:
+        """Forget a registered OAuth client. Takes the issuer as a query parameter."""
         if service.clients is None:
             raise HTTPException(503, "persistent OAuth clients disabled (no workspace path)")
-        deleted = service.clients.delete(endpoint)
+        deleted = service.clients.delete(issuer)
         return {"deleted": deleted}
 
     @app.get("/auth/mcp/probe")
