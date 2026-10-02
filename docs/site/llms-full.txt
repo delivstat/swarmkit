@@ -3183,7 +3183,7 @@ docker run -v ./workspace:/workspace \
 
 # HTTP API
 
-Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 106 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
+Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 107 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
 
 Paths are relative to the server root. `{...}` segments are path parameters.
 
@@ -3338,6 +3338,7 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 | `POST` | `/api/skills/import` | Convert a SKILL.md (given as text) and, unless dry_run, write it. |
 | `GET` | `/api/skills/{skill_id}` | One skill, resolved. |
 | `PUT` | `/api/skills/{skill_id}` | Replace a skill's YAML; validated before it is written. |
+| `POST` | `/api/skills/{skill_id}/activate` | Preflight check: can the signed-in caller run this skill right now? |
 | `GET` | `/api/skills/{skill_id}/yaml` | A skill's YAML as written on disk. |
 | `POST` | `/api/topologies` | Create a topology from YAML; validated against the schema before it is written. |
 | `GET` | `/api/topologies/{topology_id}` | One topology, resolved: agents, archetypes and skills expanded. |
