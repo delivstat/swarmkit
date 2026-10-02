@@ -222,7 +222,7 @@ describe("api.activateSkill (SwarmKit #1012)", () => {
 		expect(res.ok).toBe(false);
 		if (!res.ok) {
 			expect(res.missing).toHaveLength(1);
-			expect(res.missing[0].setup_topology).toBe("google-workspace-setup");
+			expect(res.missing[0]?.setup_topology).toBe("google-workspace-setup");
 		}
 	});
 
