@@ -1,0 +1,29 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: google-workspace-setup
+  version: 1.0.0
+# Walks the operator through the Google Cloud Console setup for an OAuth client, then
+# registers it with the runtime's /api/oauth/clients endpoint. One client ends up covering
+# every Google API in the install (one row per authorization-server issuer per #1004).
+# See design/details/google-workspace-setup.md.
+agents:
+  root:
+    id: root
+    role: root
+    archetype: google-workspace-concierge
+    prompt:
+      system: >
+        You are the Google Cloud setup supervisor. Walk the operator through the steps as
+        your archetype prompt describes, collect the OAuth client credentials, hand them to
+        the registrar, and return the resulting display row (no secret) as the topology's
+        result. If the operator cancels at any point, pass the cancellation marker through
+        unchanged.
+    children:
+      - id: registrar
+        role: worker
+        archetype: oauth-client-registrar
+        prompt:
+          system: >
+            Register the OAuth client described in the concierge's plan artifact. Call
+            register-oauth-client, return the stored row.

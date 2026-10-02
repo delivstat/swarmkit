@@ -1,0 +1,32 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: credential-setup
+  name: Credential Setup
+  description: >
+    A standalone reference workspace that walks the operator through registering an OAuth
+    client (Google first; GitHub + Notion + Slack follow the same shape) and lands a working
+    `oauth_clients` row on the runtime. Not a per-user workspace: this one runs OFF the
+    runtime's own identity to populate what every other workspace depends on. See
+    design/details/google-workspace-setup.md.
+
+# No `credentials:` or `mcp_servers:` block on purpose — this workspace's whole job is to
+# create credentials for OTHER workspaces. Its own tools are a local command pack that calls
+# the runtime's /api/oauth/clients route.
+
+command_packs:
+  - id: credential-setup-tools
+    description: >
+      Local commands the registrar archetype uses to drive the runtime's OAuth-client
+      registration endpoint. Writes to the runtime's oauth_clients table only — no
+      network beyond localhost (set SWARMKIT_RUNTIME_URL to point elsewhere).
+    permission: open
+    commands:
+      - id: register-oauth-client
+        description: Reads a plan JSON on stdin, POSTs to /api/oauth/clients, prints the display row.
+        argv:
+          - python3
+          - "{WORKSPACE}/command_packs/credential-setup-tools/register_oauth_client.py"
+        effects: write
+        output:
+          parse: json
