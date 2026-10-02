@@ -23,7 +23,6 @@ from pathlib import Path
 import yaml
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
-
 from swarmkit_runtime.auth import NoneAuthProvider
 from swarmkit_runtime.oauth import KEY_ENV
 from swarmkit_runtime.server._app import create_app
