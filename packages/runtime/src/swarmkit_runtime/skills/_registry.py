@@ -297,6 +297,13 @@ class WorkspaceSkill:
     server_id: str | None
     path: Path
     held_by: tuple[str, ...]  # "archetype:<id>" and "<topology>/<agent>" that grant it
+    #: Credential ids this skill needs resolved (design/details/skill-requires-credentials.md).
+    #: Explicit from `requires_credentials:` in the manifest; falls back to the server's
+    #: `credentials_ref` for `mcp_tool` skills that haven't been updated to carry the field.
+    requires_credentials: tuple[str, ...] = ()
+    #: Whether `requires_credentials` was declared explicitly on the manifest, or derived from
+    #: the fallback. DEBUG-level visibility; the catalogue migration surfaces this at publish.
+    requires_credentials_explicit: bool = False
 
 
 def _skill_files(workspace: Path) -> list[Path]:
@@ -349,23 +356,67 @@ def workspace_skills(workspace: Path) -> list[WorkspaceSkill]:
     ws = resolve_workspace(workspace)
     held = _holders(ws)
     files = _skill_file_index(workspace)
+    server_cred_refs = _server_credential_refs(ws)
     out: list[WorkspaceSkill] = []
     for sid, skill in sorted(ws.skills.items()):
         if sid not in files:
             continue  # bundled or synthesized (command packs, topology-as-agent) — not a file here
         impl = skill.raw.implementation
+        server_id = str(_impl_get(impl, "server")) if _impl_get(impl, "server") else None
+        # Each entry is an Identifier (`RootModel[str]`) in the generated pydantic model;
+        # stringifying it gives "root='…'", so unwrap via `.root` where present.
+        explicit = tuple(
+            str(getattr(c, "root", c))
+            for c in (getattr(skill.raw, "requires_credentials", None) or [])
+        )
+        if explicit:
+            reqs, explicit_flag = explicit, True
+        elif server_id and server_id in server_cred_refs:
+            reqs, explicit_flag = (server_cred_refs[server_id],), False
+            logger.debug(
+                "skill %r requires_credentials inferred from server %r → %r",
+                sid,
+                server_id,
+                server_cred_refs[server_id],
+            )
+        else:
+            reqs, explicit_flag = (), False
         out.append(
             WorkspaceSkill(
                 id=sid,
                 name=str(getattr(skill.raw.metadata, "name", "") or sid),
                 category=str(getattr(skill.raw.category, "value", None) or skill.raw.category),
                 backing=str(_impl_get(impl, "type") or ""),
-                server_id=(str(_impl_get(impl, "server")) if _impl_get(impl, "server") else None),
+                server_id=server_id,
                 path=files[sid],
                 held_by=tuple(sorted(set(held.get(sid, [])))),
+                requires_credentials=reqs,
+                requires_credentials_explicit=explicit_flag,
             )
         )
     return out
+
+
+def _server_credential_refs(ws: Any) -> dict[str, str]:
+    """``{server_id: credential_id}`` from the workspace's ``mcp_servers`` block — the source
+    the fallback inference reads from for ``mcp_tool`` skills missing ``requires_credentials``.
+    """
+    out: dict[str, str] = {}
+    for server in getattr(ws.raw, "mcp_servers", None) or ():
+        sid = str(getattr(server, "id", "") or "")
+        cref = getattr(server, "credentials_ref", None)
+        if sid and cref:
+            out[sid] = str(cref)
+    return out
+
+
+def skills_requiring(workspace: Path, credential_id: str) -> list[WorkspaceSkill]:
+    """Reverse index: skills that need `credential_id` resolved before they can run.
+
+    Backs ``used_by`` on ``GET /api/oauth/my-credentials`` and the ``Needs connection`` /
+    ``Needs setup`` badges on the Skills page (design/details/skill-requires-credentials.md).
+    """
+    return [s for s in workspace_skills(workspace) if credential_id in s.requires_credentials]
 
 
 def _sid(s: Any) -> str:

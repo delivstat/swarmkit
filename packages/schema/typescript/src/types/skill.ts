@@ -29,6 +29,12 @@ export interface SwarmKitSkill {
      */
     outputs?:   { [key: string]: any };
     provenance: Provenance;
+    /**
+     * credential_ids this skill needs resolved. Each must exist in the workspace's
+     * `credentials:` block at activation time; each must have an oauth_tokens row for the
+     * caller before the skill can execute. See design/details/skill-requires-credentials.md.
+     */
+    requires_credentials?: string[];
 }
 
 export type APIVersion = "swarmkit/v1";

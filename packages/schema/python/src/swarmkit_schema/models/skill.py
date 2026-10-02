@@ -369,6 +369,10 @@ class SwarmKitSkill(BaseModel):
     iam: Iam | None = None
     constraints: Constraints | None = None
     audit: Audit | None = None
+    requires_credentials: list[Identifier] | None = Field(
+        None,
+        description="credential_ids this skill needs resolved. Each must exist in the workspace's `credentials:` block at activation time; each must have an oauth_tokens row for the caller before the skill can execute. See design/details/skill-requires-credentials.md.",
+    )
     provenance: Provenance
 
 

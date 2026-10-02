@@ -28,6 +28,12 @@
     "iam": { "$ref": "#/$defs/iam" },
     "constraints": { "$ref": "#/$defs/constraints" },
     "audit": { "$ref": "#/$defs/audit" },
+    "requires_credentials": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/identifier" },
+      "uniqueItems": true,
+      "description": "credential_ids this skill needs resolved. Each must exist in the workspace's `credentials:` block at activation time; each must have an oauth_tokens row for the caller before the skill can execute. See design/details/skill-requires-credentials.md."
+    },
     "provenance": { "$ref": "#/$defs/provenance" }
   },
   "allOf": [
