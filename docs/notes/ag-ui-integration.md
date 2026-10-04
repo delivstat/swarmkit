@@ -145,9 +145,34 @@ The CopilotKit `<CopilotChat>` component can be configured to render a per-`kind
 
 > ⚠ **This section is the point of this document.** Minimum three gotchas before #1016 merges. Backfilled by the implementation PR as unexpected behaviour surfaces.
 
-- *(To be populated during implementation. Representative shape:)*
-  - **Gotcha N: SSE reconnection semantics.** AG-UI clients that lose their SSE connection mid-run attempt reconnection; our implementation does/does not support last-event-id resumption. Workaround: ...
-  - **Gotcha N: Backpressure on fast event streams.** When a model streams tokens faster than the client reads, our SSE buffer behaviour is ...
+### Gotcha 1 — SwarmKit's internal progress stream is string-based, not structured
+
+The existing `/run/{topology}` endpoint streams progress through `langgraph_compiler._helpers.progress_listener`, which emits plain strings ("[assistant] thinking…", "calling get-weather", etc.). AG-UI's rich event vocabulary (`ToolCallStart`, `SubagentStarted`, `ReasoningEnd`) needs **structured** source events — fields like `toolCallId`, `toolCallName`, `delta` — that the string stream cannot faithfully carry.
+
+**v1 scope cut:** AG-UI emits only the subset we can produce from the string stream:
+
+- `RunStarted` — on job start
+- `TextMessageStart` + `TextMessageContent` (one `delta` per progress line) + `TextMessageEnd` — single assistant message per run
+- `RunFinished{success}` — on job completion
+- `RunError` — on job failure
+
+**Not emitted in v1 (deferred to v2):** `ToolCallStart`/`Args`/`End`/`Result`, `SubagentStarted`/`Finished`/`Error`, `Reasoning*`, `StepStarted`/`Finished`, `RunFinished{interrupt}` + `/resume`.
+
+**Workaround for consumers today:** build against the lifecycle + messages subset. If your UX needs tool-call rendering or sub-agent attribution, wait for v2 or render against the `/jobs/{id}/stream` path which carries the string progress verbatim.
+
+**Fix in v2:** a parallel structured event bus (`_structured_event_listeners_var` context-var alongside `_progress_listeners_var`) that the LangGraph compiler emits structured events into. Tracked as follow-up to #1016.
+
+### Gotcha 2 — v1 ignores `RunAgentInput.messages` beyond the last user turn
+
+The client sends the whole thread history in `messages`. For long threads this is wasteful; v1 **uses only the trailing user turn** as the topology input and logs the rest. v2 will reconcile against the audit log so clients can trust the server has the full thread.
+
+**For consumers:** don't rely on the server having conversational memory of prior turns in v1. If you need memory, use the governed-memory skill backing in your topology (`persistence` category skills) — the agent-side memory is independent of the thread-side history.
+
+### Gotcha 3 — `RunAgentInput.tools` (frontend tools) are logged but not honoured in v1
+
+CopilotKit lets the frontend expose actions the agent can call. v1 accepts the field and logs it, but **the agent only sees skills granted by the topology**, not frontend tools. v2 adds a `frontend_tool` skill backing.
+
+**For consumers:** if your UI needs the agent to invoke frontend-side actions (navigate, highlight, open modal), today that happens by convention — the agent emits a `TextMessageContent` with a well-known shape and the frontend parses it. Not elegant; fixed in v2.
 
 ## 10. Testing locally
 
