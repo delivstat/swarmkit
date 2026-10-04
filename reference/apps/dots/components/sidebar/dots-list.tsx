@@ -2,7 +2,7 @@
 
 import { DOTS } from "@/lib/dots.config";
 import { cn } from "@/lib/utils";
-import { GitFork, Reply, Sunrise } from "lucide-react";
+import { ChartNoAxesColumn, GitFork, Plug, Reply, Sunrise } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -11,6 +11,11 @@ const ICONS: Record<string, React.ElementType> = {
 	"mail-reply": Reply,
 	github: GitFork,
 };
+
+const UTILITY_LINKS: Array<{ href: string; label: string; icon: React.ElementType }> = [
+	{ href: "/connections", label: "Connections", icon: Plug },
+	{ href: "/usage", label: "Usage & cost", icon: ChartNoAxesColumn },
+];
 
 export function DotsList(): React.ReactElement {
 	const pathname = usePathname();
@@ -39,6 +44,26 @@ export function DotsList(): React.ReactElement {
 					</Link>
 				);
 			})}
+			<div className="mt-auto space-y-1 border-t border-border pt-3">
+				{UTILITY_LINKS.map(({ href, label, icon: Icon }) => {
+					const active = pathname === href;
+					return (
+						<Link
+							key={href}
+							href={href}
+							className={cn(
+								"flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+								active
+									? "bg-accent text-accent-foreground"
+									: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+							)}
+						>
+							<Icon className="h-4 w-4" aria-hidden="true" />
+							<span>{label}</span>
+						</Link>
+					);
+				})}
+			</div>
 		</nav>
 	);
 }
