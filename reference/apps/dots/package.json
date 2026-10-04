@@ -15,6 +15,7 @@
 		"mock-runtime": "node mocks/mock-runtime.mjs"
 	},
 	"dependencies": {
+		"@ag-ui/client": "^1.0.1",
 		"@copilotkit/react-core": "^1.9.0",
 		"@copilotkit/react-ui": "^1.9.0",
 		"@tailwindcss/postcss": "^4.3.0",

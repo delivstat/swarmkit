@@ -37,7 +37,7 @@ def main() -> int:
                 continue
             event = json.loads(line[len("data:") :].strip())
             etype = event.get("type", "?")
-            if etype == "TextMessageContent":
+            if etype == "TEXT_MESSAGE_CONTENT":
                 print(f"  [content] {event['delta']}")
             else:
                 rest = {k: v for k, v in event.items() if k != "type"}

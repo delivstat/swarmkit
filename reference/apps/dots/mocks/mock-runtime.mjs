@@ -2,6 +2,10 @@
 // Used in the standalone demo (no Python needed). Mirrors `POST /api/ag-ui/run` from PR #1020.
 //
 //   SWARMKIT_URL=http://127.0.0.1:4100 pnpm dev   # points the dots app at this instead
+//
+// Event-type naming follows the AG-UI spec: SCREAMING_SNAKE_CASE (`TEXT_MESSAGE_CONTENT`),
+// not camelCase. CopilotKit's AbstractAgent silently drops events with unknown types, which
+// looks like a streaming hang in the UI. Keep this file and swarmkit's own translator in sync.
 
 import { createServer } from "node:http";
 
@@ -18,7 +22,8 @@ const CANNED = [
 ];
 
 function sse(payload) {
-	return `data: ${JSON.stringify(payload)}\n\n`;
+	// `timestamp` is optional in the schema, but include it since real runtimes do.
+	return `data: ${JSON.stringify({ ...payload, timestamp: Date.now() })}\n\n`;
 }
 
 createServer(async (req, res) => {
@@ -44,21 +49,14 @@ createServer(async (req, res) => {
 		"cache-control": "no-cache, no-transform",
 		connection: "keep-alive",
 	});
-	res.write(
-		sse({
-			type: "RunStarted",
-			threadId,
-			runId,
-			input: { topology: input.context?.topology },
-		}),
-	);
-	res.write(sse({ type: "TextMessageStart", messageId, role: "assistant" }));
+	res.write(sse({ type: "RUN_STARTED", threadId, runId }));
+	res.write(sse({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" }));
 	for (const delta of CANNED) {
-		res.write(sse({ type: "TextMessageContent", messageId, delta }));
+		res.write(sse({ type: "TEXT_MESSAGE_CONTENT", messageId, delta }));
 		await new Promise((r) => setTimeout(r, 120));
 	}
-	res.write(sse({ type: "TextMessageEnd", messageId }));
-	res.write(sse({ type: "RunFinished", runId, outcome: { type: "success" } }));
+	res.write(sse({ type: "TEXT_MESSAGE_END", messageId }));
+	res.write(sse({ type: "RUN_FINISHED", threadId, runId, outcome: { type: "success" } }));
 	res.end();
 }).listen(PORT, () => {
 	console.log(`mock-runtime listening on http://127.0.0.1:${PORT}`);

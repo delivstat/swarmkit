@@ -38,20 +38,21 @@ await page.fill("input[name=username]", USERNAME);
 await page.fill("input[name=password]", PASSWORD);
 await shoot(page, "02-login-filled");
 
-// 3. /dots/morning-brief — after login, greeting visible
+// 3. /dots/morning-brief — after login, CopilotChat initial greeting visible
 await Promise.all([page.waitForURL(/\/dots\//), page.click("button[type=submit]")]);
 await page.waitForSelector("text=Morning Brief");
+await page.waitForTimeout(1500); // let CopilotKit settle
 await shoot(page, "03-dot-greeting");
 
 // 4. /dots/morning-brief — user turn + assistant mid-stream
-await page.fill("input[placeholder^='Ask']", "What's my brief?");
-await page.click("button:has-text('Send')");
-// mid-stream: wait for at least one assistant delta, screenshot before completion
-await page.waitForSelector(".animate-pulse", { timeout: 5000 });
+const composer = page.locator("textarea, [contenteditable=true]").first();
+await composer.fill("What's my brief?");
+await composer.press("Enter");
+await page.waitForTimeout(400); // first delta
 await shoot(page, "04-dot-streaming");
 
-// 5. /dots/morning-brief — final state, no spinner
-await page.waitForSelector(".animate-pulse", { state: "detached", timeout: 15000 });
+// 5. /dots/morning-brief — final state, mock-runtime finishes in ~1s
+await page.waitForTimeout(3000);
 await shoot(page, "05-dot-final");
 
 await browser.close();

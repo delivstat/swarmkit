@@ -106,7 +106,7 @@ The full sequence for a run that hits an approval gate:
 3. Run hits an approval gate. Server emits:
    ```jsonc
    {
-     "type": "RunFinished",
+     "type": "RUN_FINISHED",
      "runId": "run-01HK...",
      "outcome": {
        "type": "interrupt",
