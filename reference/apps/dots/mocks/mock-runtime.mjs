@@ -11,15 +11,38 @@ import { createServer } from "node:http";
 
 const PORT = Number(process.env.PORT ?? 4100);
 
-const CANNED = [
-	"Pulling your brief…\n",
-	"\n",
-	"- Weekly review (needs reply by 5pm)\n",
-	"- Budget sign-off (one line of context, you decide)\n",
-	"- Interview feedback (overdue by one day)\n",
-	"\n",
-	"Which one do you want to handle first?",
-];
+// Canned responses by topology name. The real swarmkit serve picks a topology from
+// `context.topology`; this mock does the same so the dots app can show distinct Dots
+// end-to-end without needing Python running.
+const RESPONSES = {
+	"morning-brief": [
+		"Pulling your brief…\n",
+		"\n",
+		"- Weekly review (needs reply by 5pm)\n",
+		"- Budget sign-off (one line of context, you decide)\n",
+		"- Interview feedback (overdue by one day)\n",
+		"\n",
+		"Which one do you want to handle first?",
+	],
+	"handle-item": [
+		"Working the item…\n",
+		"\n",
+		"Draft reply (edit before sending):\n",
+		"> Thanks for the nudge — sign-off attached. Flagging a budget caveat inline. — S\n",
+		"\n",
+		"Want me to send, or iterate?",
+	],
+	"github-triage": [
+		"Scanning your inbox…\n",
+		"\n",
+		"- #142 (bug, deepseek-v3) — needs a repro step\n",
+		"- #157 (feature) — waiting on your green light\n",
+		"- PR #163 — one review comment to resolve\n",
+		"\n",
+		"Which one first?",
+	],
+};
+const FALLBACK = ["Mock runtime: no scripted response for this topology."];
 
 function sse(payload) {
 	// `timestamp` is optional in the schema, but include it since real runtimes do.
@@ -49,9 +72,11 @@ createServer(async (req, res) => {
 		"cache-control": "no-cache, no-transform",
 		connection: "keep-alive",
 	});
+	const topology = input.context?.topology ?? "";
+	const script = RESPONSES[topology] ?? FALLBACK;
 	res.write(sse({ type: "RUN_STARTED", threadId, runId }));
 	res.write(sse({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" }));
-	for (const delta of CANNED) {
+	for (const delta of script) {
 		res.write(sse({ type: "TEXT_MESSAGE_CONTENT", messageId, delta }));
 		await new Promise((r) => setTimeout(r, 120));
 	}
