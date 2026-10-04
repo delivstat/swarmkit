@@ -36,6 +36,7 @@ from ._helpers import _membership_authenticates, _record_serve_access, _required
 from ._jobs import JobStore
 from ._mcp import _boot_mcp, _mcp_available, _mount_mcp, _start_scheduler, mcp_session_lifespan
 from ._routes_a2a import A2A_WELL_KNOWN_PATH, _register_a2a_routes
+from ._routes_ag_ui import _register_ag_ui_routes
 from ._routes_config import _register_config_routes
 from ._routes_conversations import _register_conversation_routes
 from ._routes_crud import _register_crud_routes
@@ -468,6 +469,7 @@ def create_app(  # noqa: PLR0915
     _register_fleet_routes(app)
     _register_memory_routes(app)
     _register_mcp_invoke_routes(app)
+    _register_ag_ui_routes(app, job_store)
     # Registered unconditionally; each route answers 404 until `server.a2a.enabled` is true, so
     # a workspace can flip it on with a reload and not a restart.
     _register_a2a_routes(app, _auth, workspace_path)

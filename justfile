@@ -107,6 +107,10 @@ demo-ollama-think:
 demo-providers:
     uv run python packages/runtime/demos/declarative_providers.py
 
+# Demo: drive a running `swarmkit serve` over the AG-UI protocol (needs `swarmkit serve` in another terminal).
+demo-ag-ui:
+    uv run python examples/ag-ui/demo.py
+
 demo-topology-schema:   (_demo-schema "topology")
 demo-skill-schema:      (_demo-schema "skill")
 demo-archetype-schema:  (_demo-schema "archetype")
