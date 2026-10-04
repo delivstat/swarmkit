@@ -97,16 +97,16 @@ def test_run_emits_the_v1_event_sequence(client: TestClient) -> None:
 
     events = _events(res.text)
     types = [e["type"] for e in events]
-    assert types[0] == "RunStarted"
-    assert "TextMessageStart" in types
-    assert "TextMessageEnd" in types
-    assert types[-1] in {"RunFinished", "RunError"}
+    assert types[0] == "RUN_STARTED"
+    assert "TEXT_MESSAGE_START" in types
+    assert "TEXT_MESSAGE_END" in types
+    assert types[-1] in {"RUN_FINISHED", "RUN_ERROR"}
 
     # TextMessageContent uses one messageId for the whole run.
     message_ids = {
         e["messageId"]
         for e in events
-        if e["type"] in {"TextMessageStart", "TextMessageContent", "TextMessageEnd"}
+        if e["type"] in {"TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END"}
     }
     assert len(message_ids) == 1
 
@@ -123,7 +123,7 @@ def test_run_started_carries_thread_and_run_ids(client: TestClient) -> None:
         },
     )
     events = _events(res.text)
-    started = next(e for e in events if e["type"] == "RunStarted")
+    started = next(e for e in events if e["type"] == "RUN_STARTED")
     assert started["threadId"] == "thread-fixed"
     assert started["runId"] == "run-fixed"
     assert started["input"] == {"topology": topology}
@@ -139,9 +139,9 @@ def test_run_finished_carries_success_outcome(client: TestClient) -> None:
         },
     )
     events = _events(res.text)
-    finished = next(e for e in events if e["type"] in {"RunFinished", "RunError"})
+    finished = next(e for e in events if e["type"] in {"RUN_FINISHED", "RUN_ERROR"})
     # The mock provider returns deterministically, so success is expected.
-    if finished["type"] == "RunFinished":
+    if finished["type"] == "RUN_FINISHED":
         assert finished["outcome"] == {"type": "success"}
 
 
@@ -156,7 +156,7 @@ def test_missing_thread_id_generates_one(client: TestClient) -> None:
         },
     )
     events = _events(res.text)
-    started = next(e for e in events if e["type"] == "RunStarted")
+    started = next(e for e in events if e["type"] == "RUN_STARTED")
     assert isinstance(started["threadId"], str)
     assert len(started["threadId"]) > 8
 

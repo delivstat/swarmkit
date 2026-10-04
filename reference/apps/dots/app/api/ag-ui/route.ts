@@ -1,41 +1,54 @@
 import { findDot } from "@/lib/dots.config";
 import { type NextRequest, NextResponse } from "next/server";
 
-// Proxy POST /api/ag-ui → SwarmKit's POST /api/ag-ui/run.
+// Proxy POST /api/ag-ui?dotId=<id> → SwarmKit's POST /api/ag-ui/run.
 //
-// We terminate auth here (middleware already verified the session cookie), then forward the
-// user turn as an AG-UI RunAgentInput with context.topology set from the Dot config. The SSE
-// response is piped straight through to the client.
+// The body is an AG-UI `RunAgentInput` (threadId, runId, messages, tools, context, state) sent
+// by @ag-ui/client's HttpAgent. We rewrite `context.topology` from the Dot config before
+// forwarding; everything else is passed through verbatim so the SSE stream SwarmKit emits
+// reaches the browser untouched.
 //
-// SWARMKIT_URL defaults to http://127.0.0.1:8000 (uvicorn default). In the standalone demo it
-// points at the mock runtime instead.
+// Why query param, not body: `HttpAgent` composes the body itself; the Dot id has to ride on
+// the URL. The server adds the topology server-side so the browser never names a topology that
+// has not been declared in dots.config.ts.
+//
+// SWARMKIT_URL defaults to http://127.0.0.1:8000 (uvicorn default). The standalone demo points
+// it at the mock runtime instead.
 
 export const runtime = "nodejs";
 
-interface RunBody {
-	dotId: string;
-	message: string;
+interface AgUiRunInput {
+	threadId?: string;
+	runId?: string;
+	messages?: unknown[];
+	tools?: unknown[];
+	context?: Record<string, unknown>;
+	state?: Record<string, unknown>;
+	forwardedProps?: Record<string, unknown>;
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
-	let body: RunBody;
+	const dotId = req.nextUrl.searchParams.get("dotId");
+	const dot = dotId ? findDot(dotId) : undefined;
+	if (!dot) return NextResponse.json({ error: "dot_not_found" }, { status: 404 });
+
+	let body: AgUiRunInput;
 	try {
-		body = (await req.json()) as RunBody;
+		body = (await req.json()) as AgUiRunInput;
 	} catch {
 		return NextResponse.json({ error: "invalid_json" }, { status: 400 });
 	}
-	const dot = findDot(body.dotId);
-	if (!dot) return NextResponse.json({ error: "dot_not_found" }, { status: 404 });
+
+	const forwarded = {
+		...body,
+		context: { ...(body.context ?? {}), topology: dot.topology },
+	};
 
 	const base = process.env.SWARMKIT_URL ?? "http://127.0.0.1:8000";
 	const upstream = await fetch(`${base}/api/ag-ui/run`, {
 		method: "POST",
 		headers: { "content-type": "application/json", accept: "text/event-stream" },
-		body: JSON.stringify({
-			threadId: `${dot.id}:default`,
-			messages: [{ role: "user", content: body.message }],
-			context: { topology: dot.topology },
-		}),
+		body: JSON.stringify(forwarded),
 	});
 	if (!upstream.ok || !upstream.body) {
 		return NextResponse.json({ error: "upstream_error", status: upstream.status }, { status: 502 });

@@ -135,11 +135,16 @@ async def _translate(job: Any, *, thread_id: str, run_id: str) -> AsyncGenerator
     """Translate a job's string progress stream into AG-UI events.
 
     Shape of what we emit:
-        RunStarted
-        TextMessageStart
-        TextMessageContent  * one per progress line
-        TextMessageEnd
-        RunFinished{success}   OR   RunError
+        RUN_STARTED
+        TEXT_MESSAGE_START
+        TEXT_MESSAGE_CONTENT  * one per progress line
+        TEXT_MESSAGE_END
+        RUN_FINISHED{success}   OR   RUN_ERROR
+
+    Event-type naming follows the AG-UI spec: SCREAMING_SNAKE_CASE. CopilotKit's
+    AbstractAgent and other AG-UI consumers silently drop events whose `type` does not
+    match the spec, which looks like a mid-stream hang in the chat UI — so this casing
+    is load-bearing.
 
     Richer events (tool calls, subagents, interrupts) are v2 — see handoff guide §9 Gotcha 1.
     """
@@ -147,7 +152,7 @@ async def _translate(job: Any, *, thread_id: str, run_id: str) -> AsyncGenerator
 
     yield _event(
         {
-            "type": "RunStarted",
+            "type": "RUN_STARTED",
             "timestamp": _now_ms(),
             "runId": run_id,
             "threadId": thread_id,
@@ -156,7 +161,7 @@ async def _translate(job: Any, *, thread_id: str, run_id: str) -> AsyncGenerator
     )
     yield _event(
         {
-            "type": "TextMessageStart",
+            "type": "TEXT_MESSAGE_START",
             "timestamp": _now_ms(),
             "messageId": message_id,
             "role": "assistant",
@@ -169,7 +174,7 @@ async def _translate(job: Any, *, thread_id: str, run_id: str) -> AsyncGenerator
         for event in current_events:
             yield _event(
                 {
-                    "type": "TextMessageContent",
+                    "type": "TEXT_MESSAGE_CONTENT",
                     "timestamp": _now_ms(),
                     "messageId": message_id,
                     "delta": event,
@@ -182,7 +187,7 @@ async def _translate(job: Any, *, thread_id: str, run_id: str) -> AsyncGenerator
 
     yield _event(
         {
-            "type": "TextMessageEnd",
+            "type": "TEXT_MESSAGE_END",
             "timestamp": _now_ms(),
             "messageId": message_id,
         }
@@ -191,9 +196,10 @@ async def _translate(job: Any, *, thread_id: str, run_id: str) -> AsyncGenerator
     if job.status == "completed":
         yield _event(
             {
-                "type": "RunFinished",
+                "type": "RUN_FINISHED",
                 "timestamp": _now_ms(),
                 "runId": run_id,
+                "threadId": thread_id,
                 "outcome": {"type": "success"},
                 "result": {"output": getattr(job, "output", None) or ""},
             }
@@ -201,9 +207,10 @@ async def _translate(job: Any, *, thread_id: str, run_id: str) -> AsyncGenerator
     else:
         yield _event(
             {
-                "type": "RunError",
+                "type": "RUN_ERROR",
                 "timestamp": _now_ms(),
                 "runId": run_id,
+                "threadId": thread_id,
                 "message": getattr(job, "error", None) or "run failed",
                 "code": ERR_INTERNAL,
             }

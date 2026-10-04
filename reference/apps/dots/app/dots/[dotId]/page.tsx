@@ -1,4 +1,4 @@
-import { DotChat } from "@/components/chat/dot-chat";
+import { DotCopilotChat } from "@/components/chat/dot-copilot-chat";
 import { findDot } from "@/lib/dots.config";
 import { notFound } from "next/navigation";
 
@@ -16,7 +16,7 @@ export default async function DotPage({
 				<h1 className="text-lg font-semibold">{dot.name}</h1>
 				<p className="text-sm text-muted-foreground">{dot.role}</p>
 			</header>
-			<DotChat dot={dot} />
+			<DotCopilotChat dot={dot} />
 		</div>
 	);
 }
