@@ -19,3 +19,17 @@
 :root {
 	color-scheme: dark;
 }
+
+/* Align CopilotKit's chat tokens with the dots app palette.
+ * CopilotKit auto-switches to its own dark theme via [data-theme="dark"] on <html>; these
+ * overrides tune its surface and accent to match our sky-accent neutral-dark palette. */
+[data-theme="dark"] {
+	--copilot-kit-background-color: oklch(0.14 0.004 285.8);
+	--copilot-kit-input-background-color: oklch(0.21 0.006 285.8);
+	--copilot-kit-contrast-color: oklch(0.98 0.002 285.8);
+	--copilot-kit-secondary-color: oklch(0.21 0.006 285.8);
+	--copilot-kit-secondary-contrast-color: oklch(0.98 0.002 285.8);
+	--copilot-kit-primary-color: oklch(0.72 0.17 236);
+	--copilot-kit-muted-color: oklch(0.72 0.012 285.8);
+	--copilot-kit-separator-color: oklch(0.27 0.006 285.8);
+}
