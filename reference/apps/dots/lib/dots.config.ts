@@ -26,6 +26,24 @@ export const DOTS: Dot[] = [
 		greeting: "Ready for today's brief. Shall I pull it?",
 		renderers: ["brief-item"],
 	},
+	{
+		id: "handle-item",
+		name: "Handle Item",
+		role: "Delegate for a specific brief item",
+		icon: "mail-reply",
+		topology: "handle-item",
+		greeting: "Tell me which item from your brief you want to handle.",
+		renderers: ["email-draft", "prep-note"],
+	},
+	{
+		id: "github-triage",
+		name: "GitHub Triage",
+		role: "Issue + PR triage coworker",
+		icon: "github",
+		topology: "github-triage",
+		greeting: "Ask me about an issue or PR, or say 'triage inbox'.",
+		renderers: ["github-item"],
+	},
 ];
 
 export function findDot(id: string): Dot | undefined {

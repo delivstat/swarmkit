@@ -2,12 +2,14 @@
 
 import { DOTS } from "@/lib/dots.config";
 import { cn } from "@/lib/utils";
-import { Sunrise } from "lucide-react";
+import { GitFork, Reply, Sunrise } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const ICONS: Record<string, React.ElementType> = {
 	sunrise: Sunrise,
+	"mail-reply": Reply,
+	github: GitFork,
 };
 
 export function DotsList(): React.ReactElement {

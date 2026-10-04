@@ -38,22 +38,46 @@ await page.fill("input[name=username]", USERNAME);
 await page.fill("input[name=password]", PASSWORD);
 await shoot(page, "02-login-filled");
 
-// 3. /dots/morning-brief — after login, CopilotChat initial greeting visible
+// 3. /dots/morning-brief — after login, CopilotChat initial greeting
 await Promise.all([page.waitForURL(/\/dots\//), page.click("button[type=submit]")]);
 await page.waitForSelector("text=Morning Brief");
 await page.waitForTimeout(1500); // let CopilotKit settle
 await shoot(page, "03-dot-greeting");
 
-// 4. /dots/morning-brief — user turn + assistant mid-stream
-const composer = page.locator("textarea, [contenteditable=true]").first();
+// 4. /dots/morning-brief — user turn + mid-stream
+let composer = page.locator("textarea, [contenteditable=true]").first();
 await composer.fill("What's my brief?");
 await composer.press("Enter");
 await page.waitForTimeout(400); // first delta
 await shoot(page, "04-dot-streaming");
 
-// 5. /dots/morning-brief — final state, mock-runtime finishes in ~1s
+// 5. /dots/morning-brief — final state
 await page.waitForTimeout(3000);
 await shoot(page, "05-dot-final");
+
+// 6. /dots/handle-item — second Dot proves multi-Dot routing + per-topology mock response
+await page.click("text=Handle Item");
+await page.waitForURL(/handle-item/);
+await page.waitForTimeout(1500);
+await shoot(page, "06-handle-item-greeting");
+
+composer = page.locator("textarea, [contenteditable=true]").first();
+await composer.fill("Reply to the budget sign-off");
+await composer.press("Enter");
+await page.waitForTimeout(3000);
+await shoot(page, "07-handle-item-final");
+
+// 8. /dots/github-triage — provider Dot
+await page.click("text=GitHub Triage");
+await page.waitForURL(/github-triage/);
+await page.waitForTimeout(1500);
+await shoot(page, "08-github-greeting");
+
+composer = page.locator("textarea, [contenteditable=true]").first();
+await composer.fill("Triage inbox");
+await composer.press("Enter");
+await page.waitForTimeout(3000);
+await shoot(page, "09-github-final");
 
 await browser.close();
 
