@@ -1,0 +1,10 @@
+services:
+  dots-app:
+    build: .
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET:?set SESSION_SECRET to a 32+ char random string}
+      - DOTS_OWNER_PASSWORD_HASH=${DOTS_OWNER_PASSWORD_HASH:?run `node scripts/hash-password.mjs`}
+      - SWARMKIT_URL=${SWARMKIT_URL:-http://swarmkit:8000}
+    ports:
+      - "3500:3500"
+    depends_on: []
