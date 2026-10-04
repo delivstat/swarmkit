@@ -1,6 +1,6 @@
 # HTTP API
 
-Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 107 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
+Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 108 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
 
 Paths are relative to the server root. `{...}` segments are path parameters.
 
@@ -132,6 +132,7 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 |---|---|---|
 | `GET` | `/api/a2a/agents` | The remote agents this workspace can call — every `agent` skill with a `card_url`. |
 | `GET` | `/api/a2a/probe` | Fetch a remote Agent Card so a person can pick a skill *before* a skill file exists. |
+| `POST` | `/api/ag-ui/run` | Run a topology, streaming AG-UI events over SSE. |
 | `GET` | `/api/archetypes/{archetype_id}` | One archetype, resolved. |
 | `PUT` | `/api/archetypes/{archetype_id}` | Replace an archetype's YAML; validated before it is written. |
 | `GET` | `/api/archetypes/{archetype_id}/yaml` | An archetype's YAML as written on disk. |
