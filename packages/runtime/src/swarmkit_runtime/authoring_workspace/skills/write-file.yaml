@@ -4,10 +4,36 @@ metadata:
   id: write-file
   name: Write File
   description: >
-    [stub] Author-local skill backing. Full inputs/outputs schema ports in #1045 PR-2
-    alongside the matching command_pack script. This stub exists for the foundation
-    PR to prove the bundled workspace loads and validates.
+    Writes one or more YAML/JSON files into the target workspace. The target workspace
+    is pinned by SWARMKIT_AUTHOR_TARGET_WORKSPACE at invocation time (never from LLM
+    input), and paths are refused unless they fall under topologies/, archetypes/,
+    skills/, funnels/, schemas/, policies/, or workspace.yaml. See
+    design/details/author-bundled-workspace.md (#1045) for the IAM-scope contract.
 category: capability
+inputs:
+  type: object
+  additionalProperties: false
+  required: [files]
+  properties:
+    files:
+      type: object
+      description: >
+        Map of workspace-relative path to YAML/JSON content. Paths must sit under one
+        of the author's allowed roots; absolute paths and `..` are refused.
+      additionalProperties:
+        type: string
+      minProperties: 1
+outputs:
+  type: object
+  required: [written, target_workspace]
+  properties:
+    written:
+      type: array
+      items: { type: string }
+      description: Relative paths that were written.
+    target_workspace:
+      type: string
+      description: Resolved absolute path the files landed in.
 implementation:
   type: command
   pack: author-tools
