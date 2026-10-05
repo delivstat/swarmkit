@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: topology-author
+  name: Topology Author
+  description: >
+    Shared archetype for every authoring mode. Mode-specific system prompts live on the
+    individual topologies — this archetype carries the defaults (model, skills, tooling
+    conventions) that apply across modes.
+role: root
+defaults:
+  model:
+    # Overridable by the serving workspace's provider config; defaults to a tool-use
+    # capable model.
+    provider: openrouter
+    name: moonshotai/kimi-k2-0905
+    temperature: 0.3
+  skills:
+    - write-file
+    - read-workspace
+    - validate-workspace
+    - search-skills-catalogue
+provenance:
+  authored_by: human
+  version: 0.1.0
