@@ -173,7 +173,14 @@ _session_state: dict[str, Any] = {"write_attempt": 0, "workspace": None}
 
 
 def _handle_tool_call(tc: ContentBlock) -> str:
-    """Execute a single tool call, with user confirmation for writes."""
+    """Execute a single tool call, with user confirmation for writes.
+
+    All four tools dispatch to command_pack scripts in the bundled authoring workspace
+    (see ``_tools.execute_tool``). The target workspace is pinned by the session, never
+    taken from the LLM — ``swarmkit init fresh/`` used to write to ``.`` on one turn
+    and to a ``support-swarm/`` the model invented on the next, and ``fresh/`` stayed
+    empty. Now the script resolves the target from the env the agent threads in.
+    """
 
     tool_input = tc.tool_input
     if isinstance(tool_input, str):
@@ -183,17 +190,12 @@ def _handle_tool_call(tc: ContentBlock) -> str:
             tool_input = {}
 
     tool_name = tc.tool_name or ""
+    target: Path | None = _session_state.get("workspace")
 
-    if tool_name == "write_files" and isinstance(tool_input, dict):
-        # The files go into THE workspace this session was started for — never into whatever
-        # `base_dir` the model chose. `swarmkit init fresh/` used to write to `.` on one turn and
-        # to `support-swarm/` on the next, and `fresh/` stayed empty.
-        workspace = _session_state.get("workspace")
-        if workspace is not None:
-            tool_input = {**tool_input, "base_dir": str(workspace)}
+    if tool_name == "write_file" and isinstance(tool_input, dict):
         files = tool_input.get("files", {})
         if not files:
-            return execute_tool(tool_name, tool_input or {})
+            return execute_tool(tool_name, tool_input or {}, target_workspace=target)
 
         _session_state["write_attempt"] += 1
         attempt = _session_state["write_attempt"]
@@ -203,26 +205,26 @@ def _handle_tool_call(tc: ContentBlock) -> str:
                 _session_state["write_attempt"] = 0
                 return "User declined. Ask what they'd like to change."
 
-        result = execute_tool(tool_name, tool_input)
+        result = execute_tool(tool_name, tool_input, target_workspace=target)
         _print_status(result)
 
-        if "validation FAILED" in result:
+        # The script returns `{"written": [...], "target_workspace": ...}` on success and
+        # `{"error": ..., "detail": ...}` on failure. We check the raw JSON since the
+        # agent passes it through verbatim.
+        if '"error"' in result:
             if attempt >= _MAX_WRITE_RETRIES:
                 _session_state["write_attempt"] = 0
-                _print_status(
-                    f"  Validation failed after {_MAX_WRITE_RETRIES} attempts. "
-                    "Files written but may need manual corrections."
-                )
+                _print_status(f"  Write failed after {_MAX_WRITE_RETRIES} attempts; stopping.")
                 return result
             _print_status(
-                f"  Validation failed (attempt {attempt}/{_MAX_WRITE_RETRIES}). Asking AI to fix..."
+                f"  Write failed (attempt {attempt}/{_MAX_WRITE_RETRIES}). Asking AI to fix..."
             )
             return result
 
         _session_state["write_attempt"] = 0
         return result
 
-    result = execute_tool(tool_name, tool_input or {})
+    result = execute_tool(tool_name, tool_input or {}, target_workspace=target)
     if tool_name == "validate_workspace":
         _print_status(f"  validation: {result}")
     return result
