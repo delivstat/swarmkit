@@ -1,0 +1,34 @@
+# Author Dot template — GitHub triage. See daily-brief.yaml header for the shape.
+
+template:
+  id: github-triage
+  name: GitHub triage
+  summary: A coworker who scans a repo's issues + PRs and tells you what needs attention.
+  default_icon: github
+  default_role: Issue + PR triage coworker
+  default_greeting: Ask me about an issue or PR, or say 'triage inbox'.
+  renderers: [github-item]
+
+params:
+  - key: repo
+    prompt: Which repo? (owner/name — e.g. delivstat/swarmkit)
+  - key: labels
+    prompt: Which labels should it watch most? (comma-separated — leave blank for all)
+    default: ""
+
+topology_template: |
+  apiVersion: swarmkit/v1
+  kind: Topology
+  metadata:
+    id: {{dot_id}}
+    name: {{dot_name}}
+  spec:
+    root: triager
+    agents:
+      - id: triager
+        archetype: curator
+        instructions: |
+          Triage issues and PRs in {{repo}}.
+          Focus labels: {{labels}}
+
+          Group by needs-reply / blocked / ready-to-merge; keep each line to one short reason.
