@@ -1,16 +1,50 @@
-# Dots app + a swarmkit serve for the three built-in Dots.
+# Dots app + a swarmkit serve for the three built-in Dots + the Author Dot.
 #
 # Quickstart:
 #   cd reference/apps/dots
 #   export SESSION_SECRET="$(openssl rand -hex 32)"
 #   export DOTS_OWNER_PASSWORD_HASH="$(printf '%s' 'change-me' | node scripts/hash-password.mjs | tr -d '"')"
+#   export OPENROUTER_API_KEY="sk-or-..."
 #   docker compose up --build
 # then open http://localhost:3500 and log in with username=owner password=change-me.
 #
-# The swarmkit service runs with SWARMKIT_PROVIDER=mock so no API key is needed. Swap it to
-# anthropic / openai / ollama when you want real model calls.
+# All topologies run through Kimi K2 via OpenRouter. Swap the model name in
+# demo-workspace/topologies/*.yaml (and in reference/workspaces/author/archetypes/) for a
+# different provider.
 
 services:
+  # One-shot seed: copy the dots demo workspace + the author workspace into the shared
+  # volume so swarmkit serve sees them merged under /workspace. Runs before swarmkit via
+  # service_completed_successfully, exits 0, and gets out of the way. Author-created Dots
+  # land in the same volume at runtime, so the dots-app and the swarmkit container share
+  # /workspace with the live state.
+  seed:
+    image: alpine:3.19
+    volumes:
+      - dots-workspace:/out
+      - ./demo-workspace:/seed/demo:ro
+      - ../../workspaces/author:/seed/author:ro
+    # Merge order matters: demo-workspace carries the three Dot topologies + their schemas,
+    # the author workspace carries the Author topology + its archetype + command_packs.
+    # workspace.yaml from the author workspace wins because it declares the command_packs
+    # the Author tools need. We keep demo-workspace's schemas and topologies.
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        rm -rf /out/*
+        cp -r /seed/demo/. /out/
+        for sub in archetypes topologies skills schemas command_packs; do
+          if [ -d /seed/author/$sub ]; then
+            mkdir -p /out/$sub
+            cp -r /seed/author/$sub/. /out/$sub/
+          fi
+        done
+        cp /seed/author/workspace.yaml /out/workspace.yaml
+        ls /out /out/topologies
+    restart: "no"
+
   swarmkit:
     build:
       context: ../../..
@@ -18,6 +52,12 @@ services:
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in .env}
       - SWARMKIT_HOST=0.0.0.0
+      # The Author's create-dot tool writes new topologies here. Matches the shared mount.
+      - AUTHOR_TARGET_WORKSPACE=/workspace
+      # The Author's search-swarmkit-docs tool reads from here. The Dockerfile.swarmkit
+      # install includes llms-full.txt via the runtime package data; falls back to the
+      # same path inside the container.
+      - AUTHOR_LLMS_FULL_PATH=/app/llms-full.txt
     command:
       - serve
       - /workspace
@@ -29,13 +69,13 @@ services:
       # local-dev reference app with no auth, --insecure is the sanctioned switch. In a
       # real deployment, configure server.auth (api_key/jwt) in the workspace instead.
       - --insecure
-    # Shared workspace volume: the swarmkit container and the dots-app container both see
-    # the same workspace, so Dots created by the Author (which write a topology YAML there)
-    # show up live without a restart.
     volumes:
       - dots-workspace:/workspace
     ports:
       - "8000:8000"
+    depends_on:
+      seed:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   dots-app:
@@ -50,8 +90,6 @@ services:
     depends_on:
       - swarmkit
     restart: unless-stopped
-    # The dots-app writes Author-created topologies into the shared workspace; swarmkit
-    # picks them up without a restart.
     volumes:
       - dots-workspace:/app/workspace
 
