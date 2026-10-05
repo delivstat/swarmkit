@@ -134,15 +134,11 @@ def test_final_content_delta_carries_the_job_output(client: TestClient) -> None:
     if not final_output:
         return
     content_deltas = [
-        str(e["delta"])
-        for e in events[:end_idx]
-        if e["type"] == "TEXT_MESSAGE_CONTENT"
+        str(e["delta"]) for e in events[:end_idx] if e["type"] == "TEXT_MESSAGE_CONTENT"
     ]
     combined = "".join(content_deltas)
     # Serialise dict output the same way the translator does so the comparison matches.
-    expected = (
-        final_output if isinstance(final_output, str) else json.dumps(final_output)
-    )
+    expected = final_output if isinstance(final_output, str) else json.dumps(final_output)
     assert expected in combined, (
         f"final job output not present in content deltas; deltas={content_deltas!r}"
     )
