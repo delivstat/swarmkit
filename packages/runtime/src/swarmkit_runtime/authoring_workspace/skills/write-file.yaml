@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: write-file
+  name: Write File
+  description: >
+    [stub] Author-local skill backing. Full inputs/outputs schema ports in #1045 PR-2
+    alongside the matching command_pack script. This stub exists for the foundation
+    PR to prove the bundled workspace loads and validates.
+category: capability
+implementation:
+  type: command
+  pack: author-tools
+  command: write-file
+provenance:
+  authored_by: human
+  version: 0.1.0

@@ -1,0 +1,24 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: swarmkit:author:init
+  version: 0.1.0
+  description: >
+    Bundled authoring topology for `init` mode. Reached via the reserved
+    `swarmkit:author:init` namespace from any user workspace.
+agents:
+  root:
+    id: root
+    role: root
+    archetype: topology-author
+    # Conversational agent — correctness lands through the write-file tool call, not
+    # through chat prose. output_schema explicitly null to opt out of any platform
+    # default.
+    output_schema: null
+    prompt:
+      # TODO(#1045 PR-2): port the `init` prompt from
+      # packages/runtime/src/swarmkit_runtime/authoring/_prompts.py verbatim.
+      # Keeping a stub here so the file is schema-valid for PR 1 (foundation).
+      system: |
+        [stub] SwarmKit `init` authoring prompt. Full text ports from
+        authoring/_prompts.py in the CLI-shim PR (#1045 PR-2).

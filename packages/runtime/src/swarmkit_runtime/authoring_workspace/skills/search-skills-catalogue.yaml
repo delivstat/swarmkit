@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-skills-catalogue
+  name: Search Skills Catalogue
+  description: >
+    [stub] Author-local skill backing. Full inputs/outputs schema ports in #1045 PR-2
+    alongside the matching command_pack script. This stub exists for the foundation
+    PR to prove the bundled workspace loads and validates.
+category: capability
+implementation:
+  type: command
+  pack: author-tools
+  command: search-skills-catalogue
+provenance:
+  authored_by: human
+  version: 0.1.0

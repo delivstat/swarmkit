@@ -1,0 +1,61 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: swarmkit-author
+  name: SwarmKit authoring workspace (bundled)
+  description: >
+    Ships inside the swarmkit-runtime package. Not run directly — surfaced from a user
+    workspace via the reserved `swarmkit:author:*` namespace. See
+    design/details/author-bundled-workspace.md (#1045).
+
+    Composition at run time:
+      - This workspace supplies: topologies, archetypes, author-local skills, author
+        command_packs.
+      - The serving / CLI-target workspace supplies: model_providers, credentials,
+        governance config, env, and the target for the `write-file` skill (IAM-scoped).
+
+# Author command pack. Resolves the target workspace from the context the CLI/serve
+# threads in (SWARMKIT_AUTHOR_TARGET_WORKSPACE), so the same bundled workspace writes
+# into whichever workspace the author was invoked from.
+command_packs:
+  - id: author-tools
+    description: >
+      Local commands the authoring archetypes use. Each command reads the target
+      workspace from SWARMKIT_AUTHOR_TARGET_WORKSPACE (set by the CLI shim / serve
+      invocation) so one bundled workspace authors into any user workspace.
+    permission: open
+    commands:
+      - id: write-file
+        description: >
+          IAM-scoped write into the target workspace's topologies/, skills/,
+          archetypes/, funnels/, or workspace.yaml. Rejects paths outside those roots.
+        argv:
+          - python3
+          - "{WORKSPACE}/command_packs/author-tools/write_file.py"
+        effects: write
+        output:
+          parse: json
+      - id: read-workspace
+        description: Returns a summary of the target workspace's current contents.
+        argv:
+          - python3
+          - "{WORKSPACE}/command_packs/author-tools/read_workspace.py"
+        effects: read
+        output:
+          parse: json
+      - id: validate-workspace
+        description: Runs the schema validator against the target workspace.
+        argv:
+          - python3
+          - "{WORKSPACE}/command_packs/author-tools/validate_workspace.py"
+        effects: read
+        output:
+          parse: json
+      - id: search-skills-catalogue
+        description: Looks up a bundle in the swarmkit-skills catalogue by name or capability.
+        argv:
+          - python3
+          - "{WORKSPACE}/command_packs/author-tools/search_skills_catalogue.py"
+        effects: read
+        output:
+          parse: json
