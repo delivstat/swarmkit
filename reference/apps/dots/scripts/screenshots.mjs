@@ -79,6 +79,16 @@ await composer.press("Enter");
 await page.waitForTimeout(3000);
 await shoot(page, "09-github-final");
 
+// 10. /connections — reusable OAuth status (empty state against mock runtime)
+await page.goto(`${BASE}/connections`);
+await page.waitForSelector("text=Connections");
+await shoot(page, "10-connections");
+
+// 11. /usage — token + cost summary (empty state against mock runtime)
+await page.goto(`${BASE}/usage`);
+await page.waitForSelector("text=Usage & cost");
+await shoot(page, "11-usage");
+
 await browser.close();
 
 // Print markdown block for the PR body
