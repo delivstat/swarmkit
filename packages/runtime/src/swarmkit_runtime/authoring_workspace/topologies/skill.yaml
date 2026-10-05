@@ -1,7 +1,7 @@
 apiVersion: swarmkit/v1
 kind: Topology
 metadata:
-  name: swarmkit:author:skill
+  name: skill
   version: 0.1.0
   description: >
     Bundled authoring topology for `skill` mode. Reached via the reserved

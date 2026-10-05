@@ -16,15 +16,20 @@ from __future__ import annotations
 
 import jsonschema
 import pytest
+from swarmkit_runtime._workspace_runtime import _bundled_authoring_runtime
 from swarmkit_runtime.authoring._prompts import get_system_prompt
 from swarmkit_runtime.authoring._resolver import (
     AUTHORING_MODES,
     AUTHORING_NAMESPACE,
+    authoring_bare_name,
+    authoring_public_ids,
     get_authoring_workspace_path,
     is_authoring_id,
     is_reserved_namespace,
     resolve_authoring_topology,
 )
+from swarmkit_runtime.resolver import resolve_workspace
+from swarmkit_runtime.server._routes_introspection import _authoring_exposed
 from swarmkit_schema import validate
 
 
@@ -38,6 +43,66 @@ def test_bundled_workspace_resolves_to_a_real_directory() -> None:
 def test_every_advertised_mode_ships_a_topology_file(mode: str) -> None:
     topology_file = get_authoring_workspace_path() / "topologies" / f"{mode}.yaml"
     assert topology_file.is_file(), f"missing bundled topology: {topology_file}"
+
+
+def test_bundled_workspace_resolves_through_the_canonical_resolver() -> None:
+    # The bundled workspace must load with the same resolver any user workspace uses —
+    # that's the single source of truth that keeps CLI, serve, and the dots app on one
+    # code path. If this fails, the authoring namespace is unreachable at run time.
+
+    ws = resolve_workspace(get_authoring_workspace_path())
+    assert set(ws.topologies.keys()) >= set(AUTHORING_MODES), (
+        f"bundled workspace is missing modes: {set(AUTHORING_MODES) - set(ws.topologies.keys())}"
+    )
+    assert "topology-author" in ws.archetypes
+    for skill_id in (
+        "write-file",
+        "read-workspace",
+        "validate-workspace",
+        "search-skills-catalogue",
+    ):
+        assert skill_id in ws.skills, f"bundled author skill missing: {skill_id}"
+
+
+@pytest.mark.parametrize("mode", AUTHORING_MODES)
+def test_authoring_bare_name_round_trips(mode: str) -> None:
+    public = f"{AUTHORING_NAMESPACE}{mode}"
+    assert authoring_bare_name(public) == mode
+
+
+def test_authoring_public_ids_lists_every_mode() -> None:
+    assert set(authoring_public_ids()) == {f"{AUTHORING_NAMESPACE}{m}" for m in AUTHORING_MODES}
+
+
+# ----- CLI + serve dispatch (PR 5) ---------------------------------------------------
+
+
+def test_bundled_authoring_runtime_is_cached() -> None:
+    # Both CLI and serve reach WorkspaceRuntime.run and dispatch any swarmkit:author:*
+    # id to the same bundled runtime. One instance per process keeps the resolve +
+    # provider-register + governance-build cost from firing on every authoring run.
+
+    a = _bundled_authoring_runtime()
+    b = _bundled_authoring_runtime()
+    assert a is b
+    assert set(a.workspace.topologies.keys()) >= set(AUTHORING_MODES)
+
+
+def test_list_topologies_hides_authoring_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Default off — a chat client that can POST /run for an authoring topology can
+    # propose writes to the serving workspace, so the operator opts in explicitly.
+    monkeypatch.delenv("SWARMKIT_AUTHOR_EXPOSE", raising=False)
+
+    assert _authoring_exposed(None) is False
+
+
+@pytest.mark.parametrize("truthy", ["1", "true", "YES", "On"])
+def test_list_topologies_shows_authoring_when_opted_in(
+    monkeypatch: pytest.MonkeyPatch, truthy: str
+) -> None:
+    monkeypatch.setenv("SWARMKIT_AUTHOR_EXPOSE", truthy)
+
+    assert _authoring_exposed(None) is True
 
 
 @pytest.mark.parametrize("mode", AUTHORING_MODES)

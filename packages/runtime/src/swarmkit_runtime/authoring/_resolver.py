@@ -79,6 +79,19 @@ def resolve_authoring_topology(topology_id: str) -> Path:
     name a known mode. The returned path is not guaranteed to exist — the caller should
     treat a missing file as a packaging bug and surface it clearly.
     """
+    return (
+        get_authoring_workspace_path() / "topologies" / f"{authoring_bare_name(topology_id)}.yaml"
+    )
+
+
+def authoring_bare_name(topology_id: str) -> str:
+    """Translate ``swarmkit:author:<mode>`` to its bare topology name.
+
+    The schema's id pattern (``^[a-z][a-z0-9-]*$``) refuses colons on purpose — a user
+    workspace cannot register an id under the ``swarmkit:`` namespace. The bundled YAMLs
+    therefore use the bare mode name (``topology``, ``skill``, …) and this function
+    bridges the external public id to the internal name the runtime looks up.
+    """
     if not is_authoring_id(topology_id):
         msg = f"not an authoring topology id: {topology_id!r}"
         raise ValueError(msg)
@@ -87,4 +100,9 @@ def resolve_authoring_topology(topology_id: str) -> Path:
         modes = ", ".join(AUTHORING_MODES)
         msg = f"unknown authoring mode {mode!r}; expected one of: {modes}"
         raise ValueError(msg)
-    return get_authoring_workspace_path() / "topologies" / f"{mode}.yaml"
+    return mode
+
+
+def authoring_public_ids() -> tuple[str, ...]:
+    """Return the public ``swarmkit:author:*`` ids clients see over the serve API."""
+    return tuple(f"{AUTHORING_NAMESPACE}{mode}" for mode in AUTHORING_MODES)

@@ -1,7 +1,7 @@
 apiVersion: swarmkit/v1
 kind: Topology
 metadata:
-  name: swarmkit:author:archetype
+  name: archetype
   version: 0.1.0
   description: >
     Bundled authoring topology for `archetype` mode. Reached via the reserved
