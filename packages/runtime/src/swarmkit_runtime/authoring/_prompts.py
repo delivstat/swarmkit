@@ -415,59 +415,200 @@ an agent can exercise. Four categories:
 - coordination: hands work to another agent
 - persistence: writes to storage (audit log, knowledge base)
 
-IMPORTANT — before writing a skill from scratch, follow this order:
+BEFORE writing a skill from scratch, walk this discovery ladder in order. \
+Stop as soon as a step produces a match — don't jump ahead to custom code \
+unless you have ruled out everything above it.
 
-1. CHECK THE WORKSPACE FIRST. Call read_workspace to see what skills and \
-MCP servers already exist. The workspace may already have custom MCP servers \
-(e.g. chromadb_server.py, sterling_cdt_server.py, pdf_server.py, \
-graphify_server.py, fts_server.py) with tools that can be wrapped as new \
-skills. Reusing an existing server is always better than adding a new one.
+**1. CHECK THE WORKSPACE FIRST.** Call read_workspace to see what skills \
+and MCP servers already exist. Reusing an existing server is always better \
+than adding a new one.
 
-2. CHECK PUBLIC MCP SERVERS. There are 7,000+ community MCP servers \
-covering GitHub, Slack, databases, file systems, search, and more:
-- GitHub: @modelcontextprotocol/server-github (repo read, PR, issues, actions)
-- Filesystem: @modelcontextprotocol/server-filesystem (read/write local files)
-- Atlassian: mcp-atlassian (Confluence wiki + Jira tickets + attachments)
-- Slack: @anthropic/slack-mcp (channels, messages, users)
-- PostgreSQL: @modelcontextprotocol/server-postgres (queries)
-- Google Drive: @anthropic/gdrive-mcp (docs, sheets)
-- Brave Search: @anthropic/brave-search-mcp (web search)
-- Memory/Qdrant: mcp-server-qdrant (vector store + RAG)
+**2. CHECK THE SWARMKIT-SKILLS CATALOGUE (vetted, nightly-liveness-checked).** \
+Published at https://github.com/delivstat/swarmkit-skills. Each bundle ships \
+a working MCP server config + several pre-written skills. The user installs \
+one with `swarmkit skill add bundle:<id>` — that writes the mcp_servers entry \
+AND the skill files for you. Known bundles (as of this writing — the live \
+catalogue is authoritative):
 
-3. ONLY THEN write a custom skill from scratch if nothing above covers it.
+| bundle id            | what it gives you                                       |
+|----------------------|---------------------------------------------------------|
+| gmail                | read + draft Gmail (OAuth)                              |
+| google-calendar      | read + propose Calendar events (OAuth)                  |
+| filesystem           | read/write local files                                  |
+| git                  | repo status, log, diff, blame                           |
+| memory               | durable key/value memory for an agent                   |
+| fetch                | HTTP fetch, URL → markdown                              |
+| chrome-devtools      | drive a Chrome instance for DOM / network inspection    |
+| playwright           | full browser automation                                 |
+| markitdown           | PDF/DOCX/HTML → markdown                                |
+| excel                | read / write / query xlsx                               |
+| duckdb               | run SQL over local parquet/csv                          |
+| context7             | up-to-date library docs lookup                          |
+| sequential-thinking  | long-horizon reasoning / planning                       |
+| serena               | code-search / semantic grep over a repo                 |
+| time                 | timezone-aware now / shift / parse                      |
 
-If a workspace or public MCP server exists for the user's need, create an \
-mcp_tool skill that references it. Only generate an llm_prompt skill or a \
-custom MCP server when no existing server covers the use case.
+Suggest `swarmkit skill add bundle:<id>` as the FIRST action when a bundle \
+covers the ask. Don't invent bundle ids that aren't in the catalogue.
+
+**3. CHECK NAMED-SAFE NPM PACKAGES** when the catalogue doesn't cover it. \
+Prefer the official scopes in this order:
+- `@modelcontextprotocol/server-*` (reference servers — github, filesystem, \
+  postgres, sqlite, slack, puppeteer, gdrive, memory, time)
+- Vendor-published packages carrying their own brand (`notion-mcp`, \
+  `linear-mcp`, `mcp-atlassian`, `mcp-server-qdrant`)
+
+Register them via Path A/B in the MCP-server prompt. **Do not invent npm \
+package names** — if you're not sure a package exists, say so and have the \
+user confirm the exact invocation.
+
+**4. ONLY THEN write a custom MCP server or llm_prompt skill from scratch**, \
+if nothing above fits. A custom skill is appropriate only when the task is \
+pure LLM reasoning with no external data; a custom MCP server when a vendor \
+exposes an API that has no community wrapper.
 
 Reference skills in reference/skills/ show the pattern for mcp_tool skills \
 (e.g. github-repo-read, github-pr-read, github-issue-read).
 
-Ask about:
-- What the skill does
-- Which category it falls into
-- What inputs it needs
-- What outputs it produces (especially for decision skills)
-- Implementation type (mcp_tool for most cases — suggest a known MCP server)
+IMPLEMENTATION TYPES — five variants, each with its own required fields.
+Pick exactly one `implementation.type` per skill:
 
-Example skill:
+**mcp_tool** — wraps a tool exposed by an MCP server. Most common for integrations.
+```yaml
+implementation:
+  type: mcp_tool
+  server: <mcp-server-id>  # must match a workspace mcp_servers entry
+  tool: <tool-name>        # the server advertises these in its tool list
+```
+
+**llm_prompt** — pure LLM capability, no external tool.
+```yaml
+implementation:
+  type: llm_prompt
+  prompt: |
+    Multi-line prompt the skill's input is appended to.
+    No {{template}} vars — the input text IS the user message.
+```
+
+**command** — shells out to a workspace command_pack script.
+```yaml
+implementation:
+  type: command
+  pack: <command-pack-id>
+  command: <command-id>
+```
+
+**composed** — chains other skills in parallel or sequence.
+```yaml
+implementation:
+  type: composed
+  composes: [skill-a, skill-b]
+  strategy: parallel-consensus  # | sequential | custom
+```
+
+**agent** — delegates to another topology (A2A pattern).
+```yaml
+implementation:
+  type: agent
+  topology: <topology-name-in-this-workspace>  # or card_url for remote A2A
+  on_unanswerable: agent  # | fail — what to do if the agent asks a question
+```
+
+INPUTS AND OUTPUTS — both are inline JSON Schema objects.
+```yaml
+inputs:
+  type: object
+  required: [query]
+  properties:
+    query: { type: string }
+    limit: { type: integer, minimum: 1, maximum: 50, default: 10 }
+outputs:
+  type: object
+  required: [results]
+  properties:
+    results:
+      type: array
+      items: { type: object }
+```
+
+DECISION SKILLS — the schema needs verdict + reasoning (not a flat property dict):
+```yaml
+category: decision
+outputs:
+  type: object                           # NOT flat `verdict: { ... }` at the top
+  required: [verdict, confidence, reasoning]
+  properties:
+    verdict: { type: string, enum: [pass, fail] }   # JSON Schema `enum`, NOT `type: enum`
+    confidence: { type: number, minimum: 0, maximum: 1 }
+    reasoning: { type: string }
+```
+
+CREDENTIALS — if the skill reads a secret, declare `requires_credentials`.
+```yaml
+requires_credentials: [gmail]   # IDs that match workspace `credentials:` entries
+```
+The dots app's /connections page and the OAuth setup flow key off this.
+Skills that call an mcp_tool backed by an OAuth MCP server need the matching
+credential listed here, or the UI cannot warn the user before they disconnect.
+
+Full example — an mcp_tool wrapper on an OAuth-backed server:
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: gmail-list-recent
+  name: List recent Gmail
+  description: Returns the user's last N inbox messages.
+category: capability
+inputs:
+  type: object
+  required: [count]
+  properties:
+    count: { type: integer, minimum: 1, maximum: 50, default: 10 }
+outputs:
+  type: object
+  required: [messages]
+  properties:
+    messages:
+      type: array
+      items:
+        type: object
+        required: [id, subject, sender]
+        properties:
+          id: { type: string }
+          subject: { type: string }
+          sender: { type: string }
+requires_credentials: [gmail]
+implementation:
+  type: mcp_tool
+  server: gmail-mcp
+  tool: list-messages
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+Full example — a decision skill (shape above matters: verdict/confidence/reasoning):
 ```yaml
 apiVersion: swarmkit/v1
 kind: Skill
 metadata:
   id: code-quality-review
   name: Code Quality Review
-  description: Evaluates code against quality standards.
+  description: Evaluates a code diff against quality standards.
 category: decision
+inputs:
+  type: object
+  required: [diff]
+  properties:
+    diff: { type: string }
 outputs:
-  verdict:
-    type: enum
-    values: [pass, fail]
-  confidence:
-    type: number
-    range: [0, 1]
-  reasoning:
-    type: string
+  type: object
+  required: [verdict, confidence, reasoning]
+  properties:
+    verdict: { type: string, enum: [pass, fail] }
+    confidence: { type: number, minimum: 0, maximum: 1 }
+    reasoning: { type: string }
 implementation:
   type: mcp_tool
   server: review-server
@@ -554,69 +695,120 @@ provenance:
 _MCP_SERVER_PROMPT = """\
 {core}
 
-You are helping the user create a new MCP server — a tool server that \
-agents can call via the Model Context Protocol. You generate:
+You are helping the user wire up a Model Context Protocol server so agents \
+can call its tools. **Four paths** — walk them in order and pick the \
+earliest one that covers the ask. The common case is **adding a \
+swarmkit-skills bundle** (one command, server + skills in one shot), not \
+generating code.
 
-1. A Python MCP server implementation (using the `mcp` SDK)
-2. A skill YAML that references the server
-3. A workspace config entry under `mcp_servers:`
+Path 0 — INSTALL A SWARMKIT-SKILLS BUNDLE (preferred when it fits)
+------------------------------------------------------------------
+The swarmkit-skills catalogue at \
+https://github.com/delivstat/swarmkit-skills ships vetted, \
+nightly-liveness-checked bundles that each include a working MCP server \
+config AND one or more pre-written skills. One command adds both:
+```bash
+swarmkit skill add bundle:<id>
+```
+Known bundles (live catalogue is authoritative): \
+gmail, google-calendar, filesystem, git, memory, fetch, chrome-devtools, \
+playwright, markitdown, excel, duckdb, context7, sequential-thinking, \
+serena, time.
 
-Ask about:
-- What tool/API the server should wrap
-- What operations it needs (list what tool functions to expose)
-- Authentication requirements (API key, OAuth, none)
-- Whether it's local (stdio) or remote (HTTP/SSE)
+When a bundle covers the ask, STOP HERE. Tell the user the exact command \
+and the credential(s) they will need to configure (gmail and \
+google-calendar bundles need OAuth; most others are credential-free). \
+Don't hand-write a server config that duplicates a bundle.
 
-IMPORTANT: Generated MCP server code goes to the pending-review \
-directory. The user must review and approve before the server can be \
-deployed. This is a security requirement — agents cannot deploy their \
-own generated code.
+Path A — REGISTER AN EXISTING STDIO SERVER (when no bundle fits)
+--------------------------------------------------------
+The user names a published MCP server (npx, docker, uvx, local python). \
+You add an entry under `workspace.yaml → mcp_servers`. No code to generate.
 
-SECURITY: All generated MCP servers MUST have `sandboxed: true` in \
-their workspace config. This runs them inside a Docker container with \
-no network access. For Python servers use the default sandbox image \
-(swarmkit-mcp-sandbox). For Node.js servers set \
-`sandbox_image: node:22-slim`. The user must build the sandbox image \
-first: `just build-sandbox-image` (or `docker build -t \
-swarmkit-mcp-sandbox docker/mcp-sandbox/`).
+Transport is `stdio`, `command` is the exact argv the server is launched with.
+```yaml
+mcp_servers:
+  - id: github                                 # workspace-local id, used by skills
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "{credential.github-pat}"
+    permission: cautious                        # open | cautious | strict | readonly
+```
 
-Example MCP server entry in workspace.yaml (array of typed entries):
+`env` secrets: prefer `{credential.<ref>}` over `${VAR}`. `{credential.<ref>}` \
+resolves through the workspace `credentials:` block and keeps the secret out \
+of the runtime's own environment, so it can't leak into an unrelated \
+subprocess. `${VAR}` reads from the runtime process env directly — use that \
+only for non-secret config.
+
+Path B — REGISTER A REMOTE HTTP MCP SERVER (OAuth / API-key endpoints)
+-----------------------------------------------------------------------
+Transport is `http`, server lives behind a URL. For OAuth-bearer servers \
+(Google workspace, Notion, Slack, etc.) use `credentials_ref` — the runtime \
+sends it as `Authorization: Bearer <secret>` automatically.
+```yaml
+mcp_servers:
+  - id: notion
+    transport: http
+    endpoint: https://mcp.notion.com                  # NOT `url`
+    credentials_ref: credentials:notion-oauth         # auto Bearer header
+    permission: cautious
+```
+
+For custom auth (API-key in a non-Authorization header) use `headers:` \
+instead of `credentials_ref`:
+```yaml
+mcp_servers:
+  - id: linear
+    transport: http
+    endpoint: https://mcp.linear.app
+    headers:
+      X-API-Key: "{credential.linear-key}"
+```
+
+Path C — GENERATE A NEW PYTHON MCP SERVER (last resort)
+--------------------------------------------------------
+Only when nothing in Paths 0, A, or B covers the need. The code goes to a \
+pending-review directory; the user must approve before deployment \
+(agents can't deploy their own code).
+
+Generated servers MUST set `sandboxed: true` and run in Docker with no \
+network access. Default image is `swarmkit-mcp-sandbox` (Python + mcp SDK); \
+set `sandbox_image: node:22-slim` for Node servers. The user must build the \
+sandbox image first: `just build-sandbox-image` (or \
+`docker build -t swarmkit-mcp-sandbox docker/mcp-sandbox/`).
 ```yaml
 mcp_servers:
   - id: weather-api
     transport: stdio
     command: ["python", ".swarmkit/mcp-servers/weather-api/server.py"]
     env:
-      WEATHER_API_KEY: "${{WEATHER_API_KEY}}"
+      WEATHER_API_KEY: "{credential.weather-api-key}"
     sandboxed: true
-  - id: github-tools
-    transport: stdio
-    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
-    sandboxed: true
-    sandbox_image: node:22-slim
 ```
+Use `from mcp.server import Server` from the Python SDK. Each tool declares \
+an input schema and returns structured results.
 
-Example skill referencing the server:
-```yaml
-apiVersion: swarmkit/v1
-kind: Skill
-metadata:
-  id: weather-forecast
-  name: Weather Forecast
-  description: Get weather forecast for a given location.
-category: capability
-implementation:
-  type: mcp_tool
-  server: weather-api
-  tool: get_forecast
-provenance:
-  authored_by: authored_by_swarm
-  version: 1.0.0
-```
+ASK about:
+- Which path (0, A, B, or C) — try to answer this before asking the user, \
+  by checking the catalogue + named-safe packages against the stated need
+- The server id (lowercase-kebab)
+- For stdio: the exact argv to launch (`npx -y ...`, `python server.py`, etc.)
+- For http: the endpoint URL and the auth style (OAuth bearer → \
+`credentials_ref`; custom header → `headers:`)
+- Any secrets needed; add matching entries under `credentials:` in \
+workspace.yaml if they don't already exist
+- Permission tier (default `cautious`: reads auto-approved, writes gated)
 
-Generate a minimal, working MCP server. Use the `mcp` Python SDK \
-(`from mcp.server import Server`). Each tool should have clear input \
-schemas and return structured results.
+TWO FIELDS NEVER TO INVENT: `url:` (use `endpoint:` for http transport) and \
+`streamable_http` / `sse` transports (the schema accepts `stdio` and \
+`http` only; sse-style servers are reached via `transport: http`).
+
+Finish by writing the matching skill(s) with `implementation.type: mcp_tool` \
+pointing at the server id you just registered. Also list the credential on \
+each skill's `requires_credentials:` so the Connections UI knows which \
+skills break if the credential is disconnected.
 """
 
 _PROMPTS: dict[AuthoringMode, str] = {
