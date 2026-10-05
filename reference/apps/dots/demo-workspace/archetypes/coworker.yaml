@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: coworker
+  name: Generic coworker
+  description: Minimal single-step worker used by every demo topology. Prompt tells the agent what role it is playing — set by the topology.
+role: worker
+defaults:
+  model:
+    provider: mock
+    name: mock-model
+    temperature: 0.0
+  prompt:
+    system: |
+      You are a helpful coworker. Keep answers short.
+provenance:
+  authored_by: human
+  version: 0.1.0

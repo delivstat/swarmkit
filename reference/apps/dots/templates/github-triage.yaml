@@ -20,15 +20,40 @@ topology_template: |
   apiVersion: swarmkit/v1
   kind: Topology
   metadata:
-    id: {{dot_id}}
-    name: {{dot_name}}
-  spec:
-    root: triager
-    agents:
-      - id: triager
-        archetype: curator
-        instructions: |
-          Triage issues and PRs in {{repo}}.
-          Focus labels: {{labels}}
-
-          Group by needs-reply / blocked / ready-to-merge; keep each line to one short reason.
+    name: {{dot_id}}
+    version: 0.1.0
+  agents:
+    root:
+      id: root
+      role: root
+      model:
+        provider: openrouter
+        name: moonshotai/kimi-k2-0905
+        temperature: 0.3
+      prompt:
+        system: |
+          Triage GitHub issues and PRs in {{repo}}. Return JSON matching your
+          output_schema — three buckets, each a list of items with id and one
+          short reason. Omit buckets that would be empty. Prioritise labels: {{labels}}.
+      # Structured output boundary — shape mirrors the github-item renderer on the Dot.
+      output_schema:
+        type: object
+        additionalProperties: false
+        properties:
+          needs_reply:
+            type: array
+            items: { $ref: "#/$defs/triage_item" }
+          blocked:
+            type: array
+            items: { $ref: "#/$defs/triage_item" }
+          ready_to_merge:
+            type: array
+            items: { $ref: "#/$defs/triage_item" }
+        $defs:
+          triage_item:
+            type: object
+            required: [id, reason]
+            additionalProperties: false
+            properties:
+              id: { type: string }
+              reason: { type: string }

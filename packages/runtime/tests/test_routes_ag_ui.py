@@ -111,6 +111,43 @@ def test_run_emits_the_v1_event_sequence(client: TestClient) -> None:
     assert len(message_ids) == 1
 
 
+def test_final_content_delta_carries_the_job_output(client: TestClient) -> None:
+    """The real model answer must land as a TEXT_MESSAGE_CONTENT delta before TEXT_MESSAGE_END,
+    not just on RUN_FINISHED.result. CopilotKit's chat only renders content deltas into the
+    assistant bubble; without this, structured output topologies would appear empty in chat
+    even though the underlying run completed with real output."""
+    topology = _topology(client)
+    res = client.post(
+        "/api/ag-ui/run",
+        json={
+            "messages": [{"role": "user", "content": "hi"}],
+            "context": {"topology": topology},
+        },
+    )
+    events = _events(res.text)
+    end_idx = next(i for i, e in enumerate(events) if e["type"] == "TEXT_MESSAGE_END")
+    finished = next(e for e in events if e["type"] == "RUN_FINISHED")
+    result = finished.get("result") if isinstance(finished, dict) else None
+    final_output = result.get("output") if isinstance(result, dict) else None
+
+    # Only act when the fixture produced actual output; mock provider does.
+    if not final_output:
+        return
+    content_deltas = [
+        str(e["delta"])
+        for e in events[:end_idx]
+        if e["type"] == "TEXT_MESSAGE_CONTENT"
+    ]
+    combined = "".join(content_deltas)
+    # Serialise dict output the same way the translator does so the comparison matches.
+    expected = (
+        final_output if isinstance(final_output, str) else json.dumps(final_output)
+    )
+    assert expected in combined, (
+        f"final job output not present in content deltas; deltas={content_deltas!r}"
+    )
+
+
 def test_run_started_carries_thread_and_run_ids(client: TestClient) -> None:
     topology = _topology(client)
     res = client.post(

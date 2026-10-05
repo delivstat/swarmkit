@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Handle Item output",
+  "type": "object",
+  "required": ["draft", "suggested_action", "caveats"],
+  "additionalProperties": false,
+  "properties": {
+    "draft": { "type": "string", "description": "The draft reply, ready to edit and send." },
+    "suggested_action": {
+      "type": "string",
+      "enum": ["send", "iterate", "defer", "decline"],
+      "description": "What to do with the draft."
+    },
+    "caveats": {
+      "type": "array",
+      "description": "Points the user should check before sending. Can be empty.",
+      "items": { "type": "string" }
+    }
+  }
+}

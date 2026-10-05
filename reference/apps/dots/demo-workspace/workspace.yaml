@@ -1,0 +1,6 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: dots-demo
+  name: Dots demo workspace
+  description: Three minimal topologies matching the dots app's built-in Dots. Uses SWARMKIT_PROVIDER=mock so no API keys are needed.

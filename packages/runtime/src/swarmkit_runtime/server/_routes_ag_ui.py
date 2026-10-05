@@ -185,6 +185,36 @@ async def _translate(job: Any, *, thread_id: str, run_id: str) -> AsyncGenerator
             break
         await asyncio.sleep(0.3)
 
+    # The job's actual output lives on `job.output`, separate from the string progress stream
+    # we drained above (that stream carries status messages like "[root] thinking", not model
+    # tokens). CopilotKit's chat UI only renders TEXT_MESSAGE_CONTENT deltas into the assistant
+    # bubble, so without this emit the user sees only the status log and the real result
+    # vanishes — surfaced only on RUN_FINISHED.result, which the chat ignores. Emit the output
+    # as one final content delta before TEXT_MESSAGE_END so it lands in the bubble too. Keeps
+    # the full output on RUN_FINISHED.result as well for clients that read it there.
+    # Topologies with an `output_schema` return a dict (or other structured value); otherwise
+    # it's a plain string. CopilotKit's delta field is str-only, so serialise anything
+    # non-string as JSON. The client can introspect the shape via RUN_FINISHED.result.
+    raw_output = getattr(job, "output", None) if job.status == "completed" else None
+    if raw_output is None:
+        final_output = ""
+    elif isinstance(raw_output, str):
+        final_output = raw_output
+    else:
+        try:
+            final_output = json.dumps(raw_output, ensure_ascii=False, indent=2)
+        except (TypeError, ValueError):
+            final_output = str(raw_output)
+    if final_output:
+        yield _event(
+            {
+                "type": "TEXT_MESSAGE_CONTENT",
+                "timestamp": _now_ms(),
+                "messageId": message_id,
+                "delta": final_output,
+            }
+        )
+
     yield _event(
         {
             "type": "TEXT_MESSAGE_END",
@@ -201,7 +231,7 @@ async def _translate(job: Any, *, thread_id: str, run_id: str) -> AsyncGenerator
                 "runId": run_id,
                 "threadId": thread_id,
                 "outcome": {"type": "success"},
-                "result": {"output": getattr(job, "output", None) or ""},
+                "result": {"output": raw_output if raw_output is not None else ""},
             }
         )
     else:

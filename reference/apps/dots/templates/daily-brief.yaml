@@ -28,16 +28,40 @@ topology_template: |
   apiVersion: swarmkit/v1
   kind: Topology
   metadata:
-    id: {{dot_id}}
-    name: {{dot_name}}
-  spec:
-    root: brief
-    agents:
-      - id: brief
-        archetype: curator
-        instructions: |
-          Pull a short daily brief for the operator.
-          Sources: {{sources}}
-          Cadence: {{when}}
-
-          Return each item as one bullet with a short reason it matters.
+    name: {{dot_id}}
+    version: 0.1.0
+  agents:
+    root:
+      id: root
+      role: root
+      model:
+        provider: openrouter
+        name: moonshotai/kimi-k2-0905
+        temperature: 0.3
+      prompt:
+        system: |
+          Pull a short daily brief for the operator. Return JSON matching
+          your output_schema — 3 or 4 items + a short follow-up question.
+          Sources to consider: {{sources}}. Cadence: {{when}}.
+      # Structured output is a boundary contract. SwarmKit validates against this schema,
+      # and the dots app renders through brief-item cards. Shape mirrors the renderer.
+      output_schema:
+        type: object
+        required: [items, question]
+        additionalProperties: false
+        properties:
+          items:
+            type: array
+            minItems: 1
+            maxItems: 4
+            items:
+              type: object
+              required: [title, source, reason, action]
+              additionalProperties: false
+              properties:
+                title: { type: string }
+                source: { type: string }
+                reason: { type: string, description: Under 20 words. }
+                action: { type: string, description: The one next step. }
+          question:
+            type: string
