@@ -4,10 +4,39 @@ metadata:
   id: search-skills-catalogue
   name: Search Skills Catalogue
   description: >
-    [stub] Author-local skill backing. Full inputs/outputs schema ports in #1045 PR-2
-    alongside the matching command_pack script. This stub exists for the foundation
-    PR to prove the bundled workspace loads and validates.
+    Looks up bundles in the swarmkit-skills catalogue by keyword. When a bundle covers
+    the ask (gmail, filesystem, markitdown, etc.) the author suggests
+    `swarmkit skill add bundle:<id>` instead of hand-rolling a custom MCP server
+    or llm_prompt skill. See the discovery ladder in topologies/skill.yaml.
 category: capability
+inputs:
+  type: object
+  additionalProperties: false
+  required: [query]
+  properties:
+    query:
+      type: string
+      minLength: 1
+      description: Short lowercase keyword describing the capability sought.
+outputs:
+  type: object
+  required: [query, matches]
+  properties:
+    query: { type: string }
+    matches:
+      type: array
+      items:
+        type: object
+        required: [id, summary, install, requires_credentials]
+        properties:
+          id: { type: string }
+          summary: { type: string }
+          install:
+            type: string
+            description: Exact command the user would run to install this bundle.
+          requires_credentials:
+            type: array
+            items: { type: string }
 implementation:
   type: command
   pack: author-tools

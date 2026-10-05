@@ -4,10 +4,34 @@ metadata:
   id: read-workspace
   name: Read Workspace
   description: >
-    [stub] Author-local skill backing. Full inputs/outputs schema ports in #1045 PR-2
-    alongside the matching command_pack script. This stub exists for the foundation
-    PR to prove the bundled workspace loads and validates.
+    Returns the target workspace's workspace.yaml text + a per-kind inventory of
+    top-level YAMLs (topologies, archetypes, skills, funnels). Call this at the start
+    of a session to avoid proposing an artifact that already exists.
 category: capability
+inputs:
+  type: object
+  additionalProperties: false
+  properties: {}
+outputs:
+  type: object
+  required: [target_workspace, workspace_yaml, topologies, archetypes, skills, funnels]
+  properties:
+    target_workspace: { type: string }
+    workspace_yaml:
+      type: string
+      description: Content of workspace.yaml, or empty if missing.
+    topologies:
+      type: array
+      items: { type: string }
+    archetypes:
+      type: array
+      items: { type: string }
+    skills:
+      type: array
+      items: { type: string }
+    funnels:
+      type: array
+      items: { type: string }
 implementation:
   type: command
   pack: author-tools

@@ -81,6 +81,13 @@ REGISTRY: tuple[EnvVar, ...] = (
     EnvVar("SWARMKIT_MODEL", "Models", "Default model when a topology names none."),
     EnvVar("SWARMKIT_JUDGE_MODEL", "Models", "Model used by governance decision skills."),
     EnvVar("SWARMKIT_AUTHOR_MODEL", "Models", "Model used by the authoring swarms."),
+    EnvVar(
+        "SWARMKIT_AUTHOR_TARGET_WORKSPACE",
+        "Authoring",
+        "Target workspace the bundled authoring tools (write-file, read-workspace, "
+        "validate-workspace) operate on. Set by the CLI/serve invocation; the model "
+        "never names it, so authoring writes cannot escape the invoker's workspace.",
+    ),
     EnvVar("SWARMKIT_MODEL_TIMEOUT", "Models", "Per-call timeout in seconds."),
     EnvVar("SWARMKIT_MODEL_RETRIES", "Models", "Retries per model call before the node fails."),
     EnvVar("ANTHROPIC_API_KEY", "Models", "Anthropic credential.", SECRET),
