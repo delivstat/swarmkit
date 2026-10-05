@@ -69,24 +69,35 @@ def main() -> int:
     except json.JSONDecodeError as exc:
         _die(2, "invalid_json", str(exc))
 
-    required = ("id", "name", "role", "greeting", "icon", "topology_yaml")
+    required = ("id", "name", "role", "greeting", "icon", "topology")
     missing = [k for k in required if not spec.get(k)]
     if missing:
         _die(2, "missing_field", f"required: {', '.join(missing)}")
     dot_id = str(spec["id"]).strip()
     if not ID_RE.match(dot_id):
         _die(2, "invalid_id", f"id must match {ID_RE.pattern}")
+    topology_name = str(spec["topology"]).strip()
+    if not ID_RE.match(topology_name):
+        _die(2, "invalid_topology_id", f"topology must match {ID_RE.pattern}")
 
     target = Path(os.environ.get("AUTHOR_TARGET_WORKSPACE", str(Path.cwd() / "workspace")))
     topologies_dir = target / "topologies"
     if not topologies_dir.is_dir():
         _die(4, "target_missing", f"{topologies_dir} does not exist")
 
-    yaml_text = str(spec["topology_yaml"])
-    _validate_topology_yaml(yaml_text)
-
-    topology_path = topologies_dir / f"{dot_id}.yaml"
-    topology_path.write_text(yaml_text, encoding="utf-8")
+    # The bundled author (swarmkit:author:topology) has already written the topology
+    # YAML through its own IAM-scoped write-file skill (#1045). This script no longer
+    # takes YAML; it just confirms the file is there and registers the Dot. Refuse to
+    # register against a missing topology — a dot that points at nothing is worse than
+    # none at all.
+    topology_path = topologies_dir / f"{topology_name}.yaml"
+    if not topology_path.is_file():
+        _die(
+            3,
+            "topology_missing",
+            f"topology file not found at {topology_path}; author-topology must run first",
+        )
+    _validate_topology_yaml(topology_path.read_text(encoding="utf-8"))
 
     dot_entry = {
         "id": dot_id,
@@ -94,7 +105,7 @@ def main() -> int:
         "role": spec["role"],
         "greeting": spec["greeting"],
         "icon": spec["icon"],
-        "topology": dot_id,
+        "topology": topology_name,
         "renderers": spec.get("renderers") or [],
     }
     sys.stdout.write(

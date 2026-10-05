@@ -145,8 +145,10 @@ export interface Implementation {
      */
     timeout_s?: number;
     /**
-     * A topology in this workspace. Runs as a child job of the caller's run (same correlation,
-     * parent_job_id set); no network.
+     * A topology in this workspace, or one of the bundled authoring topologies
+     * (`swarmkit:author:topology`, `:skill`, `:archetype`, `:mcp-server`, `:init` — see
+     * design/details/author-bundled-workspace.md). Runs as a child job of the caller's run
+     * (same correlation, parent_job_id set); no network.
      */
     topology?: string;
 }

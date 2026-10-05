@@ -1,0 +1,44 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: author-topology
+  name: Author Topology
+  description: >
+    Delegates topology creation to the bundled SwarmKit authoring topology
+    (swarmkit:author:topology). The caller passes the Dot requirement in plain
+    language; the bundled author elicits any clarifying detail, writes the topology
+    YAML + any schemas/funnels into the TARGET workspace via the IAM-scoped write-file
+    skill, and returns the topology id for `create-dot` to register.
+
+    This is the whole reason the authoring workspace is reachable through the
+    swarmkit:author:* namespace (#1045): the Dot Author no longer carries 50 lines
+    of charter about `output_schema` and funnels — it tells the bundled author "make
+    a Dot that <X>" and that agent brings the charter.
+category: coordination
+inputs:
+  type: object
+  additionalProperties: false
+  required: [requirement]
+  properties:
+    requirement:
+      type: string
+      description: >
+        Plain-language description of what the Dot should do, from the user's turn —
+        bundled author elicits any missing details through chat.
+outputs:
+  type: object
+  required: [topology]
+  properties:
+    topology:
+      type: string
+      description: Id of the topology the bundled author wrote into the target workspace.
+implementation:
+  type: agent
+  topology: swarmkit:author:topology
+  # If the bundled author decides it needs the user to answer a question, stop and
+  # pass the question back to this Dot's chat window — do NOT fail the call. The Dot
+  # Author then relays the question and resumes once the user replies.
+  on_unanswerable: agent
+provenance:
+  authored_by: human
+  version: 0.2.0
