@@ -24,11 +24,11 @@ export function DotsList({ dots }: { dots: Dot[] }): React.ReactElement {
 			<div className="flex items-center justify-between px-2 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
 				<span>Dots</span>
 				<Link
-					href="/dots/new"
-					aria-label="Add a Dot"
+					href="/dots/author"
+					aria-label="Add a coworker"
 					className={cn(
 						"rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground",
-						pathname === "/dots/new" && "bg-accent text-accent-foreground",
+						pathname === "/dots/author" && "bg-accent text-accent-foreground",
 					)}
 				>
 					<Plus className="h-4 w-4" aria-hidden="true" />

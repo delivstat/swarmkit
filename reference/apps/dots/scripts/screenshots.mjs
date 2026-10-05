@@ -89,26 +89,37 @@ await page.goto(`${BASE}/usage`);
 await page.waitForSelector("text=Usage & cost");
 await shoot(page, "11-usage");
 
-// 12. /dots/new — empty form
+// 12. /dots/author — chat-shaped wizard, template picker visible
+await page.goto(`${BASE}/dots/author`);
+await page.waitForSelector("text=Add a coworker");
+await shoot(page, "12-author-templates");
+
+// 13. after picking a template — name question
+await page.locator("button:has-text('GitHub triage')").click();
+await page.waitForSelector("text=what should I call it");
+await shoot(page, "13-author-name");
+
+// 14. filled all params, now at the preview panel
+await page.fill("input[placeholder^='e.g.']", "Weekly Sweep");
+await page.click("button[type=submit]");
+await page.waitForSelector("input[placeholder='Type your answer…']");
+await page.fill("input[placeholder='Type your answer…']", "delivstat/swarmkit");
+await page.click("button[type=submit]");
+await page.waitForTimeout(300);
+await page.fill("input[placeholder='Type your answer…']", "bug, perf");
+await page.click("button[type=submit]");
+await page.waitForSelector("text=Create coworker");
+await shoot(page, "14-author-preview");
+
+// 15. after create — new Dot in sidebar + chat opens on it
+await Promise.all([page.waitForURL(/\/dots\/weekly-sweep/), page.click("text=Create coworker")]);
+await page.waitForTimeout(1500);
+await shoot(page, "15-author-created");
+
+// 16. /dots/new — the raw form stays reachable by URL but has no sidebar link
 await page.goto(`${BASE}/dots/new`);
 await page.waitForSelector("text=Add a Dot");
-await shoot(page, "12-new-dot-empty");
-
-// 13. /dots/new — filled form (ready to submit)
-await page.fill("#id", "cleanup-crew");
-await page.fill("#name", "Cleanup Crew");
-await page.fill("#role", "Spot stale PRs + branches");
-await page.fill("#greeting", "Give me a repo to sweep.");
-// topology dropdown is empty against mock runtime → fallback input exists
-if (await page.locator("input#topology").count()) {
-	await page.fill("#topology", "cleanup-crew");
-}
-await shoot(page, "13-new-dot-filled");
-
-// 14. After submit — sidebar shows the new Dot, chat opens on the new surface
-await Promise.all([page.waitForURL(/\/dots\/cleanup-crew/), page.click("button[type=submit]")]);
-await page.waitForTimeout(1500);
-await shoot(page, "14-new-dot-created");
+await shoot(page, "16-new-dot-advanced");
 
 await browser.close();
 
