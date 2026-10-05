@@ -2800,7 +2800,7 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 ## Environment variables
 
 <!-- BEGIN GENERATED: env -->
-55 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
+56 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
 
 **Storage**
 
@@ -2829,6 +2829,12 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 | `OPENAI_API_KEY` | OpenAI credential. *(secret)* |
 | `OPENROUTER_API_KEY` | OpenRouter credential. *(secret)* |
 | `GOOGLE_API_KEY` | Google GenAI credential. *(secret)* |
+
+**Authoring**
+
+| Variable | Purpose |
+|---|---|
+| `SWARMKIT_AUTHOR_TARGET_WORKSPACE` | Target workspace the bundled authoring tools (write-file, read-workspace, validate-workspace) operate on. Set by the CLI/serve invocation; the model never names it, so authoring writes cannot escape the invoker's workspace. |
 
 **Run limits**
 
