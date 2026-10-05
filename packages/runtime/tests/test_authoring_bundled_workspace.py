@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import jsonschema
 import pytest
+from swarmkit_runtime.authoring._prompts import get_system_prompt
 from swarmkit_runtime.authoring._resolver import (
     AUTHORING_MODES,
     AUTHORING_NAMESPACE,
@@ -91,3 +92,50 @@ def test_schema_already_refuses_reserved_namespace_ids() -> None:
     # the colon, not something else about the fixture).
     legal = {**reserved, "metadata": {"name": "regular-topology", "version": "0.1.0"}}
     validate("topology", legal)
+
+
+# ----- Prompt port (PR 2) ------------------------------------------------------------
+# The authoring charter now lives in YAML (agents.root.prompt.system on each bundled
+# topology). These cases confirm every mode loads, every mode produces the composed
+# core + mode-specific + CLI-facts block, and dynamic workspace_context still appends
+# the way the legacy loop expects.
+
+# Expected prompt lengths captured right after the port — a cheap regression guard. If
+# an operator intentionally rewrites a bundled prompt and the length moves, update the
+# number here with the new one in the same commit.
+_EXPECTED_PROMPT_LEN: dict[str, int] = {
+    "init": 10683,
+    "topology": 9681,
+    "skill": 13583,
+    "archetype": 7947,
+    "mcp-server": 11013,
+}
+
+
+@pytest.mark.parametrize("mode", AUTHORING_MODES)
+def test_mode_prompt_loads_from_yaml(mode: str) -> None:
+    prompt = get_system_prompt(mode)  # type: ignore[arg-type]
+    assert prompt, f"empty prompt for mode {mode}"
+    assert "SwarmKit authoring assistant" in prompt, (
+        "every mode's prompt starts with the shared core instructions — the port is "
+        "composed, not mode-only"
+    )
+    assert "swarmkit run <workspace-dir>" in prompt, (
+        "every mode's prompt ends with the CLI facts footer"
+    )
+
+
+@pytest.mark.parametrize("mode,expected_len", list(_EXPECTED_PROMPT_LEN.items()))
+def test_mode_prompt_length_is_pinned(mode: str, expected_len: int) -> None:
+    prompt = get_system_prompt(mode)  # type: ignore[arg-type]
+    assert len(prompt) == expected_len, (
+        f"{mode} prompt length changed from {expected_len} to {len(prompt)}; update "
+        "_EXPECTED_PROMPT_LEN in this test if the change is intentional"
+    )
+
+
+def test_workspace_context_is_appended() -> None:
+    base = get_system_prompt("topology")
+    with_ctx = get_system_prompt("topology", workspace_context="existing: thing")
+    assert with_ctx.endswith("Existing workspace state:\nexisting: thing")
+    assert with_ctx.startswith(base)
