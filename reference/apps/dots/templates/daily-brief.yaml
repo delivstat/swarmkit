@@ -1,0 +1,43 @@
+# Author Dot template — Daily brief.
+#
+# The Author Dot wizard turns a filled version of this manifest into (1) a fresh topology
+# YAML under workspace/topologies/{dot_id}.yaml with placeholders substituted, and (2) a
+# Dot entry in lib/dots.local.json wired to that topology.
+#
+# Placeholders use {{snake_case}} syntax; the server-side wizard asks one question per
+# `params` entry below and substitutes before writing.
+
+template:
+  id: daily-brief
+  name: Daily brief
+  summary: A coworker who pulls a short brief every morning from the sources you name.
+  default_icon: sunrise
+  default_role: Daily brief curator
+  default_greeting: Ready for today's brief. Shall I pull it?
+  renderers: [brief-item]
+
+params:
+  - key: sources
+    prompt: Which sources should it pull from? (comma-separated — e.g. inbox, calendar, slack)
+    default: inbox, calendar
+  - key: when
+    prompt: When should it run? (free text — e.g. '7am weekdays', 'on demand')
+    default: on demand
+
+topology_template: |
+  apiVersion: swarmkit/v1
+  kind: Topology
+  metadata:
+    id: {{dot_id}}
+    name: {{dot_name}}
+  spec:
+    root: brief
+    agents:
+      - id: brief
+        archetype: curator
+        instructions: |
+          Pull a short daily brief for the operator.
+          Sources: {{sources}}
+          Cadence: {{when}}
+
+          Return each item as one bullet with a short reason it matters.
