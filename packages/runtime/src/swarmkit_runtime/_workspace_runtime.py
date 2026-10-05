@@ -306,6 +306,29 @@ class MissingCommandPackError(Exception):
         super().__init__("\n".join(lines))
 
 
+def _bundled_authoring_runtime() -> WorkspaceRuntime:
+    """Return a cached ``WorkspaceRuntime`` pointed at the bundled authoring workspace.
+
+    One instance per process — the bundled workspace never changes under us, so caching
+    saves the resolve + provider-register + governance-build cost on every authoring
+    run. Covers CLI and both serve endpoints (``/run/{name}`` and ``/api/ag-ui/run``)
+    since all three dispatch through :meth:`WorkspaceRuntime.run`.
+    """
+    global _BUNDLED_AUTHORING_RUNTIME  # noqa: PLW0603
+    if _BUNDLED_AUTHORING_RUNTIME is None:
+        from swarmkit_runtime.authoring._resolver import (  # noqa: PLC0415
+            get_authoring_workspace_path,
+        )
+
+        _BUNDLED_AUTHORING_RUNTIME = WorkspaceRuntime.from_workspace_path(
+            get_authoring_workspace_path()
+        )
+    return _BUNDLED_AUTHORING_RUNTIME
+
+
+_BUNDLED_AUTHORING_RUNTIME: WorkspaceRuntime | None = None
+
+
 class WorkspaceRuntime:
     """The backend that both CLI and HTTP server call into.
 
@@ -961,12 +984,35 @@ class WorkspaceRuntime:
         from uuid import uuid4  # noqa: PLC0415
 
         from swarmkit_runtime.attachments import resolve_all  # noqa: PLC0415
+        from swarmkit_runtime.authoring._resolver import (  # noqa: PLC0415
+            authoring_bare_name,
+            is_authoring_id,
+        )
         from swarmkit_runtime.compression import (  # noqa: PLC0415
             build_policy,
             set_active_policy,
         )
         from swarmkit_runtime.langgraph_compiler._run_context import run_context  # noqa: PLC0415
         from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
+
+        # Authoring namespace dispatch (#1045). A `swarmkit:author:<mode>` id resolves to
+        # a topology in the bundled authoring workspace, not this one. CLI and serve both
+        # reach here, so a single intercept covers every entry point. The authoring run
+        # executes in the bundled workspace but writes into THIS workspace via the
+        # SWARMKIT_AUTHOR_TARGET_WORKSPACE env var the author's command_pack scripts read.
+        if is_authoring_id(topology_name):
+            bundled = _bundled_authoring_runtime()
+            os.environ["SWARMKIT_AUTHOR_TARGET_WORKSPACE"] = str(self._workspace_root)
+            return await bundled.run(
+                authoring_bare_name(topology_name),
+                user_input,
+                max_steps=max_steps,
+                thread_id=thread_id,
+                previous_plan=previous_plan,
+                labels=labels,
+                attachments=attachments,
+                budget_override=budget_override,
+            )
 
         # Resolved before anything else starts — before the graph is compiled and before a run id
         # exists. A missing file or a path escaping the workspace should fail the CALL, not appear

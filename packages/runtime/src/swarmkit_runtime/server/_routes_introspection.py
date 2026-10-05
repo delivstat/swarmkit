@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -24,6 +25,25 @@ from ._helpers import (
 from ._services import ArtifactService
 
 logger = logging.getLogger("swarmkit.server")
+
+
+def _authoring_exposed(_rt: Any) -> bool:
+    """True when ``swarmkit serve`` should list the bundled ``swarmkit:author:*`` ids.
+
+    Default off — a chat client that can reach ``POST /run`` for an authoring topology
+    can propose writes to the serving workspace, and that is not something an operator
+    should opt into silently.
+
+    Controlled today by the ``SWARMKIT_AUTHOR_EXPOSE`` env var (any truthy string); a
+    proper ``authoring.expose: true`` field on ``workspace.yaml`` lands in a follow-up
+    PR of #1045 together with the schema update.
+    """
+    return os.environ.get("SWARMKIT_AUTHOR_EXPOSE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 class ArtifactRef(BaseModel):
@@ -128,8 +148,21 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.get("/topologies")
     async def list_topologies(request: Request) -> list[str]:
-        """The topologies in this workspace, by id."""
-        return sorted(_get_runtime(request).workspace.topologies.keys())
+        """The topologies in this workspace, by id.
+
+        When the workspace opts into ``authoring.expose: true``, the bundled
+        ``swarmkit:author:*`` topologies are listed alongside the workspace's own —
+        the dots app, portal, and any AG-UI client can then start an authoring run
+        against the same serve process that hosts the user's other topologies. See
+        design/details/author-bundled-workspace.md (#1045).
+        """
+        rt = _get_runtime(request)
+        ids = list(rt.workspace.topologies.keys())
+        if _authoring_exposed(rt):
+            from swarmkit_runtime.authoring._resolver import authoring_public_ids  # noqa: PLC0415
+
+            ids.extend(authoring_public_ids())
+        return sorted(ids)
 
     @app.get("/skills")
     async def list_skills(request: Request) -> list[dict[str, str]]:

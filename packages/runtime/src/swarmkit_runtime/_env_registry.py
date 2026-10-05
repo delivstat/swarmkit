@@ -88,6 +88,15 @@ REGISTRY: tuple[EnvVar, ...] = (
         "validate-workspace) operate on. Set by the CLI/serve invocation; the model "
         "never names it, so authoring writes cannot escape the invoker's workspace.",
     ),
+    EnvVar(
+        "SWARMKIT_AUTHOR_EXPOSE",
+        "Authoring",
+        "Set truthy to make `swarmkit serve` list the bundled swarmkit:author:* "
+        "topologies alongside the workspace's own, so chat clients (dots app, portal) "
+        "can start an authoring run against the same serve process. Default off — "
+        "exposing an authoring topology lets any client propose writes to the "
+        "serving workspace.",
+    ),
     EnvVar("SWARMKIT_MODEL_TIMEOUT", "Models", "Per-call timeout in seconds."),
     EnvVar("SWARMKIT_MODEL_RETRIES", "Models", "Retries per model call before the node fails."),
     EnvVar("ANTHROPIC_API_KEY", "Models", "Anthropic credential.", SECRET),

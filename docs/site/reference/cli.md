@@ -239,7 +239,7 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 ## Environment variables
 
 <!-- BEGIN GENERATED: env -->
-56 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
+57 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
 
 **Storage**
 
@@ -274,6 +274,7 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 | Variable | Purpose |
 |---|---|
 | `SWARMKIT_AUTHOR_TARGET_WORKSPACE` | Target workspace the bundled authoring tools (write-file, read-workspace, validate-workspace) operate on. Set by the CLI/serve invocation; the model never names it, so authoring writes cannot escape the invoker's workspace. |
+| `SWARMKIT_AUTHOR_EXPOSE` | Set truthy to make `swarmkit serve` list the bundled swarmkit:author:* topologies alongside the workspace's own, so chat clients (dots app, portal) can start an authoring run against the same serve process. Default off — exposing an authoring topology lets any client propose writes to the serving workspace. |
 
 **Run limits**
 

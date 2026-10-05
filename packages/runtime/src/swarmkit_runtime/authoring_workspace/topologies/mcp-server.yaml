@@ -1,7 +1,7 @@
 apiVersion: swarmkit/v1
 kind: Topology
 metadata:
-  name: swarmkit:author:mcp-server
+  name: mcp-server
   version: 0.1.0
   description: >
     Bundled authoring topology for `mcp-server` mode. Reached via the reserved
