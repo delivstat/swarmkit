@@ -326,6 +326,83 @@ from the original goal). If yes, add intent_monitoring at topology level:
 
 Use existing archetypes and skills from the workspace when possible — list \
 what's available before suggesting new ones.
+
+STRUCTURED OUTPUT — load-bearing:
+If the requirement describes a structured return (JSON, specific fields, \
+items with named properties, a bounded set of values, a count, a verdict, \
+"items + reason", "N bullets", a table, "a summary with X and Y") you MUST \
+declare `output_schema` on the agent that produces that return (usually the \
+root). Free-text prompts about "return 3 items" are NOT a substitute — the \
+runtime enforces the schema at the model boundary; a prose instruction does \
+not.
+
+Two forms are accepted:
+  output_schema:                   # inline JSON Schema object
+    type: object
+    required: [items, question]
+    properties:
+      items:
+        type: array
+        minItems: 1
+        maxItems: 4
+        items:
+          type: object
+          required: [title, reason]
+          properties:
+            title: { type: string }
+            reason: { type: string, description: "Under 20 words." }
+      question:
+        type: string
+
+  output_schema: schemas/my-topology.schema.json  # or a workspace-relative path
+
+Explicit opt-out: `output_schema: null` is the one legitimate case for a \
+chat agent whose correctness lives in a tool call, not its prose. Don't \
+use null for working coworkers.
+
+HUMAN APPROVAL — reach for a Funnel:
+If the requirement mentions approval, sign-off, review, gate, human-in-the-\
+loop, "a human has to approve", "someone should check before X", or any \
+synonym, you MUST declare a `Funnel` artefact under `funnels/<id>.yaml` AND \
+reference it from the gated agent via `funnel: <id>`. Prose in the system \
+prompt saying "this will be reviewed by a human" is NOT a Funnel — the \
+runtime has no way to enforce it.
+
+A funnel looks like:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: refund-approval
+  name: Refund Approval
+  description: >
+    Human sign-off before any refund proposal is returned to the customer.
+validate:                 # OPTIONAL — layer-1 deterministic shape check
+  schema: schemas/refund-proposal.schema.json
+  autocorrect: true
+approve:                  # REQUIRED — the human approval gate
+  rules:
+    - scope: refund:approve
+      roles: [support-lead]
+      quorum: all
+  min_distinct_approvers: 1
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+Note: `output_schema` is for shape, `Funnel` is for human approval. Shape \
+validation is NOT a Funnel's job. If the only need is a shape check, use \
+`output_schema` alone and skip the funnel.
+
+RESPECT PROVIDER DIRECTIVES — do not substitute:
+If the user names a model provider in the requirement (e.g. "use the mock \
+provider", "openrouter/moonshotai/kimi-k2-0905", "anthropic/claude-sonnet-4-6") \
+use that provider verbatim on every agent in the generated topology. Do NOT \
+substitute "groq/llama-3.3-70b-versatile" or any other default. If the user \
+leaves the provider unspecified, pick a sensible default and SAY so in the \
+plan so they can override.
 """
 
 _SKILL_PROMPT = """\
