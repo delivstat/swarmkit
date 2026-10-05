@@ -1,14 +1,16 @@
 import { DotsList } from "@/components/sidebar/dots-list";
+import { loadDots } from "@/lib/dots.config";
 
-export default function DotsLayout({
+export default async function DotsLayout({
 	children,
 }: {
 	children: React.ReactNode;
-}): React.ReactElement {
+}): Promise<React.ReactElement> {
+	const dots = await loadDots();
 	return (
 		<div className="grid h-screen grid-cols-[240px_1fr]">
 			<aside className="border-r border-border bg-muted/20">
-				<DotsList />
+				<DotsList dots={dots} />
 			</aside>
 			<main className="flex min-h-0 flex-col">{children}</main>
 		</div>

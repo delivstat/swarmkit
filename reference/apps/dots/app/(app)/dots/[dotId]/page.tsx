@@ -8,7 +8,7 @@ export default async function DotPage({
 	params: Promise<{ dotId: string }>;
 }): Promise<React.ReactElement> {
 	const { dotId } = await params;
-	const dot = findDot(dotId);
+	const dot = await findDot(dotId);
 	if (!dot) notFound();
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">

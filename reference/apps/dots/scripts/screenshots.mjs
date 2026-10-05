@@ -89,6 +89,27 @@ await page.goto(`${BASE}/usage`);
 await page.waitForSelector("text=Usage & cost");
 await shoot(page, "11-usage");
 
+// 12. /dots/new — empty form
+await page.goto(`${BASE}/dots/new`);
+await page.waitForSelector("text=Add a Dot");
+await shoot(page, "12-new-dot-empty");
+
+// 13. /dots/new — filled form (ready to submit)
+await page.fill("#id", "cleanup-crew");
+await page.fill("#name", "Cleanup Crew");
+await page.fill("#role", "Spot stale PRs + branches");
+await page.fill("#greeting", "Give me a repo to sweep.");
+// topology dropdown is empty against mock runtime → fallback input exists
+if (await page.locator("input#topology").count()) {
+	await page.fill("#topology", "cleanup-crew");
+}
+await shoot(page, "13-new-dot-filled");
+
+// 14. After submit — sidebar shows the new Dot, chat opens on the new surface
+await Promise.all([page.waitForURL(/\/dots\/cleanup-crew/), page.click("button[type=submit]")]);
+await page.waitForTimeout(1500);
+await shoot(page, "14-new-dot-created");
+
 await browser.close();
 
 // Print markdown block for the PR body
