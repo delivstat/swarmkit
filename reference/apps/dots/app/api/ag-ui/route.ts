@@ -29,7 +29,7 @@ interface AgUiRunInput {
 
 export async function POST(req: NextRequest): Promise<Response> {
 	const dotId = req.nextUrl.searchParams.get("dotId");
-	const dot = dotId ? findDot(dotId) : undefined;
+	const dot = dotId ? await findDot(dotId) : undefined;
 	if (!dot) return NextResponse.json({ error: "dot_not_found" }, { status: 404 });
 
 	let body: AgUiRunInput;
