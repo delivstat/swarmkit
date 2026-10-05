@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: author
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    archetype: dot-author
+    # No output_schema and no funnel: the author is a conversational agent whose
+    # correctness lands via the `create-dot` tool call, not via its chat prose.
+    # Explicit null opts out of the archetype's / platform default structured output.
+    output_schema: null
