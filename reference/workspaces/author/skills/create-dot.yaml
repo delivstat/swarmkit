@@ -1,0 +1,60 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: create-dot
+  name: Create Dot
+  description: >
+    Writes a new Dot. Takes the Dot spec + the topology YAML the author composed,
+    validates the YAML against the canonical SwarmKit topology schema, writes the
+    topology file into the target workspace's topologies/ directory, and emits the Dot
+    entry on stdout for the consumer app to persist (dots.local.json in the dots app).
+    The target workspace is picked by the AUTHOR_TARGET_WORKSPACE env var (default:
+    $CWD/workspace), so the same author topology can author into whichever workspace
+    the consumer app points it at.
+category: capability
+inputs:
+  type: object
+  additionalProperties: false
+  required: [id, name, role, greeting, icon, topology_yaml]
+  properties:
+    id:
+      type: string
+      pattern: "^[a-z][a-z0-9-]*$"
+      description: Slug for the Dot and its topology (same id).
+    name:
+      type: string
+      description: Human name shown in the sidebar.
+    role:
+      type: string
+      description: One-line description of what this coworker does.
+    greeting:
+      type: string
+      description: The first message the Dot sends the user.
+    icon:
+      type: string
+      description: Icon name (sunrise, mail-reply, github, …).
+    topology_yaml:
+      type: string
+      description: The full topology YAML, with its output_schema and any skills already resolved.
+    renderers:
+      type: array
+      items: { type: string }
+      description: Renderer names the generated topology's output matches (optional).
+outputs:
+  type: object
+  required: [id, topology_path, dot]
+  properties:
+    id: { type: string }
+    topology_path:
+      type: string
+      description: Path of the written topology file.
+    dot:
+      type: object
+      description: The Dot entry the consumer app should persist.
+implementation:
+  type: command
+  pack: author-tools
+  command: create-dot
+provenance:
+  authored_by: human
+  version: 0.1.0
