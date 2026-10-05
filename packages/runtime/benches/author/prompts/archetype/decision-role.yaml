@@ -1,0 +1,12 @@
+mode: archetype
+id: decision-role
+description: Archetype that gates on a governance decision.
+requirement: |
+  Create an archetype called "cautious-worker" — a worker role that uses the mock
+  provider and declares a pre_input decision skill called "safety-check". Keep the
+  system prompt minimal.
+replies: [yes, yes, yes]
+expect:
+  must_validate: true
+  files_created_min: 1
+  wall_time_max_s: 180

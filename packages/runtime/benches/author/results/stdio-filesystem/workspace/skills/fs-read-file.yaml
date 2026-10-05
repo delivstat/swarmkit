@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: fs-read-file
+  name: Read File
+  description: Read the contents of a file from the filesystem.
+category: capability
+implementation:
+  type: mcp_tool
+  server: fs
+  tool: read_file
+provenance:
+  authored_by: authored_by_swarm
+  version: 1.0.0

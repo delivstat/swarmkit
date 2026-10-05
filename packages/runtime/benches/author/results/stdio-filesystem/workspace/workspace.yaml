@@ -1,0 +1,11 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: bench
+  name: bench
+mcp_servers:
+  - id: fs
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    sandboxed: true
+    sandbox_image: node:22-slim

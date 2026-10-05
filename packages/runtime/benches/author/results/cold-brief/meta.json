@@ -1,0 +1,13 @@
+{
+  "mode": "topology",
+  "id": "cold-brief",
+  "exit_code": 0,
+  "wall_seconds": 118.48,
+  "files_created": [
+    "archetypes/brief-coordinator.yaml",
+    "skills/generate-brief-items.yaml",
+    "skills/generate-follow-up-question.yaml",
+    "topologies/morning-brief.yaml"
+  ],
+  "validates": true
+}

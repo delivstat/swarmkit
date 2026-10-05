@@ -1,0 +1,10 @@
+{
+  "mode": "skill",
+  "id": "mcp-tool-wrap",
+  "exit_code": 0,
+  "wall_seconds": 59.0,
+  "files_created": [
+    "skills/search-docs.yaml"
+  ],
+  "validates": true
+}

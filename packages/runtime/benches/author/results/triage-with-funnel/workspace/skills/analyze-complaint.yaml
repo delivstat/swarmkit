@@ -1,0 +1,20 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: analyze-complaint
+  name: Analyze Complaint
+  description: "Parses and analyzes customer complaints to extract key details like issue type, severity, and customer sentiment."
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: "You are a complaint analysis specialist. Analyze the following customer complaint and extract:
+1. Issue category (defective product, wrong item, late delivery, damaged in shipping, changed mind, other)
+2. Severity (low, medium, high, critical)
+3. Customer sentiment (frustrated, angry, disappointed, neutral, understanding)
+4. Key facts (product, purchase date, order ID if mentioned, specific damage/defect)
+5. Any explicit demands or requests made by the customer
+
+Provide a structured analysis with these fields. Be objective and thorough."
+provenance:
+  authored_by: human
+  version: 1.0.0

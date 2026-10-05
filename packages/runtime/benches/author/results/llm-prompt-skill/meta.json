@@ -1,0 +1,10 @@
+{
+  "mode": "skill",
+  "id": "llm-prompt-skill",
+  "exit_code": 0,
+  "wall_seconds": 36.32,
+  "files_created": [
+    "skills/summarise.yaml"
+  ],
+  "validates": true
+}

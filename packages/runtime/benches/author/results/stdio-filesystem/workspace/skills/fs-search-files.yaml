@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: fs-search-files
+  name: Search Files
+  description: Search for files matching a pattern.
+category: capability
+implementation:
+  type: mcp_tool
+  server: fs
+  tool: search_files
+provenance:
+  authored_by: authored_by_swarm
+  version: 1.0.0

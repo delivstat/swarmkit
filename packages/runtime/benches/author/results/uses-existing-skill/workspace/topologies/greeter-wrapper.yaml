@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: greeter-wrapper
+  version: 0.1.0
+# intent_monitoring:
+#   enabled: true
+#   threshold: 0.75
+#   on_drift: log
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: mock
+      name: mock-model
+    prompt:
+      system: "You are a supervisor that delegates greeting tasks to your worker. When given a name to greet, pass it to the greeter-worker and return their response."
+    children:
+      - id: greeter
+        role: worker
+        archetype: greeter-worker

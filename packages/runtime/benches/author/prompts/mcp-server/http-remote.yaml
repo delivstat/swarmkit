@@ -1,0 +1,11 @@
+mode: mcp-server
+id: http-remote
+description: Register a remote HTTP MCP server with bearer auth.
+requirement: |
+  Add an MCP server called "notion-remote". Transport: streamable-http at
+  https://mcp.example.com/notion. Needs a bearer token credential called notion.
+replies: [yes, yes, yes]
+expect:
+  must_validate: true
+  files_created_min: 0
+  wall_time_max_s: 180

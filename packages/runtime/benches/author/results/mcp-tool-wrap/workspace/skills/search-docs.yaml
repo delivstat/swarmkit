@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-docs
+  name: Search Docs
+  description: Searches documentation for relevant content based on a query string.
+category: capability
+outputs:
+  type: object
+  properties:
+    results:
+      type: array
+      items:
+        type: string
+  required: [results]
+implementation:
+  type: mcp_tool
+  server: docs-search
+  tool: search
+provenance:
+  authored_by: human
+  version: 1.0.0

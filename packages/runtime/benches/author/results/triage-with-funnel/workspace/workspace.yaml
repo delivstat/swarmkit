@@ -1,0 +1,10 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: bench
+  name: bench
+  description: "Refund triage workspace for processing customer complaints and proposing refund amounts."
+governance:
+  provider: mock
+  config:
+    policies_dir: ./policies

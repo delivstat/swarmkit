@@ -1,0 +1,8 @@
+{
+  "mode": "init",
+  "id": "cold-start",
+  "exit_code": 2,
+  "wall_seconds": 2.8,
+  "files_created": [],
+  "validates": true
+}

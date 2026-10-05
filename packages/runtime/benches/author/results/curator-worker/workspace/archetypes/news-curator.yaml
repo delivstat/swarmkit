@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: news-curator
+  name: News Curator
+  description: Worker that pulls feeds, ranks items by relevance, and returns the top 5 results.
+role: worker
+defaults:
+  model:
+    provider: mock
+    name: mock-model
+    temperature: 0.3
+  prompt:
+    system: "You are a news curator. Your job is to pull a feed, rank items by relevance and importance, and return the top 5 as JSON."
+  skills:
+    - fetch-feed
+provenance:
+  authored_by: human
+  version: 1.0.0

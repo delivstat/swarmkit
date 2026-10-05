@@ -1,0 +1,14 @@
+{
+  "mode": "mcp-server",
+  "id": "stdio-filesystem",
+  "exit_code": 0,
+  "wall_seconds": 62.77,
+  "files_created": [
+    "skills/fs-get-file-info.yaml",
+    "skills/fs-list-directory.yaml",
+    "skills/fs-read-file.yaml",
+    "skills/fs-search-files.yaml",
+    "skills/fs-write-file.yaml"
+  ],
+  "validates": true
+}

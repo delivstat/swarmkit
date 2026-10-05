@@ -1,0 +1,14 @@
+{
+  "mode": "topology",
+  "id": "triage-with-funnel",
+  "exit_code": 0,
+  "wall_seconds": 88.71,
+  "files_created": [
+    "archetypes/refund-advisor.yaml",
+    "skills/analyze-complaint.yaml",
+    "skills/calculate-refund.yaml",
+    "skills/format-proposal.yaml",
+    "topologies/refund-triage.yaml"
+  ],
+  "validates": true
+}

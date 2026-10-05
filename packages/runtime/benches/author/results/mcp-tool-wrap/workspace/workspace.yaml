@@ -1,0 +1,9 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: bench
+  name: bench
+mcp_servers:
+  - id: docs-search
+    transport: stdio
+    command: ["echo", "placeholder"]

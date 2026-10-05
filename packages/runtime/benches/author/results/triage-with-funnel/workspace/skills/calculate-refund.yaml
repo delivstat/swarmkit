@@ -1,0 +1,40 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: calculate-refund
+  name: Calculate Refund
+  description: "Determines appropriate refund amount based on complaint analysis, considering fairness and business policy."
+category: decision
+implementation:
+  type: llm_prompt
+  prompt: "You are a refund calculation specialist. Based on the complaint analysis provided, determine the appropriate refund:
+
+Consider:
+- Severity of the issue
+- Customer impact and inconvenience
+- Company policy (full refund for defective/damaged, partial for late delivery, etc.)
+- Customer loyalty/history if known
+- Reasonableness of any explicit demands
+
+Output your decision as JSON with:
+- recommended_amount: percentage or fixed amount (e.g., '100%' or '$50')
+- reasoning: detailed explanation of your calculation
+- confidence: 0-1 score of how certain this is the right amount
+- conditions: any conditions for the refund (return product, photo evidence, etc.)"
+provenance:
+  authored_by: human
+  version: 1.0.0
+outputs:
+  type: object
+  properties:
+    recommended_amount:
+      type: string
+    reasoning:
+      type: string
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    conditions:
+      type: string
+  required: [recommended_amount, reasoning, confidence]

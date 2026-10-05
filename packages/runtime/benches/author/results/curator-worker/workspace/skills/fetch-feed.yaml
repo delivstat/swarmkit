@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: fetch-feed
+  name: Fetch feed
+  description: Returns raw items from an RSS/Atom feed.
+category: capability
+inputs:
+  type: object
+  required: [url]
+  properties:
+    url: { type: string }
+outputs:
+  type: object
+  properties:
+    items: { type: array, items: { type: object } }
+implementation:
+  type: command
+  pack: feeds
+  command: fetch
+provenance:
+  authored_by: human
+  version: 0.1.0

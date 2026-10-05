@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: format-proposal
+  name: Format Refund Proposal
+  description: "Formats the refund analysis and calculation into a clear proposal for human review and approval."
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: "You are a customer service coordinator. Take the complaint analysis and refund calculation, and format them into a clear, professional proposal for human approval.
+
+Your output should include:
+1. Executive Summary: Brief overview of the complaint and recommended action
+2. Complaint Details: Key facts from the analysis
+3. Refund Recommendation: Amount and conditions
+4. Reasoning: Why this amount is fair and appropriate
+5. Next Steps: What happens after approval
+
+Format this as a professional document that a manager can quickly review and approve. Be concise but complete."
+provenance:
+  authored_by: human
+  version: 1.0.0

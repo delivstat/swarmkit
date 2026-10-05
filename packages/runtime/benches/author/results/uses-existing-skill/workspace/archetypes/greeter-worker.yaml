@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: greeter-worker
+  name: Greeter Worker
+  description: "A simple agent that greets users by name using the say-hello skill."
+role: worker
+defaults:
+  model:
+    provider: mock
+    name: mock-model
+  prompt:
+    system: "You are a friendly greeter. Your job is to welcome users by name. When given a name, use your say-hello skill to generate a warm greeting and return it."
+  skills:
+    - say-hello
+provenance:
+  authored_by: human
+  version: 1.0.0

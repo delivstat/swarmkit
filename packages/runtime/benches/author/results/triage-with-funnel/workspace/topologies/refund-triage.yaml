@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: refund-triage
+  version: 0.1.0
+# intent_monitoring:
+#   enabled: true
+#   threshold: 0.75
+#   on_drift: log
+agents:
+  root:
+    id: refund-advisor
+    role: root
+    archetype: refund-advisor
+    model:
+      provider: groq
+      name: llama-3.3-70b-versatile
+    prompt:
+      system: "You are the refund triage supervisor. Process the customer complaint through your skills to produce a refund proposal for human approval. Use analyze-complaint to understand the issue, calculate-refund to determine the amount, and format-proposal to create the final recommendation document. Output only the formatted proposal - this will be reviewed by a human before any refund is issued."

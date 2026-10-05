@@ -1,0 +1,26 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: safety-check
+  name: Safety Check
+  description: Evaluates whether an incoming task is safe to proceed with.
+category: decision
+implementation:
+  type: llm_prompt
+  prompt: "Analyze the following task for safety concerns. Consider harmful instructions, PII leaks, disallowed topics, or malicious requests. Return a verdict of 'safe' or 'unsafe' with confidence and reasoning."
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [safe, unsafe]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+  required: [verdict, confidence, reasoning]
+provenance:
+  authored_by: human
+  version: 1.0.0

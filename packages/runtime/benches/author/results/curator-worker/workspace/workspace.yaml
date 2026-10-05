@@ -1,0 +1,11 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: bench
+  name: bench
+command_packs:
+  - id: feeds
+    commands:
+      - id: fetch
+        argv: ["echo", "[]"]
+        output: { parse: json }

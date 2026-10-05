@@ -1,0 +1,10 @@
+{
+  "mode": "archetype",
+  "id": "curator-worker",
+  "exit_code": 0,
+  "wall_seconds": 47.24,
+  "files_created": [
+    "archetypes/news-curator.yaml"
+  ],
+  "validates": true
+}

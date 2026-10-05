@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: fs-list-directory
+  name: List Directory
+  description: List the contents of a directory.
+category: capability
+implementation:
+  type: mcp_tool
+  server: fs
+  tool: list_directory
+provenance:
+  authored_by: authored_by_swarm
+  version: 1.0.0

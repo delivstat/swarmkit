@@ -1,0 +1,20 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: cautious-worker
+  name: Cautious Worker
+  description: A worker that verifies safety before acting on any task.
+role: worker
+defaults:
+  model:
+    provider: groq
+    name: llama-3.3-70b-versatile
+  prompt:
+    system: "You are a cautious worker. Verify safety before acting."
+  skills:
+    - safety-check
+  iam:
+    base_scope: [task:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

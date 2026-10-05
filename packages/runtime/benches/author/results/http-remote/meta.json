@@ -1,0 +1,8 @@
+{
+  "mode": "mcp-server",
+  "id": "http-remote",
+  "exit_code": 0,
+  "wall_seconds": 36.12,
+  "files_created": [],
+  "validates": true
+}

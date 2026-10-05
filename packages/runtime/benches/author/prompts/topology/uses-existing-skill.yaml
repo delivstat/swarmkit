@@ -1,0 +1,37 @@
+mode: topology
+id: uses-existing-skill
+description: Topology that must wire an existing skill, not pretend a new one.
+requirement: |
+  Build a topology called "greeter-wrapper" that uses the existing `say-hello` skill
+  to greet a user by name. Return the greeting. Use the mock provider.
+workspace_fixture:
+  files:
+    skills/say-hello.yaml: |
+      apiVersion: swarmkit/v1
+      kind: Skill
+      metadata:
+        id: say-hello
+        name: Say hello
+        description: Returns a one-sentence greeting for a given audience.
+      category: capability
+      inputs:
+        type: object
+        required: [audience]
+        properties:
+          audience: { type: string }
+      outputs:
+        type: object
+        properties:
+          greeting: { type: string }
+      implementation:
+        type: llm_prompt
+        prompt: |
+          Return a one-sentence greeting for {{audience}}.
+      provenance:
+        authored_by: human
+        version: 0.1.0
+replies: [yes, yes, yes]
+expect:
+  must_validate: true
+  files_created_min: 1
+  wall_time_max_s: 180

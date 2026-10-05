@@ -1,0 +1,11 @@
+{
+  "mode": "archetype",
+  "id": "decision-role",
+  "exit_code": 0,
+  "wall_seconds": 64.79,
+  "files_created": [
+    "archetypes/cautious-worker.yaml",
+    "skills/safety-check.yaml"
+  ],
+  "validates": true
+}

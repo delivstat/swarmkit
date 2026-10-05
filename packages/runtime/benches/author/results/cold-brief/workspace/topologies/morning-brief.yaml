@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: morning-brief
+  version: 0.1.0
+agents:
+  root:
+    id: brief-coordinator
+    role: root
+    model:
+      provider: mock
+      name: mock
+    prompt:
+      system: "You are a daily brief coordinator. Your task is to generate a morning brief consisting of three items. Each item must have a title and a reason explaining its significance. After generating the three items, create a short follow-up question that encourages reflection or action. Be concise and clear."
+    children: []
+# intent_monitoring:
+#   enabled: true
+#   threshold: 0.75
+#   on_drift: log

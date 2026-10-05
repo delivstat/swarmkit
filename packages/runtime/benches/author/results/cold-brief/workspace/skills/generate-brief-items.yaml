@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: generate-brief-items
+  name: Generate Brief Items
+  description: "Generates three items for a daily brief, each with a title and reason."
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: "Generate three items for a daily brief. Each item should have a clear title and a brief reason explaining why it matters. Return the items as a structured list."
+provenance:
+  authored_by: human
+  version: 1.0.0

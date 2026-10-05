@@ -1,0 +1,11 @@
+{
+  "mode": "topology",
+  "id": "uses-existing-skill",
+  "exit_code": 0,
+  "wall_seconds": 41.87,
+  "files_created": [
+    "archetypes/greeter-worker.yaml",
+    "topologies/greeter-wrapper.yaml"
+  ],
+  "validates": true
+}

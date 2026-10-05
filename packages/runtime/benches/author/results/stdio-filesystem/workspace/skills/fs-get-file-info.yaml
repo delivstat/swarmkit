@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: fs-get-file-info
+  name: Get File Info
+  description: Get metadata information about a file.
+category: capability
+implementation:
+  type: mcp_tool
+  server: fs
+  tool: get_file_info
+provenance:
+  authored_by: authored_by_swarm
+  version: 1.0.0

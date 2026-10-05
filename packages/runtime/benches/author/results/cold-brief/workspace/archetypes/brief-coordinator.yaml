@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: brief-coordinator
+  name: Brief Coordinator
+  description: "A root agent that generates daily briefs with three items (title + reason each) and a follow-up question."
+role: root
+defaults:
+  model:
+    provider: mock
+    name: mock
+  prompt:
+    system: "You are a daily brief coordinator. Your task is to generate a morning brief consisting of three items. Each item must have a title and a reason explaining its significance. After generating the three items, create a short follow-up question that encourages reflection or action. Be concise and clear."
+  skills:
+    - generate-brief-items
+    - generate-follow-up-question
+provenance:
+  authored_by: human
+  version: 1.0.0

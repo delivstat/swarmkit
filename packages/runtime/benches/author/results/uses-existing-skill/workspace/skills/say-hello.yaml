@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: say-hello
+  name: Say hello
+  description: Returns a one-sentence greeting for a given audience.
+category: capability
+inputs:
+  type: object
+  required: [audience]
+  properties:
+    audience: { type: string }
+outputs:
+  type: object
+  properties:
+    greeting: { type: string }
+implementation:
+  type: llm_prompt
+  prompt: |
+    Return a one-sentence greeting for {{audience}}.
+provenance:
+  authored_by: human
+  version: 0.1.0

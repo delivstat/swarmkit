@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: fs-write-file
+  name: Write File
+  description: Write content to a file on the filesystem.
+category: capability
+implementation:
+  type: mcp_tool
+  server: fs
+  tool: write_file
+provenance:
+  authored_by: authored_by_swarm
+  version: 1.0.0
