@@ -1,30 +1,34 @@
-# Author Dot workspace
+# Dot Author workspace
 
-A reusable SwarmKit authoring surface. The `author` topology is a conversational coworker whose job is **creating other coworkers (Dots)**. It elicits the requirement in plain language, looks up anything it needs from `llms-full.txt`, generates a complete topology YAML, and calls the `create-dot` skill to write both the topology file and the Dot entry.
+A thin SwarmKit workspace whose only job is **wrapping an existing topology as a user-facing Dot**. Topology authoring itself lives in `swarmkit author` (per-mode system prompts + schema knowledge in `packages/runtime/src/swarmkit_runtime/authoring/`). This workspace does **not** replicate that.
 
-Consumers invoke this topology over AG-UI like any other Dot. The dots app wires its `/dots/author` route to it; any other app (DOT, control-plane UI, custom frontends) can do the same.
+The `author` topology is a conversational coworker that:
 
-## The authoring charter
+1. Asks the user what the new coworker should do (one line).
+2. Asks which topology it should run on.
+3. If the user does not know one exists, points them at:
+   - `swarmkit topologies ls <workspace>` to list what's there, or
+   - `swarmkit author topology <workspace>` to design a new one through conversation.
+4. Once the user names an existing topology, calls `create-dot` to write the sidebar entry.
 
-Baked into the `dot-author` archetype's system prompt. Every coworker the Author creates must satisfy:
+Consumers (the dots app, DOT, custom frontends) invoke this topology over AG-UI like any other Dot.
 
-1. **Every topology ships with `output_schema`.** No exceptions. Shape it to match the renderer the coworker will use. The schema goes in a sibling `schemas/<id>.schema.json` file; the agent's `output_schema` field is a path, not an inline object.
-2. **Use skills for I/O.** Never prompt around a missing tool. If the skill doesn't exist in the current workspace, say so.
-3. **`requires_credentials` on skills that need them.** The Connections UI depends on it.
-4. **Funnels are for human approval**, not for shape validation. Reach for one only when a human sign-off is genuinely needed.
-5. **Prefer existing archetypes.** Declare a new one only when the role genuinely differs.
-6. **Governance decision skills for any judgement step.**
-7. **`search-swarmkit-docs` before guessing.** The llms-full doc is authoritative; LLM training data is not.
-8. **One `create-dot` tool call per creation.** Don't describe what you would create — create it.
+## Why the Dot Author doesn't author topologies
 
-Edit `archetypes/dot-author.yaml` to tune the rules.
+An earlier draft baked a full authoring charter into the Dot Author (output_schema rules, skill shapes, governance semantics, funnel wiring, a `search-swarmkit-docs` tool). That duplicated `swarmkit author`, got the schemas wrong without the right prompts, and gave the user two overlapping authoring surfaces to reason about.
+
+The split instead:
+
+- **SwarmKit authoring** (upstream, already shipped) — owns anything that is a SwarmKit artifact: topologies, skills, archetypes, MCP server configs. Carries the authoring charter, knows the schemas, writes the files.
+- **Dot Author** (this workspace) — owns only what is unique to Dots: the sidebar entry (id, name, role, greeting, icon, renderers) + wiring to an existing topology.
+
+A seamless v2 could extract `swarmkit author` as its own workspace topology and let the Dot Author invoke it via the `agent` skill backing so a user never leaves one chat. For now the Dot Author simply tells the user to run the CLI.
 
 ## Running
 
 ```bash
 # From a repo checkout:
 AUTHOR_TARGET_WORKSPACE=/path/to/your/workspace \
-AUTHOR_LLMS_FULL_PATH=/path/to/swarmkit/llms-full.txt \
 OPENROUTER_API_KEY=sk-or-... \
 uv run swarmkit serve reference/workspaces/author
 
@@ -32,42 +36,29 @@ uv run swarmkit serve reference/workspaces/author
 curl -X POST http://localhost:8000/api/ag-ui/run \
   -H 'content-type: application/json' \
   -d '{
-    "messages": [{"role": "user", "content": "I need a coworker that triages my inbox"}],
+    "messages": [{"role": "user", "content": "wrap morning-brief as a Dot called Morning Brief"}],
     "context": {"topology": "author"}
   }'
 ```
 
 **Env variables**:
-- `AUTHOR_TARGET_WORKSPACE` — where generated topologies land. Default: `$CWD/workspace`.
-- `AUTHOR_LLMS_FULL_PATH` — path to `llms-full.txt`. Default: `./llms-full.txt`, falling back to `/app/llms-full.txt`.
+- `AUTHOR_TARGET_WORKSPACE` — where topologies live and where the Dot entry is checked against. Default: `$CWD/workspace`.
+- `SWARMKIT_WORKSPACE` — path the command-pack `cwd` resolves against. Set to the mounted workspace path.
 - `OPENROUTER_API_KEY` — the author uses Kimi K2 via OpenRouter; swap the model in `archetypes/dot-author.yaml` for a different provider.
 
 ## Shape
 
 ```
 author/
-├── workspace.yaml                        # declares command_packs
+├── workspace.yaml                       # declares the author-tools command_pack
 ├── archetypes/
-│   └── dot-author.yaml                   # the authoring charter + skills
+│   └── dot-author.yaml                  # the narrow Dot-wrapping prompt
 ├── topologies/
-│   └── author.yaml                       # single-agent conversational topology
+│   └── author.yaml                      # single-agent conversational topology
 ├── skills/
-│   ├── create-dot.yaml                   # writes topology YAML + Dot entry
-│   └── search-swarmkit-docs.yaml         # keyword search over llms-full.txt
+│   └── create-dot.yaml                  # the only skill
 └── command_packs/author-tools/
-    ├── create_dot.py                     # validates the YAML before writing
-    └── search_docs.py                    # heading-aware chunking + token scoring
+    └── create_dot.py                    # writes a Dot entry pointing at an existing topology
 ```
 
-## Design decisions
-
-- **Chat agent, no `output_schema`.** The topology opts out (`output_schema: null`) because correctness lives in the `create-dot` tool call, not in the chat prose. This is the one legitimate case for the opt-out — don't copy the pattern for working coworkers.
-- **No funnel.** No human-approval gate on creating a Dot in a user's own workspace. If an installation wants an approval step, add one.
-- **Target-workspace at runtime, not install-time.** `AUTHOR_TARGET_WORKSPACE` lets one Author serve many consumer apps.
-- **Keyword search for v1.** `search_docs.py` is a 70-line heading-aware substring scorer. Swap in a retrieval backend later without changing the skill contract.
-
-## What's not here
-
-- A UI wiring. The dots app's `/dots/author` route is updated to invoke this topology in a follow-up PR.
-- Topology editing. The Author creates; it does not modify existing Dots.
-- Schema-file writing. `create-dot` writes the topology YAML; if that YAML's `output_schema` is a path, the Author must also create the schema file. Future work: a `create-schema-file` sibling tool.
+`create_dot.py` refuses to write a Dot entry pointing at a topology that is not already present — this is the guardrail that keeps the Dot Author from pretending to be a topology author. See its exit-code 3 (`topology_missing`).

@@ -1,11 +1,8 @@
-"""Smoke test for `reference/workspaces/author/` — the reusable authoring surface.
+"""Smoke test for `reference/workspaces/author/` — the Dot Author surface.
 
-Every reference workspace has a smoke test that loads + compiles it without executing a
-run (packages/runtime/CLAUDE.md). This one additionally pins:
-
-- `swarmkit validate` passes on the workspace.
-- The `create-dot` script accepts a valid Dot spec and writes a topology YAML that
-  itself validates — proving the author's end-to-end commit path is sound.
+Narrow by design: the Author wraps an existing topology as a Dot. It does NOT author
+topologies; that is `swarmkit author`'s job. These tests pin the wrapper's commit path
+and its refusal to pretend topologies into existence.
 """
 
 from __future__ import annotations
@@ -18,6 +15,7 @@ from pathlib import Path
 import pytest
 
 AUTHOR_WORKSPACE = Path(__file__).resolve().parents[3] / "reference/workspaces/author"
+CREATE_DOT = AUTHOR_WORKSPACE / "command_packs/author-tools/create_dot.py"
 
 
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -39,48 +37,30 @@ def test_author_workspace_validates() -> None:
     )
 
 
-def test_create_dot_writes_a_valid_topology(tmp_path: Path) -> None:
-    """create_dot.py receives a Dot spec, writes a topology YAML, and the YAML validates.
+def test_create_dot_wraps_an_existing_topology(tmp_path: Path) -> None:
+    """create_dot.py writes the Dot entry only when the referenced topology exists.
 
-    This is the Author's commit path: whatever the agent sends to the create-dot tool
-    must end up as something the runtime can serve. Pins that end-to-end.
+    The Dot Author's commit path is: user confirms topology exists → create-dot. This
+    pins the happy path end-to-end.
     """
     target = tmp_path / "ws"
     (target / "topologies").mkdir(parents=True)
-    (target / "workspace.yaml").write_text(
-        "apiVersion: swarmkit/v1\nkind: Workspace\nmetadata:\n  id: smoke\n  name: smoke\n",
+    (target / "topologies/smoke-topology.yaml").write_text(
+        "apiVersion: swarmkit/v1\nkind: Topology\nmetadata:\n  name: smoke-topology\n",
         encoding="utf-8",
     )
-    topology_yaml = (
-        "apiVersion: swarmkit/v1\n"
-        "kind: Topology\n"
-        "metadata:\n"
-        "  name: smoke-dot\n"
-        "  version: 0.1.0\n"
-        "agents:\n"
-        "  root:\n"
-        "    id: root\n"
-        "    role: root\n"
-        "    model:\n"
-        "      provider: openrouter\n"
-        "      name: moonshotai/kimi-k2-0905\n"
-        "    prompt:\n"
-        "      system: smoke\n"
-        "    output_schema: null\n"
-    )
-    spec = {
-        "id": "smoke-dot",
-        "name": "Smoke Dot",
-        "role": "r",
-        "greeting": "hi",
-        "icon": "sunrise",
-        "topology_yaml": topology_yaml,
-        "renderers": [],
-    }
-    script = AUTHOR_WORKSPACE / "command_packs/author-tools/create_dot.py"
     result = subprocess.run(
-        [sys.executable, str(script)],
-        input=json.dumps(spec),
+        [
+            sys.executable,
+            str(CREATE_DOT),
+            "smoke-dot",
+            "Smoke Dot",
+            "r",
+            "hi",
+            "sunrise",
+            "smoke-topology",
+            "[]",
+        ],
         capture_output=True,
         text=True,
         env={"PATH": "/usr/bin:/bin", "AUTHOR_TARGET_WORKSPACE": str(target)},
@@ -91,45 +71,57 @@ def test_create_dot_writes_a_valid_topology(tmp_path: Path) -> None:
     )
     payload = json.loads(result.stdout)
     assert payload["id"] == "smoke-dot"
-    assert payload["dot"]["topology"] == "smoke-dot"
-    assert (
-        Path(payload["topology_path"])
-        .read_text(encoding="utf-8")
-        .startswith("apiVersion: swarmkit/v1")
+    assert payload["dot"]["topology"] == "smoke-topology"
+    assert payload["topology_path"].endswith("smoke-topology.yaml")
+
+
+def test_create_dot_refuses_when_topology_missing(tmp_path: Path) -> None:
+    """create_dot.py exits 3 with topology_missing when the referenced topology is not
+    there — the whole point of the delegation is that this script cannot author."""
+    target = tmp_path / "ws"
+    (target / "topologies").mkdir(parents=True)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CREATE_DOT),
+            "ghost-dot",
+            "Ghost Dot",
+            "r",
+            "hi",
+            "sunrise",
+            "ghost-topology",
+            "[]",
+        ],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "AUTHOR_TARGET_WORKSPACE": str(target)},
+        check=False,
     )
-    validate = _run_cli(["validate", str(target)])
-    assert validate.returncode == 0, (
-        f"generated workspace fails validate:\n{validate.stdout}\n{validate.stderr}"
-    )
+    assert result.returncode == 3
+    assert "topology_missing" in result.stdout
 
 
 @pytest.mark.parametrize(
-    ("payload", "expected_error_substr", "expected_exit"),
+    ("argv", "expected_error_substr", "expected_exit"),
     [
-        ({"id": "ok"}, "missing_field", 2),
-        (
-            {
-                "id": "BAD-ID",
-                "name": "x",
-                "role": "x",
-                "greeting": "x",
-                "icon": "x",
-                "topology_yaml": "x",
-            },
-            "invalid_id",
-            2,
-        ),
+        (["ok"], "missing_field", 2),
+        (["BAD-ID", "x", "x", "x", "x", "t", "[]"], "invalid_id", 2),
     ],
 )
 def test_create_dot_rejects_bad_input(
-    tmp_path: Path, payload: dict[str, str], expected_error_substr: str, expected_exit: int
+    tmp_path: Path,
+    argv: list[str],
+    expected_error_substr: str,
+    expected_exit: int,
 ) -> None:
     target = tmp_path / "ws"
     (target / "topologies").mkdir(parents=True)
-    script = AUTHOR_WORKSPACE / "command_packs/author-tools/create_dot.py"
+    (target / "topologies/t.yaml").write_text(
+        "apiVersion: swarmkit/v1\nkind: Topology\nmetadata:\n  name: t\n",
+        encoding="utf-8",
+    )
     result = subprocess.run(
-        [sys.executable, str(script)],
-        input=json.dumps(payload),
+        [sys.executable, str(CREATE_DOT), *argv],
         capture_output=True,
         text=True,
         env={"PATH": "/usr/bin:/bin", "AUTHOR_TARGET_WORKSPACE": str(target)},

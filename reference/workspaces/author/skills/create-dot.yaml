@@ -4,23 +4,24 @@ metadata:
   id: create-dot
   name: Create Dot
   description: >
-    Writes a new Dot. Takes the Dot spec + the topology YAML the author composed,
-    validates the YAML against the canonical SwarmKit topology schema, writes the
-    topology file into the target workspace's topologies/ directory, and emits the Dot
-    entry on stdout for the consumer app to persist (dots.local.json in the dots app).
+    Writes the Dot sidebar entry for a topology that already exists in the workspace.
+    Validates that `topologies/<topology>.yaml` is present, then prints the Dot entry
+    on stdout for the consumer app to persist (dots.local.json in the dots app). Does
+    NOT author topologies — the Dot Author is required to use `swarmkit author topology`
+    (or an already-present topology) BEFORE calling this.
+
     The target workspace is picked by the AUTHOR_TARGET_WORKSPACE env var (default:
-    $CWD/workspace), so the same author topology can author into whichever workspace
-    the consumer app points it at.
+    $CWD/workspace), so one Author instance can serve many consumer apps.
 category: capability
 inputs:
   type: object
   additionalProperties: false
-  required: [id, name, role, greeting, icon, topology_yaml]
+  required: [id, name, role, greeting, icon, topology]
   properties:
     id:
       type: string
       pattern: "^[a-z][a-z0-9-]*$"
-      description: Slug for the Dot and its topology (same id).
+      description: Slug for the Dot (used in the URL and as the entry key).
     name:
       type: string
       description: Human name shown in the sidebar.
@@ -32,22 +33,26 @@ inputs:
       description: The first message the Dot sends the user.
     icon:
       type: string
-      description: Icon name (sunrise, mail-reply, github, …).
-    topology_yaml:
+      description: Icon name (sunrise, mail-reply, github, sparkles, …).
+    topology:
       type: string
-      description: The full topology YAML, with its output_schema and any skills already resolved.
+      description: >
+        Name of an existing topology in the target workspace. Must correspond to
+        `topologies/<topology>.yaml`.
     renderers:
-      type: array
-      items: { type: string }
-      description: Renderer names the generated topology's output matches (optional).
+      type: string
+      description: >
+        JSON array of renderer names the topology's output matches, e.g.
+        '["brief-item"]'. Pass '[]' when none.
+      default: "[]"
 outputs:
   type: object
-  required: [id, topology_path, dot]
+  required: [id, dot]
   properties:
     id: { type: string }
     topology_path:
       type: string
-      description: Path of the written topology file.
+      description: Path of the topology file the Dot points at.
     dot:
       type: object
       description: The Dot entry the consumer app should persist.
@@ -57,4 +62,4 @@ implementation:
   command: create-dot
 provenance:
   authored_by: human
-  version: 0.1.0
+  version: 0.2.0

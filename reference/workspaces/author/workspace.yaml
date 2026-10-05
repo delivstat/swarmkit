@@ -2,41 +2,39 @@ apiVersion: swarmkit/v1
 kind: Workspace
 metadata:
   id: author
-  name: Author Dot workspace
+  name: Dot Author workspace
   description: >
-    A reusable SwarmKit authoring surface. The `author` topology is a conversational
-    coworker whose job is creating other coworkers (Dots): it elicits the requirement,
-    looks up anything it needs from `llms-full.txt`, generates a topology YAML, and calls
-    the `create-dot` skill to write both the topology file and a frontend Dot entry.
-    Consumers invoke this topology over AG-UI like any other Dot — the dots app wires
-    `/dots/author` to it, but any app can.
-    See design/details/dots-app.md and reference/apps/dots for the first consumer.
+    A thin SwarmKit workspace whose only job is wrapping existing topologies as Dots.
+    Topology authoring itself lives in `swarmkit author` (per-mode system prompts
+    + schema knowledge in packages/runtime/src/swarmkit_runtime/authoring/) — this
+    workspace does not replicate that. Consumers (the dots app, etc.) invoke the
+    `author` topology over AG-UI like any other Dot.
 
-# The author needs two local tools:
-#   - create-dot    writes topology YAML + Dot entry into a target workspace path
-#   - search-swarmkit-docs    returns matching chunks from llms-full.txt on demand
-# Both are command-pack scripts under command_packs/author-tools/.
 command_packs:
   - id: author-tools
     description: >
-      Local commands the dot-author archetype uses. The create-dot command resolves the
-      target workspace from AUTHOR_TARGET_WORKSPACE (default: $CWD) so this one authoring
-      workspace can author into whichever workspace the consumer app points it at.
+      The one local command the Dot Author uses. `create-dot` writes a Dot entry
+      pointing at a topology that must already exist in AUTHOR_TARGET_WORKSPACE.
     permission: open
+    # cwd uses ${SWARMKIT_WORKSPACE} so relative argv entries resolve regardless of
+    # where the swarmkit process is launched from. The compose env sets this to the
+    # mounted workspace path.
+    cwd: ${SWARMKIT_WORKSPACE}/command_packs/author-tools
+    # Argv placeholders ({name}) are filled from the skill's input JSON; SwarmKit does
+    # not pipe stdin to command subprocesses, so every field rides on argv.
     commands:
       - id: create-dot
-        description: Reads a Dot spec JSON on stdin, validates the topology YAML, writes it + the Dot entry.
+        description: Writes a Dot sidebar entry pointing at an existing topology.
         argv:
           - python3
-          - "{WORKSPACE}/command_packs/author-tools/create_dot.py"
+          - create_dot.py
+          - "{id}"
+          - "{name}"
+          - "{role}"
+          - "{greeting}"
+          - "{icon}"
+          - "{topology}"
+          - "{renderers}"
         effects: write
-        output:
-          parse: json
-      - id: search-swarmkit-docs
-        description: Returns chunks of SwarmKit's llms-full.txt matching a short query.
-        argv:
-          - python3
-          - "{WORKSPACE}/command_packs/author-tools/search_docs.py"
-        effects: read
         output:
           parse: json
