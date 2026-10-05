@@ -1,160 +1,193 @@
-"""Tools available to the authoring agent.
+"""Tools the authoring agent can call.
 
-These are SwarmKit-internal tools, not MCP — they run in-process.
+Each tool is a thin dispatcher that shells out to a command_pack script shipped inside
+the bundled authoring workspace (``swarmkit_runtime.authoring_workspace.command_packs.
+author-tools``). The scripts enforce the IAM scope (``write-file`` refuses paths
+outside the target workspace's allowed roots) and the ``SWARMKIT_AUTHOR_TARGET_WORKSPACE``
+env var pins the target — the model never names it, so a bad prompt cannot steer writes
+to another directory.
+
+Keeping the tools scripts-and-subprocess (not in-process Python) matters: the compiler
+calls these same scripts the same way once the CLI shim swap lands (PR 4+ of #1045), so
+the behaviour verified here is the behaviour the serve path will have, byte for byte.
+See ``design/details/author-bundled-workspace.md``.
 """
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
-from swarmkit_runtime.errors import ResolutionErrors
+from swarmkit_runtime.authoring._resolver import get_authoring_workspace_path
 from swarmkit_runtime.model_providers import ToolSpec
-from swarmkit_runtime.resolver import resolve_workspace
+
+_SCRIPT_DIR: Path = get_authoring_workspace_path() / "command_packs" / "author-tools"
+
+#: Tool name → script file. Tool names use underscores (Python/Anthropic tool-call
+#: convention); the matching skill ids use hyphens (SwarmKit YAML convention). The LLM
+#: only ever sees the tool name on the left; the compiler maps between the two.
+_TOOL_TO_SCRIPT: dict[str, str] = {
+    "write_file": "write_file.py",
+    "read_workspace": "read_workspace.py",
+    "validate_workspace": "validate_workspace.py",
+    "search_skills_catalogue": "search_skills_catalogue.py",
+}
 
 
 def get_authoring_tools() -> list[ToolSpec]:
-    """Return the tool definitions the authoring agent can call."""
+    """Return the tool definitions the authoring agent can call.
+
+    Shapes match the inputs schemas on the bundled skills under
+    ``authoring_workspace/skills/``. If you change a shape here, change it there too —
+    once the CLI shim swap lands, the compiler reads the skill YAML directly and this
+    list goes away.
+    """
     return [
         ToolSpec(
-            name="validate_workspace",
+            name="write_file",
             description=(
-                "Validate a workspace directory. Returns 'valid' or a list of "
-                "errors with suggestions. Call this after generating YAML to "
-                "check correctness before asking the user to approve."
+                "Write YAML/JSON files into the target workspace. Paths are "
+                "relative; only topologies/, archetypes/, skills/, funnels/, "
+                "schemas/, policies/ and workspace.yaml are allowed. Only call "
+                "after the user has approved the plan."
             ),
             input_schema={
                 "type": "object",
+                "additionalProperties": False,
+                "required": ["files"],
                 "properties": {
-                    "workspace_path": {
-                        "type": "string",
-                        "description": "Path to the workspace directory",
-                    },
-                },
-                "required": ["workspace_path"],
-            },
-        ),
-        ToolSpec(
-            name="write_files",
-            description=(
-                "Write YAML files to disk. Only call after the user explicitly "
-                "approves. Each entry is a relative path and its YAML content."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "base_dir": {
-                        "type": "string",
-                        "description": "Base directory to write files into",
-                    },
                     "files": {
                         "type": "object",
-                        "description": "Map of relative file path → YAML content",
+                        "description": ("Map of workspace-relative path to file content."),
                         "additionalProperties": {"type": "string"},
+                        "minProperties": 1,
                     },
                 },
-                "required": ["base_dir", "files"],
             },
         ),
         ToolSpec(
             name="read_workspace",
             description=(
-                "Read the current state of a workspace directory. Returns the "
-                "workspace.yaml content and lists of existing topologies, "
-                "archetypes, and skills."
+                "Return the target workspace's workspace.yaml text + a per-kind "
+                "inventory of top-level YAMLs. Call this at the start of a "
+                "session to avoid proposing an artifact that already exists."
             ),
             input_schema={
                 "type": "object",
+                "additionalProperties": False,
+                "properties": {},
+            },
+        ),
+        ToolSpec(
+            name="validate_workspace",
+            description=(
+                "Validate the target workspace against the canonical schemas + "
+                "resolver. Call after write_file to confirm the generated set "
+                "is consistent."
+            ),
+            input_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {},
+            },
+        ),
+        ToolSpec(
+            name="search_skills_catalogue",
+            description=(
+                "Look up a bundle in the swarmkit-skills catalogue by keyword. "
+                "When a bundle covers the ask, suggest `swarmkit skill add "
+                "bundle:<id>` instead of hand-rolling a custom skill or MCP "
+                "server."
+            ),
+            input_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["query"],
                 "properties": {
-                    "workspace_path": {
-                        "type": "string",
-                        "description": "Path to the workspace directory",
-                    },
+                    "query": {"type": "string", "minLength": 1},
                 },
-                "required": ["workspace_path"],
             },
         ),
     ]
 
 
-def execute_tool(tool_name: str, tool_input: dict[str, Any]) -> str:
-    """Execute an authoring tool and return the result as a string."""
-    if tool_name == "validate_workspace":
-        return _validate_workspace(tool_input.get("workspace_path", "."))
-    if tool_name == "write_files":
-        return _write_files(
-            tool_input.get("base_dir", "."),
-            tool_input.get("files", {}),
-        )
-    if tool_name == "read_workspace":
-        return _read_workspace(tool_input.get("workspace_path", "."))
-    return f"Unknown tool: {tool_name}"
+def execute_tool(
+    tool_name: str,
+    tool_input: dict[str, Any],
+    *,
+    target_workspace: Path | None = None,
+) -> str:
+    """Execute an authoring tool and return the result as a string.
 
+    ``target_workspace`` is passed through to the script as
+    ``SWARMKIT_AUTHOR_TARGET_WORKSPACE``. The caller (``_agent.py``) threads the session
+    workspace in. If the tool is unknown we return a short message instead of raising —
+    the model occasionally asks for a tool that doesn't exist and the agent loop
+    handles it gracefully.
+    """
+    script = _TOOL_TO_SCRIPT.get(tool_name)
+    if script is None:
+        return f"Unknown tool: {tool_name}"
 
-def _validate_workspace(workspace_path: str) -> str:
-    path = Path(workspace_path).resolve()
-    if not path.exists():
-        return f"Workspace path does not exist: {path}"
+    env = os.environ.copy()
+    if target_workspace is not None:
+        env["SWARMKIT_AUTHOR_TARGET_WORKSPACE"] = str(target_workspace.resolve())
+
     try:
-        ws = resolve_workspace(path)
-        topo_count = len(ws.topologies)
-        skill_count = len(ws.skills)
-        arch_count = len(ws.archetypes)
-        return (
-            f"valid — {topo_count} topologies, {skill_count} skills, "
-            f"{arch_count} archetypes, 0 errors."
+        proc = subprocess.run(
+            [sys.executable, str(_SCRIPT_DIR / script)],
+            input=json.dumps(tool_input or {}),
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
         )
-    except ResolutionErrors as exc:
-        lines = []
-        for err in exc.errors:
-            lines.append(f"error: {err.message}")
-            if err.suggestion:
-                lines.append(f"  try: {err.suggestion}")
-        return "\n".join(lines)
-    except FileNotFoundError as exc:
-        return f"error: {exc}"
+    except OSError as exc:  # pragma: no cover — only hits on a broken python exe
+        return f"tool invocation failed: {exc}"
 
-
-def _write_files(base_dir: str, files: dict[str, str]) -> str:
-    base = Path(base_dir).resolve()
-    written: list[str] = []
-    for rel_path, content in files.items():
-        full_path = base / rel_path
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_text(content, encoding="utf-8")
-        written.append(rel_path)
-
-    validation = _validate_workspace(str(base))
-    if "valid" in validation and "0 errors" in validation:
-        return f"Wrote {len(written)} files: {', '.join(written)}. {validation}"
-
-    return (
-        f"Wrote {len(written)} files but validation FAILED.\n"
-        f"{validation}\n"
-        f"Fix the errors above and call write_files again with corrected content."
-    )
+    # Scripts always print one JSON line to stdout; return it verbatim so the agent can
+    # thread the raw structured response back to the model (the model handles the JSON
+    # better than it handles a free-form summary).
+    out = proc.stdout.strip()
+    if proc.returncode == 0:
+        return out or "{}"
+    # Non-zero exit — still return the JSON so the model sees `{"error": ..., "detail": ...}`
+    # and can self-correct. Preserve stderr too in case the script crashed before
+    # printing the JSON line.
+    if out:
+        return out
+    return f"tool error (exit {proc.returncode}): {proc.stderr.strip() or 'no output'}"
 
 
 def _read_workspace(workspace_path: str) -> str:
+    """Return the workspace summary the agent uses as its session-start context.
+
+    Called once at the top of a run — ``_agent.py`` appends the returned string to the
+    system prompt so the model can see what already exists. We shell out to the same
+    script the ``read_workspace`` tool uses and reformat its JSON into the one-screen
+    human summary the prompt expects.
+    """
     path = Path(workspace_path).resolve()
     if not path.exists():
         return f"Workspace path does not exist: {path}"
-
+    raw = execute_tool("read_workspace", {}, target_workspace=path)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+    if "error" in data:
+        return f"error: {data.get('detail') or data['error']}"
     lines: list[str] = []
-
-    ws_yaml = path / "workspace.yaml"
-    if ws_yaml.exists():
-        lines.append(f"workspace.yaml:\n{ws_yaml.read_text(encoding='utf-8')}")
+    ws_yaml = data.get("workspace_yaml") or ""
+    if ws_yaml:
+        lines.append(f"workspace.yaml:\n{ws_yaml}")
     else:
         lines.append("workspace.yaml: not found")
-
-    for subdir in ("topologies", "archetypes", "skills"):
-        sub = path / subdir
-        if sub.is_dir():
-            yamls = sorted(sub.glob("*.yaml"))
-            names = [f.stem for f in yamls]
-            lines.append(f"{subdir}/: {', '.join(names) or '(empty)'}")
-        else:
-            lines.append(f"{subdir}/: (not created)")
-
+    for key in ("topologies", "archetypes", "skills", "funnels"):
+        names = data.get(key) or []
+        lines.append(f"{key}/: {', '.join(names) or '(empty)'}")
     return "\n".join(lines)
