@@ -160,7 +160,8 @@ def test_run_started_carries_thread_and_run_ids(client: TestClient) -> None:
     assert started["threadId"] == "thread-fixed"
     assert started["runId"] == "run-fixed"
     # Topology lives on metadata; AG-UI's `input` is a RunAgentInput, not a free-form dict.
-    assert started.get("metadata", {}).get("topology") == topology
+    metadata = started.get("metadata") if isinstance(started, dict) else None
+    assert isinstance(metadata, dict) and metadata.get("topology") == topology
 
 
 def test_run_finished_carries_success_outcome(client: TestClient) -> None:
