@@ -1,0 +1,11 @@
+mode: topology
+id: triage-with-funnel
+description: Topology that needs human approval before output — tests whether the author reaches for a funnel.
+requirement: |
+  Build a topology called "refund-triage". One root agent proposes a refund amount
+  for a customer complaint. A human has to approve before the refund is returned.
+  Use the mock provider.
+expect:
+  must_validate: true
+  files_created_min: 1
+  wall_time_max_s: 180

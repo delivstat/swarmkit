@@ -1,0 +1,9 @@
+mode: mcp-server
+id: stdio-filesystem
+description: Add a stdio-based filesystem MCP server to the workspace.
+requirement: |
+  Add an MCP server called "fs" with stdio transport. Command: `npx -y @modelcontextprotocol/server-filesystem /tmp`.
+expect:
+  must_validate: true
+  files_created_min: 0  # mcp-server authoring edits workspace.yaml rather than creating a new file
+  wall_time_max_s: 180

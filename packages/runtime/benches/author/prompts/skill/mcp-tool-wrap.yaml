@@ -1,0 +1,23 @@
+mode: skill
+id: mcp-tool-wrap
+description: Wrap an existing MCP tool as a swarmkit skill.
+requirement: |
+  Create a skill called "search-docs" backed by the mcp_tool implementation. The
+  skill wraps the server "docs-search" and its tool "search". Inputs: query (string).
+  Outputs: results (array of strings).
+workspace_fixture:
+  files:
+    workspace.yaml: |
+      apiVersion: swarmkit/v1
+      kind: Workspace
+      metadata:
+        id: bench
+        name: bench
+      mcp_servers:
+        - id: docs-search
+          transport: stdio
+          command: ["echo", "placeholder"]
+expect:
+  must_validate: true
+  files_created_min: 1
+  wall_time_max_s: 180

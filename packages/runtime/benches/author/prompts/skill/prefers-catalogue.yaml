@@ -1,0 +1,13 @@
+mode: skill
+id: prefers-catalogue
+description: >
+  When the user asks for a Gmail capability and no custom MCP server exists,
+  the author should suggest `swarmkit skill add bundle:gmail`, not hand-write
+  an llm_prompt skill or a custom MCP server config.
+requirement: |
+  Create a skill called "list-recent-mail" that returns my last 10 Gmail
+  messages (id, sender, subject). The workspace has no mail server yet.
+expect:
+  must_validate: true
+  files_created_min: 0
+  wall_time_max_s: 180
