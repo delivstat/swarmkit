@@ -25,6 +25,20 @@ export interface Dot {
 
 export const BUILT_IN_DOTS: Dot[] = [
 	{
+		// The Author Dot is a chat surface wired to SwarmKit's reusable author topology
+		// (reference/workspaces/author/). It's deliberately first in the list so the "+" icon
+		// hover + the opening chat conversation are the user's primary path to adding a
+		// coworker. The topology is a conversational root agent that calls the create-dot
+		// tool to write both the topology YAML and the Dot entry.
+		id: "author",
+		name: "Author",
+		role: "Add a new coworker",
+		icon: "sparkles",
+		topology: "author",
+		greeting: "Tell me what you want a new coworker to do. I'll ask what I need, then set it up.",
+		renderers: [],
+	},
+	{
 		id: "morning-brief",
 		name: "Morning Brief",
 		role: "Daily brief curator",

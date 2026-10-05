@@ -24,6 +24,10 @@ FROM python:3.11-slim
 
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/packages /app/packages
+# llms-full.txt is what the Author's search-swarmkit-docs tool reads from. Ship it inside
+# the image at a known path; AUTHOR_LLMS_FULL_PATH defaults to /app/llms-full.txt in the
+# compose env.
+COPY llms-full.txt /app/llms-full.txt
 
 ENV PATH="/app/.venv/bin:$PATH"
 WORKDIR /app

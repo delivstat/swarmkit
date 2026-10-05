@@ -2,7 +2,7 @@
 
 import type { Dot } from "@/lib/dots.config";
 import { cn } from "@/lib/utils";
-import { ChartNoAxesColumn, GitFork, Plug, Plus, Reply, Sunrise } from "lucide-react";
+import { ChartNoAxesColumn, GitFork, Plug, Plus, Reply, Sparkles, Sunrise } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -10,6 +10,7 @@ const ICONS: Record<string, React.ElementType> = {
 	sunrise: Sunrise,
 	"mail-reply": Reply,
 	github: GitFork,
+	sparkles: Sparkles,
 };
 
 const UTILITY_LINKS: Array<{ href: string; label: string; icon: React.ElementType }> = [

@@ -89,37 +89,25 @@ await page.goto(`${BASE}/usage`);
 await page.waitForSelector("text=Usage & cost");
 await shoot(page, "11-usage");
 
-// 12. /dots/author — chat-shaped wizard, template picker visible
+// 12. /dots/author — the Author Dot's chat surface (now powered by the reusable
+// reference/workspaces/author/ topology, not a deterministic frontend wizard).
 await page.goto(`${BASE}/dots/author`);
-await page.waitForSelector("text=Add a coworker");
-await shoot(page, "12-author-templates");
-
-// 13. after picking a template — name question
-await page.locator("button:has-text('GitHub triage')").click();
-await page.waitForSelector("text=what should I call it");
-await shoot(page, "13-author-name");
-
-// 14. filled all params, now at the preview panel
-await page.fill("input[placeholder^='e.g.']", "Weekly Sweep");
-await page.click("button[type=submit]");
-await page.waitForSelector("input[placeholder='Type your answer…']");
-await page.fill("input[placeholder='Type your answer…']", "delivstat/swarmkit");
-await page.click("button[type=submit]");
-await page.waitForTimeout(300);
-await page.fill("input[placeholder='Type your answer…']", "bug, perf");
-await page.click("button[type=submit]");
-await page.waitForSelector("text=Create coworker");
-await shoot(page, "14-author-preview");
-
-// 15. after create — new Dot in sidebar + chat opens on it
-await Promise.all([page.waitForURL(/\/dots\/weekly-sweep/), page.click("text=Create coworker")]);
+await page.waitForSelector("text=Author");
 await page.waitForTimeout(1500);
-await shoot(page, "15-author-created");
+await shoot(page, "12-author-greeting");
 
-// 16. /dots/new — the raw form stays reachable by URL but has no sidebar link
+// 13. user asks the Author for a new coworker — streaming assistant turn
+composer = page.locator("textarea, [contenteditable=true]").first();
+await composer.fill("I want a coworker that pulls weekly brief emails.");
+await composer.press("Enter");
+// Give Kimi + the AG-UI proxy time to stream back a response.
+await page.waitForTimeout(20000);
+await shoot(page, "13-author-conversation");
+
+// 14. /dots/new — the raw YAML form stays reachable by URL but has no sidebar link
 await page.goto(`${BASE}/dots/new`);
 await page.waitForSelector("text=Add a Dot");
-await shoot(page, "16-new-dot-advanced");
+await shoot(page, "14-new-dot-advanced");
 
 await browser.close();
 
