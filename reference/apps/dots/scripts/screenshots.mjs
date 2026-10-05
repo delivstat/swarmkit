@@ -106,10 +106,7 @@ if (await page.locator("input#topology").count()) {
 await shoot(page, "13-new-dot-filled");
 
 // 14. After submit — sidebar shows the new Dot, chat opens on the new surface
-await Promise.all([
-	page.waitForURL(/\/dots\/cleanup-crew/),
-	page.click("button[type=submit]"),
-]);
+await Promise.all([page.waitForURL(/\/dots\/cleanup-crew/), page.click("button[type=submit]")]);
 await page.waitForTimeout(1500);
 await shoot(page, "14-new-dot-created");
 
