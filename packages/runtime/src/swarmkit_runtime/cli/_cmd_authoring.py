@@ -16,9 +16,7 @@ import typer
 from swarmkit_runtime._workspace_runtime import (
     MissingMCPServerError,
     WorkspaceRuntime,
-    resolve_authoring_provider,
 )
-from swarmkit_runtime.authoring import run_authoring_session
 from swarmkit_runtime.authoring._prompts import AuthoringMode
 from swarmkit_runtime.errors import ResolutionErrors
 from swarmkit_runtime.gaps import SkillGapLog
@@ -598,13 +596,8 @@ def init(
     ] = Path("."),
 ) -> None:
     """Create a new SwarmKit workspace through conversation."""
-    _print_banner()
-    _suppress_noisy_logs()
     _scaffold_env_file(path.resolve())
-    provider, model = resolve_authoring_provider()
-    run_authoring_session(
-        mode="init", model_provider=provider, model_name=model, workspace_path=path.resolve()
-    )
+    _run_authoring("init", path.resolve(), thorough=False)
 
 
 #: Written by `swarmkit init` when absent. Deterministic scaffolding, not authored by the model:
@@ -647,16 +640,30 @@ def _run_authoring(
     thorough: bool,
     input_text: str = "",
 ) -> None:
-    """Route authoring to single-agent (quick) or swarm (thorough)."""
+    """Route authoring through the bundled ``swarmkit:author:<mode>`` topology.
+
+    After #1045 PR 5 both CLI and serve route the authoring namespace through
+    ``WorkspaceRuntime.run``. This shim is a multi-turn REPL that threads the SAME
+    thread_id across every turn, so the LangGraph checkpointer resumes the author's
+    conversation state turn-over-turn — the same mechanism serve's chat uses when
+    a browser posts successive AG-UI runs with the same thread. One
+    ``correlation_id`` groups every turn in the session under one row in
+    ``/jobs/history``.
+
+    ``--thorough`` still routes to the multi-agent ``skill-authoring`` topology if
+    the workspace ships it.
+    """
     _print_banner()
     _suppress_noisy_logs()
+    try:
+        runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+    except Exception as exc:
+        _stderr(f"error: cannot load workspace: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
     if thorough:
         try:
-            runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
             prompt = f"Create a new {mode}. {input_text}".strip()
-            # one-shot authoring run, same class as `swarmkit run`.
-            # It leaves no job row, so a long authoring run has no history or cost record;
-            # that gap is known and tracked, not intended (#980).
             # noqa: service-layer
             result = asyncio.run(runtime.run("skill-authoring", prompt))
             if result.output:
@@ -670,14 +677,104 @@ def _run_authoring(
         except Exception as exc:
             _stderr(f"error: authoring failed: {exc}")
             raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
-    else:
-        provider, model = resolve_authoring_provider()
-        run_authoring_session(
-            mode=mode,
-            model_provider=provider,
-            model_name=model,
-            workspace_path=workspace_path.resolve(),
-        )
+        return
+
+    _author_repl(runtime, mode, workspace_path, initial=input_text.strip())
+
+
+def _author_repl(
+    runtime: WorkspaceRuntime,
+    mode: AuthoringMode,
+    workspace_path: Path,
+    *,
+    initial: str = "",
+) -> None:
+    """Multi-turn REPL that preserves the author's state across turns.
+
+    Same mechanism serve chat uses in ``_routes_ag_ui.py``: one ``thread_id`` for
+    the whole session (the LangGraph checkpointer resumes the author's prior
+    messages + tool outputs on each turn) and ``correlation_id = thread_id`` so
+    every turn's job row sits under one correlation in ``/jobs/history``. Each turn
+    gets its own job id — not reused — because job id is a PK and the row records
+    per-turn cost + outcome.
+    """
+    from uuid import uuid4  # noqa: PLC0415
+
+    from ._cmd_run import _finish_job, _job_store  # noqa: PLC0415
+
+    thread_id = str(uuid4())
+    correlation_id = thread_id
+
+    typer.echo(f"authoring: {mode} — thread {thread_id[:8]} — type /exit or Ctrl+D to end")
+
+    first = initial or _elicit_requirement(mode)
+    if not first:
+        _stderr("error: no requirement provided; nothing to author")
+        raise typer.Exit(_EXIT_USAGE)
+
+    store = _job_store(workspace_path)
+    turn_input: str | None = first
+    while turn_input is not None:
+        job_id = str(uuid4())
+        if store is not None:
+            try:
+                store.create_job(
+                    job_id,
+                    f"swarmkit:author:{mode}",
+                    turn_input,
+                    correlation_id,
+                    "cli",
+                    labels={"authoring.thread_id": thread_id},
+                    parent_job_id=None,
+                )
+            except Exception as exc:
+                _stderr(f"note: this turn will not appear in history: {exc}")
+                store = None
+
+        try:
+            # noqa: service-layer
+            result = asyncio.run(
+                runtime.run(
+                    f"swarmkit:author:{mode}",
+                    turn_input,
+                    thread_id=thread_id,
+                    labels={"authoring.thread_id": thread_id},
+                )
+            )
+        except Exception as exc:
+            _finish_job(store, job_id, "failed", error=str(exc))
+            _stderr(f"error: authoring failed: {exc}")
+            raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+        _finish_job(store, job_id, "completed")
+        if result.output:
+            typer.echo(result.output)
+
+        try:
+            next_turn = input("> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            typer.echo("")
+            return
+        if next_turn in ("/exit", "/quit", "exit", "quit"):
+            return
+        if not next_turn:
+            continue
+        turn_input = next_turn
+
+
+def _elicit_requirement(mode: AuthoringMode) -> str:
+    """Prompt the operator for the one-line requirement the bundled author needs."""
+    prompts = {
+        "init": "What should this swarm do? ",
+        "topology": "Describe the topology you want: ",
+        "skill": "Describe the skill you want: ",
+        "archetype": "Describe the archetype you want: ",
+        "mcp-server": "Describe the MCP server you want: ",
+    }
+    try:
+        return input(prompts[mode]).strip()
+    except (EOFError, KeyboardInterrupt):
+        return ""
 
 
 @author_app.command("topology")
