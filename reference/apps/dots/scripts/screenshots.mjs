@@ -27,6 +27,14 @@ async function shoot(page, name) {
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const page = await ctx.newPage();
+page.on("console", (msg) => {
+	if (msg.type() === "error" || msg.type() === "warning") {
+		console.error(`[console ${msg.type()}]`, msg.text());
+	}
+});
+page.on("pageerror", (err) => {
+	console.error("[pageerror]", err.message);
+});
 
 // 1. /login — empty
 await page.goto(`${BASE}/login`);
@@ -38,9 +46,11 @@ await page.fill("input[name=username]", USERNAME);
 await page.fill("input[name=password]", PASSWORD);
 await shoot(page, "02-login-filled");
 
-// 3. /dots/morning-brief — after login, CopilotChat initial greeting
+// 3. /dots/morning-brief — after login we land on the first Dot (Author); click Morning Brief
+// explicitly so the next shots capture its chat surface.
 await Promise.all([page.waitForURL(/\/dots\//), page.click("button[type=submit]")]);
-await page.waitForSelector("text=Morning Brief");
+await page.click("text=Morning Brief");
+await page.waitForURL(/\/dots\/morning-brief/);
 await page.waitForTimeout(1500); // let CopilotKit settle
 await shoot(page, "03-dot-greeting");
 

@@ -150,13 +150,18 @@ async def _translate(job: Any, *, thread_id: str, run_id: str) -> AsyncGenerator
     """
     message_id = f"msg-{uuid.uuid4().hex[:12]}"
 
+    # NB: AG-UI's RUN_STARTED.input is a full RunAgentInput (threadId, runId, messages, tools,
+    # context, state), not a free-form dict. CopilotKit's AbstractAgent zod-validates the
+    # event and aborts the run on mismatch — looked exactly like "nothing came back in the
+    # chat" because the agent abandoned stream processing before the first content delta
+    # (see #1036). We omit `input` (it's optional) and carry topology in metadata instead.
     yield _event(
         {
             "type": "RUN_STARTED",
             "timestamp": _now_ms(),
             "runId": run_id,
             "threadId": thread_id,
-            "input": {"topology": job.topology},
+            "metadata": {"topology": job.topology},
         }
     )
     yield _event(
