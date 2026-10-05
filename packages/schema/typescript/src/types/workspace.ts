@@ -9,6 +9,14 @@
 export interface SwarmKitWorkspace {
     apiVersion: APIVersion;
     /**
+     * Controls whether the bundled swarmkit:author:* topologies are exposed by `swarmkit serve`
+     * for this workspace. Default: not exposed. An exposed authoring topology lets any chat
+     * client that can reach the serve process propose writes to this workspace via the
+     * IAM-scoped write-file skill — operators opt in explicitly. See
+     * design/details/author-bundled-workspace.md.
+     */
+    authoring?: Authoring;
+    /**
      * Local command packs — the sibling of `mcp_servers` for capabilities that already exist as
      * binaries and would otherwise need a wrapper server written for them.
      */
@@ -50,6 +58,23 @@ export interface SwarmKitWorkspace {
 }
 
 export type APIVersion = "swarmkit/v1";
+
+/**
+ * Controls whether the bundled swarmkit:author:* topologies are exposed by `swarmkit serve`
+ * for this workspace. Default: not exposed. An exposed authoring topology lets any chat
+ * client that can reach the serve process propose writes to this workspace via the
+ * IAM-scoped write-file skill — operators opt in explicitly. See
+ * design/details/author-bundled-workspace.md.
+ */
+export interface Authoring {
+    /**
+     * When true, GET /topologies lists swarmkit:author:topology, :skill, :archetype,
+     * :mcp-server and :init alongside the workspace's own topologies, and AG-UI run requests
+     * for those ids are accepted. The SWARMKIT_AUTHOR_EXPOSE env var overrides to true for all
+     * workspaces (useful for a dev loop).
+     */
+    expose?: boolean;
+}
 
 /**
  * A named set of local commands exposed to skills through `implementation.type: command`.

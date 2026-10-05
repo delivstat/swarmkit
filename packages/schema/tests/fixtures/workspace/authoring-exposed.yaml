@@ -1,0 +1,10 @@
+# authoring.expose: true surfaces the bundled swarmkit:author:* topologies from this
+# serve process. Opt-in because any chat client that can reach POST /run against this
+# serve can then propose writes to this workspace through the authoring agent.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: authoring-enabled
+  name: Authoring-enabled Workspace
+authoring:
+  expose: true

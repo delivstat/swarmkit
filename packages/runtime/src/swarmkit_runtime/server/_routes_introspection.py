@@ -27,23 +27,31 @@ from ._services import ArtifactService
 logger = logging.getLogger("swarmkit.server")
 
 
-def _authoring_exposed(_rt: Any) -> bool:
+def _authoring_exposed(rt: Any) -> bool:
     """True when ``swarmkit serve`` should list the bundled ``swarmkit:author:*`` ids.
 
-    Default off — a chat client that can reach ``POST /run`` for an authoring topology
-    can propose writes to the serving workspace, and that is not something an operator
-    should opt into silently.
+    Resolved in this order:
 
-    Controlled today by the ``SWARMKIT_AUTHOR_EXPOSE`` env var (any truthy string); a
-    proper ``authoring.expose: true`` field on ``workspace.yaml`` lands in a follow-up
-    PR of #1045 together with the schema update.
+    1. ``SWARMKIT_AUTHOR_EXPOSE=1`` (truthy) in the serve process env — a dev-loop knob
+       that overrides every workspace.
+    2. ``authoring.expose: true`` on the serving workspace's ``workspace.yaml``.
+    3. Default: false. An exposed authoring topology lets any chat client that reaches
+       ``POST /run`` propose writes to the serving workspace, so operators opt in
+       explicitly.
     """
-    return os.environ.get("SWARMKIT_AUTHOR_EXPOSE", "").strip().lower() in {
+    if os.environ.get("SWARMKIT_AUTHOR_EXPOSE", "").strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
-    }
+    }:
+        return True
+    if rt is None:
+        return False
+    workspace = getattr(rt, "workspace", None)
+    raw = getattr(workspace, "raw", None) if workspace is not None else None
+    authoring = getattr(raw, "authoring", None) if raw is not None else None
+    return bool(getattr(authoring, "expose", False)) if authoring is not None else False
 
 
 class ArtifactRef(BaseModel):
