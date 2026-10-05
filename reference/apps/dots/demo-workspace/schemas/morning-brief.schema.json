@@ -1,0 +1,33 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Morning Brief output",
+	"description": "The output shape the morning-brief topology must return. Enforced by funnels/morning-brief.yaml and used by the model as its output_schema contract.",
+	"type": "object",
+	"required": ["items", "question"],
+	"additionalProperties": false,
+	"properties": {
+		"items": {
+			"type": "array",
+			"minItems": 1,
+			"maxItems": 4,
+			"items": {
+				"type": "object",
+				"required": ["title", "source", "reason", "action"],
+				"additionalProperties": false,
+				"properties": {
+					"title": { "type": "string", "description": "One-line label for the item." },
+					"source": {
+						"type": "string",
+						"description": "Where it came from — e.g. 'inbox', 'calendar', 'github'."
+					},
+					"reason": { "type": "string", "description": "Why it matters now, in under 20 words." },
+					"action": { "type": "string", "description": "The one next step the user should take." }
+				}
+			}
+		},
+		"question": {
+			"type": "string",
+			"description": "One short follow-up question for the user."
+		}
+	}
+}

@@ -1,0 +1,24 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: morning-brief
+  version: 0.2.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: moonshotai/kimi-k2-0905
+      temperature: 0.3
+    prompt:
+      system: |
+        You are a daily brief curator. Return a short brief as JSON matching
+        your output_schema — 3 or 4 items + one short follow-up question for
+        the user. Keep each `reason` under 20 words. Prefer concrete actions.
+    # Boundary contract: SwarmKit asks OpenRouter for structured output matching this schema
+    # and validates the response at the runtime boundary — a shape failure is a retry, not an
+    # answer the chat ever sees. (A Funnel would layer a human approval step on top; a Dot
+    # does not need that.) The dots app renders the validated JSON through its brief-item
+    # cards once that renderer lands; until then it surfaces as pretty-printed JSON in chat.
+    output_schema: ../schemas/morning-brief.schema.json

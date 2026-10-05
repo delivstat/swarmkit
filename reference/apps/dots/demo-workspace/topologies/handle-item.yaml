@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: handle-item
+  version: 0.2.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: moonshotai/kimi-k2-0905
+      temperature: 0.3
+    prompt:
+      system: |
+        You handle one brief item the user names. Return JSON matching your
+        output_schema: a short draft reply, the suggested next action, and
+        any caveats the user should know before sending.
+    output_schema: ../schemas/handle-item.schema.json

@@ -1,0 +1,10 @@
+node_modules
+.next
+.env
+.env.local
+docs/screenshots
+workspace/topologies/*.yaml
+lib/dots.local.json
+tests
+*.log
+.DS_Store

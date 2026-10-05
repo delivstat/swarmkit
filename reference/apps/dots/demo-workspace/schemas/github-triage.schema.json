@@ -1,0 +1,25 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "GitHub Triage output",
+	"type": "object",
+	"additionalProperties": false,
+	"properties": {
+		"needs_reply": { "type": "array", "items": { "$ref": "#/$defs/triage_item" } },
+		"blocked": { "type": "array", "items": { "$ref": "#/$defs/triage_item" } },
+		"ready_to_merge": { "type": "array", "items": { "$ref": "#/$defs/triage_item" } }
+	},
+	"$defs": {
+		"triage_item": {
+			"type": "object",
+			"required": ["id", "reason"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "type": "string", "description": "The issue/PR id — e.g. '#142' or 'PR #163'." },
+				"reason": {
+					"type": "string",
+					"description": "One short reason this item is in this bucket."
+				}
+			}
+		}
+	}
+}
