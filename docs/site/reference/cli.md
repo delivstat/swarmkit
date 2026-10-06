@@ -3,7 +3,7 @@
 ## Every command
 
 <!-- BEGIN GENERATED: commands -->
-71 commands, from the CLI itself (`swarmkit <command> --help` for the options).
+72 commands, from the CLI itself (`swarmkit <command> --help` for the options).
 
 | Command | What it does |
 |---|---|
@@ -16,6 +16,7 @@
 | `swarmkit ask` | Ask a question about the workspace or recent runs. |
 | `swarmkit auth token` | Mint a serve API token: generate a strong secret and print the config to wire it. |
 | `swarmkit author archetype` | Author a new archetype through conversation. |
+| `swarmkit author funnel` | Author a new human-approval Funnel through conversation. |
 | `swarmkit author mcp-server` | Author a new MCP server through conversation. |
 | `swarmkit author skill` | Author a new skill through conversation. |
 | `swarmkit author topology` | Author a new topology through conversation. |

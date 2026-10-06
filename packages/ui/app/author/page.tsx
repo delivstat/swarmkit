@@ -71,7 +71,8 @@ const MODES: {
 	{
 		id: "funnel",
 		label: "Funnel",
-		blurb: "Add a human-approval gate (scope, roles, quorum) in front of an agent.",
+		blurb:
+			"Add a human-approval gate (scope, roles, quorum) in front of an agent.",
 		Icon: Funnel,
 	},
 	{
