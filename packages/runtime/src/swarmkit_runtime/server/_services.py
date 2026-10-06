@@ -112,6 +112,13 @@ class JobService:
         """
         resolved_name = topology_name
         selected_version: str | None = None
+        # Authoring namespace ids (swarmkit:author:*) resolve inside WorkspaceRuntime.run,
+        # not in the user's workspace. Canary doesn't apply to them — they're bundled
+        # with the runtime, not operator-authored — so skip the lookup entirely. #1045.
+        from swarmkit_runtime.authoring._resolver import is_authoring_id  # noqa: PLC0415
+
+        if is_authoring_id(topology_name):
+            return topology_name, None
         if canary and canary.has_route(topology_name):
             selected_version = canary.select(topology_name)
             resolved_name = f"{topology_name}@{selected_version}"
