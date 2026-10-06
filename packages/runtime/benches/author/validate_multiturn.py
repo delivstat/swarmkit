@@ -175,10 +175,18 @@ def _run_case(case: Case, out_dir: Path, timeout_s: int) -> dict[str, object]:
     stdin_text = "\n".join(turns) + "\n"
 
     swarmkit = _bin_dir() / "swarmkit"
+    # `init` is the one mode exposed as a top-level `swarmkit init` command, not under
+    # `swarmkit author` — it predates the authoring subcommand group. Everything else
+    # is `swarmkit author <mode>`.
+    argv = (
+        [str(swarmkit), "init", str(target)]
+        if case.mode == "init"
+        else [str(swarmkit), "author", case.mode, str(target)]
+    )
     started = time.monotonic()
     try:
         proc = subprocess.run(
-            [str(swarmkit), "author", case.mode, str(target)],
+            argv,
             input=stdin_text,
             capture_output=True,
             text=True,

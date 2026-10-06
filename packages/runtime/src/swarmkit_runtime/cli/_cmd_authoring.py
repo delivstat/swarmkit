@@ -865,6 +865,22 @@ def author_mcp_server(
     _run_authoring("mcp-server", workspace_path, thorough)
 
 
+@author_app.command("funnel")
+def author_funnel(
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace directory.", show_default=False)
+    ] = Path("."),
+    thorough: Annotated[
+        bool,
+        typer.Option(
+            "--thorough", help="Use the multi-agent authoring swarm instead of single agent."
+        ),
+    ] = False,
+) -> None:
+    """Author a new human-approval Funnel through conversation."""
+    _run_authoring("funnel", workspace_path, thorough)
+
+
 # ---- edit (M7 — Skill Authoring Swarm in edit mode) ----------------------
 
 
