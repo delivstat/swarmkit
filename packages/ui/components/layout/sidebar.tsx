@@ -23,6 +23,7 @@ import {
 	Timer,
 	UserCheck,
 	Users,
+	Wand2,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -41,6 +42,13 @@ import { cn } from "@/lib/utils";
 const NAV = [
 	{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 	{ href: "/chat", label: "Chat", icon: MessageCircle },
+	// `/author` is the on-ramp into the bundled SwarmKit author (describe-what-you-
+	// want → bundled author writes YAML into this workspace). `/composer` stays as
+	// the hand-edit surface — same relationship CLAUDE.md's §identity sets up.
+	// Rendered unconditionally so the sidebar shape doesn't flicker on health
+	// refresh; the page itself gates on `authoring.expose` and explains the opt-in
+	// when it is off.
+	{ href: "/author", label: "Author", icon: Wand2 },
 	{ href: "/composer", label: "Composer", icon: PenTool },
 	{ href: "/jobs", label: "Jobs", icon: Activity },
 	{ href: "/gates", label: "Gates", icon: Inbox },
