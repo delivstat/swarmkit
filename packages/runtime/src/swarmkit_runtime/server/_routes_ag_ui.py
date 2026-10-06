@@ -25,7 +25,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from ._helpers import _get_runtime
+from ._helpers import _get_runtime, _topology_reachable
 from ._jobs import JobStore
 from ._routes_jobs import _app_state_run_deps
 from ._services import JobService, ServiceError
@@ -86,7 +86,7 @@ def _register_ag_ui_routes(app: FastAPI, job_store: JobStore) -> None:
             raise HTTPException(400, "context.topology is required")
 
         rt = _get_runtime(request)
-        if topology_name not in rt.workspace.topologies:
+        if not _topology_reachable(rt, topology_name):
             raise HTTPException(404, f"topology_not_found: {topology_name}")
 
         thread_id = (body.threadId or _ulid_like()).strip() or _ulid_like()

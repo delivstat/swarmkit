@@ -589,6 +589,29 @@ def _get_runtime(request: Request) -> WorkspaceRuntime:
     return runtime
 
 
+def _topology_reachable(rt: WorkspaceRuntime, topology_name: str) -> bool:
+    """Does this topology exist from the HTTP caller's point of view?
+
+    True for a user-workspace topology by id, OR for a bundled ``swarmkit:author:*``
+    id when the workspace has opted in via ``authoring.expose: true`` (or the
+    ``SWARMKIT_AUTHOR_EXPOSE`` env override). The ``WorkspaceRuntime.run`` intercept
+    then routes the authoring namespace to the bundled runtime (#1045, #1053).
+
+    Without this check, the serve routes 404'd authoring ids before the runtime
+    intercept could run — the dots app chat picker would list them (because
+    ``GET /topologies`` surfaces them) but every start-run request would be
+    rejected.
+    """
+    if topology_name in rt.workspace.topologies:
+        return True
+    from swarmkit_runtime.authoring._resolver import is_authoring_id  # noqa: PLC0415
+    from swarmkit_runtime.server._routes_introspection import (  # noqa: PLC0415
+        _authoring_exposed,
+    )
+
+    return is_authoring_id(topology_name) and _authoring_exposed(rt)
+
+
 async def swap_runtime(app: Any, new_rt: Any) -> None:
     """Install a rebuilt runtime the way boot installed the first one — start its MCP servers
     when serve is configured to, make it current, then close the one it replaces.
