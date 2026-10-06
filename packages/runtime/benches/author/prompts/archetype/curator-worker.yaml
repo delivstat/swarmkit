@@ -1,0 +1,49 @@
+mode: archetype
+id: curator-worker
+description: Simple worker archetype with one tool.
+requirement: |
+  Create an archetype called "news-curator". Worker role, mock provider, uses the
+  existing "fetch-feed" skill. System prompt: pulls a feed, ranks items, returns
+  top 5 as JSON.
+workspace_fixture:
+  files:
+    skills/fetch-feed.yaml: |
+      apiVersion: swarmkit/v1
+      kind: Skill
+      metadata:
+        id: fetch-feed
+        name: Fetch feed
+        description: Returns raw items from an RSS/Atom feed.
+      category: capability
+      inputs:
+        type: object
+        required: [url]
+        properties:
+          url: { type: string }
+      outputs:
+        type: object
+        properties:
+          items: { type: array, items: { type: object } }
+      implementation:
+        type: command
+        pack: feeds
+        command: fetch
+      provenance:
+        authored_by: human
+        version: 0.1.0
+    workspace.yaml: |
+      apiVersion: swarmkit/v1
+      kind: Workspace
+      metadata:
+        id: bench
+        name: bench
+      command_packs:
+        - id: feeds
+          commands:
+            - id: fetch
+              argv: ["echo", "[]"]
+              output: { parse: json }
+expect:
+  must_validate: true
+  files_created_min: 1
+  wall_time_max_s: 180

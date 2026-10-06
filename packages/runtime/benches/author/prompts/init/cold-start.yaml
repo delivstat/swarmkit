@@ -1,0 +1,10 @@
+mode: init
+id: cold-start
+description: Cold-start a workspace from scratch.
+requirement: |
+  Create a new workspace called "support-agent" for triaging customer-support emails.
+  Keep it minimal — one topology, one worker archetype, one skill. Use the mock provider.
+expect:
+  must_validate: true
+  files_created_min: 3
+  wall_time_max_s: 240

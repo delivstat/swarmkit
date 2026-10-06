@@ -1,0 +1,11 @@
+mode: topology
+id: cold-brief
+description: Starter brief topology, bare workspace. The archetype author should propose it fresh.
+requirement: |
+  Build a daily brief topology called "morning-brief". One root agent that returns
+  three items + a short follow-up question. Each item has a title and a reason.
+  Use the mock provider so I can run it without a key.
+expect:
+  must_validate: true
+  files_created_min: 1
+  wall_time_max_s: 180

@@ -1,0 +1,10 @@
+mode: skill
+id: llm-prompt-skill
+description: Pure prompt skill — summariser.
+requirement: |
+  Create a skill called "summarise" that takes a text input and returns a 2-sentence
+  summary. Backing: llm_prompt. No credentials needed.
+expect:
+  must_validate: true
+  files_created_min: 1
+  wall_time_max_s: 180

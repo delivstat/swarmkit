@@ -1,0 +1,3 @@
+# Bench output. Reproducible from `uv run python packages/runtime/benches/author/run.py`;
+# not interesting to check in.
+results/
