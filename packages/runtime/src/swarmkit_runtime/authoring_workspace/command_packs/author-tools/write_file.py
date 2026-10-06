@@ -96,8 +96,13 @@ def _check_scope(target: Path, rel_path: str) -> Path:
     before anything lands.
     """
     normalised = rel_path.strip()
-    # Any absolute or home-expanded path is refused outright. The LLM gets a relative
-    # path or nothing.
+    # Common LLM mistake: a leading "/" that the model treats as "workspace-rooted".
+    # Normalise rather than refuse — the file still has to live under a known root,
+    # which the prefix check below enforces. A path with ANY further slashes-and-
+    # dots pattern (``/..``, ``~``, multi-leading-slash past normalisation) still
+    # gets rejected.
+    if normalised.startswith("/") and not normalised.startswith("//"):
+        normalised = normalised.lstrip("/")
     if normalised.startswith(("/", "~")):
         _die(3, "write_scope_violation", f"absolute path refused: {rel_path!r}")
     if normalised in ("", ".", "..") or ".." in Path(normalised).parts:

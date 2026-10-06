@@ -143,8 +143,8 @@ class Implementation5(BaseModel):
     type: Literal["agent"]
     topology: str = Field(
         ...,
-        description="A topology in this workspace, or one of the bundled authoring topologies (`swarmkit:author:topology`, `:skill`, `:archetype`, `:mcp-server`, `:init` — see design/details/author-bundled-workspace.md). Runs as a child job of the caller's run (same correlation, parent_job_id set); no network.",
-        pattern="^([a-z][a-z0-9-]*|swarmkit:author:(topology|skill|archetype|mcp-server|init))$",
+        description="A topology in this workspace, or one of the bundled authoring topologies (`swarmkit:author:topology`, `:skill`, `:archetype`, `:mcp-server`, `:init`, `:funnel` — see design/details/author-bundled-workspace.md). Runs as a child job of the caller's run (same correlation, parent_job_id set); no network.",
+        pattern="^([a-z][a-z0-9-]*|swarmkit:author:(topology|skill|archetype|mcp-server|init|funnel))$",
     )
     card_url: str | None = Field(
         None,
@@ -191,8 +191,8 @@ class Implementation6(BaseModel):
     type: Literal["agent"]
     topology: str | None = Field(
         None,
-        description="A topology in this workspace, or one of the bundled authoring topologies (`swarmkit:author:topology`, `:skill`, `:archetype`, `:mcp-server`, `:init` — see design/details/author-bundled-workspace.md). Runs as a child job of the caller's run (same correlation, parent_job_id set); no network.",
-        pattern="^([a-z][a-z0-9-]*|swarmkit:author:(topology|skill|archetype|mcp-server|init))$",
+        description="A topology in this workspace, or one of the bundled authoring topologies (`swarmkit:author:topology`, `:skill`, `:archetype`, `:mcp-server`, `:init`, `:funnel` — see design/details/author-bundled-workspace.md). Runs as a child job of the caller's run (same correlation, parent_job_id set); no network.",
+        pattern="^([a-z][a-z0-9-]*|swarmkit:author:(topology|skill|archetype|mcp-server|init|funnel))$",
     )
     card_url: str = Field(
         ...,

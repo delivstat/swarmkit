@@ -21,7 +21,7 @@ import yaml
 
 from ._resolver import resolve_authoring_topology
 
-AuthoringMode = Literal["init", "topology", "skill", "archetype", "mcp-server"]
+AuthoringMode = Literal["init", "topology", "skill", "archetype", "mcp-server", "funnel"]
 
 
 @cache

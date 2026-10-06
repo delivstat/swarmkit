@@ -14,6 +14,15 @@ metadata:
       - The serving / CLI-target workspace supplies: model_providers, credentials,
         governance config, env, and the target for the `write-file` skill (IAM-scoped).
 
+# Memory off: the bundled authoring workspace is shared across every authoring run
+# from any target. If memory were on, turn 1 of session A's "I'm writing a URL
+# summariser" would leak into turn 1 of session B's "I'm writing a sentiment check"
+# — the model would start proposing a URL-summarise-shaped sentiment check. Each
+# authoring session threads its own LangGraph checkpointer state via thread_id for
+# in-session resume; cross-session memory is not what we want here.
+memory:
+  enabled: false
+
 # Author command pack. Resolves the target workspace from the context the CLI/serve
 # threads in (SWARMKIT_AUTHOR_TARGET_WORKSPACE), so the same bundled workspace writes
 # into whichever workspace the author was invoked from.
@@ -24,6 +33,13 @@ command_packs:
       workspace from SWARMKIT_AUTHOR_TARGET_WORKSPACE (set by the CLI shim / serve
       invocation) so one bundled workspace authors into any user workspace.
     permission: open
+    # cwd is set via SWARMKIT_AUTHOR_BUNDLED_ROOT, exported by the bundled runtime
+    # factory in _workspace_runtime._bundled_authoring_runtime. The compiler does
+    # not thread workspace_root through _run_tool_loop -> execute_skill, so a
+    # fallback-to-process-cwd would look for the scripts in /home/<user>/wherever
+    # the operator ran `swarmkit author` from. Env var is the shortest safe fix.
+    # `{WORKSPACE}/...` would be treated as a tool parameter the LLM must supply.
+    cwd: ${SWARMKIT_AUTHOR_BUNDLED_ROOT}
     commands:
       - id: write-file
         description: >
@@ -31,7 +47,7 @@ command_packs:
           archetypes/, funnels/, or workspace.yaml. Rejects paths outside those roots.
         argv:
           - python3
-          - "{WORKSPACE}/command_packs/author-tools/write_file.py"
+          - command_packs/author-tools/write_file.py
         effects: write
         output:
           parse: json
@@ -39,7 +55,7 @@ command_packs:
         description: Returns a summary of the target workspace's current contents.
         argv:
           - python3
-          - "{WORKSPACE}/command_packs/author-tools/read_workspace.py"
+          - command_packs/author-tools/read_workspace.py
         effects: read
         output:
           parse: json
@@ -47,7 +63,7 @@ command_packs:
         description: Runs the schema validator against the target workspace.
         argv:
           - python3
-          - "{WORKSPACE}/command_packs/author-tools/validate_workspace.py"
+          - command_packs/author-tools/validate_workspace.py
         effects: read
         output:
           parse: json
@@ -55,7 +71,7 @@ command_packs:
         description: Looks up a bundle in the swarmkit-skills catalogue by name or capability.
         argv:
           - python3
-          - "{WORKSPACE}/command_packs/author-tools/search_skills_catalogue.py"
+          - command_packs/author-tools/search_skills_catalogue.py
         effects: read
         output:
           parse: json

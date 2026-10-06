@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
+from uuid import uuid4
 
 if TYPE_CHECKING:
     pass
@@ -697,11 +698,11 @@ def _author_repl(
     every turn's job row sits under one correlation in ``/jobs/history``. Each turn
     gets its own job id — not reused — because job id is a PK and the row records
     per-turn cost + outcome.
+
+    One ``asyncio.run`` wraps the whole loop. Running one per turn would hand each
+    ``WorkspaceRuntime.run`` call a fresh event loop; the storage connection would
+    get bound to the dying loop and the next turn would hit "no active connection".
     """
-    from uuid import uuid4  # noqa: PLC0415
-
-    from ._cmd_run import _finish_job, _job_store  # noqa: PLC0415
-
     thread_id = str(uuid4())
     correlation_id = thread_id
 
@@ -712,8 +713,32 @@ def _author_repl(
         _stderr("error: no requirement provided; nothing to author")
         raise typer.Exit(_EXIT_USAGE)
 
+    try:
+        # noqa: service-layer
+        asyncio.run(
+            _author_repl_async(runtime, mode, workspace_path, thread_id, correlation_id, first)
+        )
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        _stderr(f"error: authoring failed: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+
+async def _author_repl_async(
+    runtime: WorkspaceRuntime,
+    mode: AuthoringMode,
+    workspace_path: Path,
+    thread_id: str,
+    correlation_id: str,
+    first_input: str,
+) -> None:
+    """The async body of the REPL. Lives inside a single asyncio.run invocation so
+    the runtime's storage connection stays bound to one event loop across turns."""
+    from ._cmd_run import _finish_job, _job_store  # noqa: PLC0415
+
     store = _job_store(workspace_path)
-    turn_input: str | None = first
+    turn_input: str | None = first_input
     while turn_input is not None:
         job_id = str(uuid4())
         if store is not None:
@@ -732,14 +757,11 @@ def _author_repl(
                 store = None
 
         try:
-            # noqa: service-layer
-            result = asyncio.run(
-                runtime.run(
-                    f"swarmkit:author:{mode}",
-                    turn_input,
-                    thread_id=thread_id,
-                    labels={"authoring.thread_id": thread_id},
-                )
+            result = await runtime.run(
+                f"swarmkit:author:{mode}",
+                turn_input,
+                thread_id=thread_id,
+                labels={"authoring.thread_id": thread_id},
             )
         except Exception as exc:
             _finish_job(store, job_id, "failed", error=str(exc))
@@ -751,7 +773,9 @@ def _author_repl(
             typer.echo(result.output)
 
         try:
-            next_turn = input("> ").strip()
+            # input() blocks the event loop — a brief, bounded wait is fine here; the
+            # REPL is paused on human input anyway.
+            next_turn = (await asyncio.to_thread(input, "> ")).strip()
         except (EOFError, KeyboardInterrupt):
             typer.echo("")
             return

@@ -87,8 +87,16 @@ async def run_command(
     arguments: dict[str, Any],
     workspace_root: str = "",
     credentials: dict[str, str] | None = None,
+    stdin: str | None = None,
 ) -> CommandResult:
-    """Run one command with the pack's timeout and output ceiling applied."""
+    """Run one command with the pack's timeout and output ceiling applied.
+
+    When ``stdin`` is provided, it is written to the subprocess's standard input as
+    UTF-8 and the stream is closed. Existing commands that don't read stdin ignore it.
+    This path exists so a skill with complex structured input (the bundled author's
+    ``write-file`` ships a nested files dict) can send JSON without having to fit it
+    into argv placeholders. #1045 follow-up.
+    """
     argv = build_argv(spec, arguments)
     timeout = pack.timeout_for(spec.command_id)
     limit = pack.max_output_bytes
@@ -97,6 +105,7 @@ async def run_command(
     try:
         proc = await asyncio.create_subprocess_exec(
             *argv,
+            stdin=asyncio.subprocess.PIPE if stdin is not None else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
@@ -109,8 +118,9 @@ async def run_command(
         msg = f"command '{spec.command_id}': could not start '{argv[0]}': {exc}"
         raise CommandExecutionError(msg) from exc
 
+    stdin_bytes = stdin.encode("utf-8") if stdin is not None else None
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        out, err = await asyncio.wait_for(proc.communicate(input=stdin_bytes), timeout=timeout)
     except TimeoutError:
         proc.kill()
         await proc.wait()

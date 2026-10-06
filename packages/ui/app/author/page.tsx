@@ -16,6 +16,7 @@
 import {
 	BookTemplate,
 	FileCode,
+	Funnel,
 	GitBranch,
 	Puzzle,
 	Server,
@@ -28,7 +29,13 @@ import { Card } from "@/components/card";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 
-type Mode = "topology" | "skill" | "archetype" | "mcp-server" | "init";
+type Mode =
+	| "topology"
+	| "skill"
+	| "archetype"
+	| "mcp-server"
+	| "funnel"
+	| "init";
 
 const MODES: {
 	id: Mode;
@@ -60,6 +67,12 @@ const MODES: {
 		label: "MCP server",
 		blurb: "Register an MCP server — bundle, stdio, or remote http endpoint.",
 		Icon: Server,
+	},
+	{
+		id: "funnel",
+		label: "Funnel",
+		blurb: "Add a human-approval gate (scope, roles, quorum) in front of an agent.",
+		Icon: Funnel,
 	},
 	{
 		id: "init",
