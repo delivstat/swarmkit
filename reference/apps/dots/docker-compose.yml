@@ -54,10 +54,16 @@ services:
       - SWARMKIT_HOST=0.0.0.0
       # The Author's create-dot tool writes new topologies here. Matches the shared mount.
       - AUTHOR_TARGET_WORKSPACE=/workspace
+      # Same path, read by the bundled author's write-file / read-workspace scripts (#1045).
+      - SWARMKIT_AUTHOR_TARGET_WORKSPACE=/workspace
       # The Author's search-swarmkit-docs tool reads from here. The Dockerfile.swarmkit
       # install includes llms-full.txt via the runtime package data; falls back to the
       # same path inside the container.
       - AUTHOR_LLMS_FULL_PATH=/app/llms-full.txt
+      # Where create-dot POSTs the Dot entry so the dots-app persists it in
+      # dots.local.json. The dots-app side accepts this on /api/dots/intake.
+      - DOTS_INTAKE_URL=http://dots-app:3500/api/dots/intake
+      - DOTS_INTAKE_TOKEN=${DOTS_INTAKE_TOKEN:-}
     command:
       - serve
       - /workspace
@@ -85,6 +91,10 @@ services:
       - DOTS_OWNER_USERNAME=${DOTS_OWNER_USERNAME:-owner}
       - DOTS_OWNER_PASSWORD_HASH=${DOTS_OWNER_PASSWORD_HASH:?run `node scripts/hash-password.mjs`}
       - SWARMKIT_URL=http://swarmkit:8000
+      # Shared secret the SwarmKit side forwards on /api/dots/intake calls. Leave unset in
+      # local dev — the intake endpoint falls back to accepting unauthenticated requests
+      # from the compose network when the token is empty.
+      - DOTS_INTAKE_TOKEN=${DOTS_INTAKE_TOKEN:-}
     ports:
       - "3500:3500"
     depends_on:

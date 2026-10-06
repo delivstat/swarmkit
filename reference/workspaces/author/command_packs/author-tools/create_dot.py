@@ -29,10 +29,13 @@ Exit codes:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -108,12 +111,48 @@ def main() -> int:
         "topology": topology_name,
         "renderers": spec.get("renderers") or [],
     }
+
+    # Register the Dot with the consumer app (the dots-app in reference/apps/dots). The
+    # script writes topology YAML into the shared workspace, but dots.local.json lives in
+    # the consumer's filesystem — so we POST the Dot entry to its intake endpoint. Env:
+    #   DOTS_INTAKE_URL   — target URL, e.g. http://dots-app:3500/api/dots/intake
+    #   DOTS_INTAKE_TOKEN — optional shared secret; required when the consumer side sets it
+    # Both env vars are set in reference/apps/dots/docker-compose.yml. When they are unset
+    # the script just emits the Dot JSON on stdout (back-compat with hand-wired consumers
+    # that read the stdout result themselves).
+    intake_url = os.environ.get("DOTS_INTAKE_URL", "").strip()
+    intake_status: str = "no_intake_configured"
+    if intake_url:
+        req_headers = {"content-type": "application/json"}
+        token = os.environ.get("DOTS_INTAKE_TOKEN", "").strip()
+        if token:
+            req_headers["x-dots-intake-token"] = token
+        req = urllib.request.Request(
+            intake_url,
+            data=json.dumps(dot_entry).encode("utf-8"),
+            headers=req_headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                intake_status = f"ok ({resp.status})"
+        except urllib.error.HTTPError as exc:
+            # Register-known-failure path. The Dot is NOT in the consumer; surface the error
+            # back to the agent so it can retry or tell the user.
+            detail = ""
+            with contextlib.suppress(Exception):
+                detail = exc.read().decode("utf-8", errors="replace")[:400]
+            _die(5, "intake_failed", f"HTTP {exc.code} from {intake_url}: {detail}")
+        except (urllib.error.URLError, TimeoutError) as exc:
+            _die(5, "intake_unreachable", f"{intake_url}: {exc}")
+
     sys.stdout.write(
         json.dumps(
             {
                 "id": dot_id,
                 "topology_path": str(topology_path),
                 "dot": dot_entry,
+                "intake": intake_status,
             }
         )
         + "\n"

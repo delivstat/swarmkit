@@ -7,6 +7,13 @@ import {
 } from "@/lib/dots.config";
 import { type NextRequest, NextResponse } from "next/server";
 
+// GET /api/dots — current Dot list, newest-first-wins order (merged dots.ts + dots.local.json
+// through loadDots). The Author chat page polls this to detect newly-created Dots and redirect.
+export async function GET(): Promise<Response> {
+	const dots = await loadDots();
+	return NextResponse.json({ dots });
+}
+
 // POST /api/dots — add a user-created Dot to dots.local.json. The payload shape mirrors the
 // Dot interface; renderers defaults to [] when the client sends nothing.
 //
