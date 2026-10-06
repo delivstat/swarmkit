@@ -97,12 +97,52 @@ def test_list_topologies_hides_authoring_by_default(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.parametrize("truthy", ["1", "true", "YES", "On"])
-def test_list_topologies_shows_authoring_when_opted_in(
+def test_list_topologies_shows_authoring_when_env_opted_in(
     monkeypatch: pytest.MonkeyPatch, truthy: str
 ) -> None:
     monkeypatch.setenv("SWARMKIT_AUTHOR_EXPOSE", truthy)
 
     assert _authoring_exposed(None) is True
+
+
+def test_list_topologies_shows_authoring_when_workspace_yaml_opts_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The workspace.yaml opt-in works even without the env override — the env override
+    # is for a dev loop (one knob covers every workspace), the YAML field is how
+    # production workspaces declare the choice.
+    monkeypatch.delenv("SWARMKIT_AUTHOR_EXPOSE", raising=False)
+
+    class _Authoring:
+        expose = True
+
+    class _Raw:
+        authoring = _Authoring()
+
+    class _Workspace:
+        raw = _Raw()
+
+    class _Runtime:
+        workspace = _Workspace()
+
+    assert _authoring_exposed(_Runtime()) is True
+
+
+def test_list_topologies_hides_authoring_when_workspace_yaml_omits_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SWARMKIT_AUTHOR_EXPOSE", raising=False)
+
+    class _Raw:
+        authoring = None
+
+    class _Workspace:
+        raw = _Raw()
+
+    class _Runtime:
+        workspace = _Workspace()
+
+    assert _authoring_exposed(_Runtime()) is False
 
 
 @pytest.mark.parametrize("mode", AUTHORING_MODES)

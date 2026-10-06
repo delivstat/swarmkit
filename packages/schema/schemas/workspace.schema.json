@@ -29,6 +29,18 @@
     "governance": {
       "$ref": "#/$defs/governance"
     },
+    "authoring": {
+      "type": "object",
+      "description": "Controls whether the bundled swarmkit:author:* topologies are exposed by `swarmkit serve` for this workspace. Default: not exposed. An exposed authoring topology lets any chat client that can reach the serve process propose writes to this workspace via the IAM-scoped write-file skill — operators opt in explicitly. See design/details/author-bundled-workspace.md.",
+      "additionalProperties": false,
+      "properties": {
+        "expose": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, GET /topologies lists swarmkit:author:topology, :skill, :archetype, :mcp-server and :init alongside the workspace's own topologies, and AG-UI run requests for those ids are accepted. The SWARMKIT_AUTHOR_EXPOSE env var overrides to true for all workspaces (useful for a dev loop)."
+        }
+      }
+    },
     "memory": {
       "type": "object",
       "description": "Workspace memory (design/details/memory-by-default.md). Absent means enabled with defaults: memory-reader runs before every agent and memory-writer after, and the governed-memory / memory-reconcile skills are bundled so curated memory exists. A memory-reader or memory-writer bound explicitly under governance.decision_skills is used as written. enabled: false switches off everything automatic (no auto-bindings, no bundled skills); what the workspace wires explicitly still works, and an explicit memory-reader/-writer binding next to enabled: false is a resolution error.",
