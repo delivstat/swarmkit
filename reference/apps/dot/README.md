@@ -99,6 +99,18 @@ reference/apps/dot/
   docker-compose.yml   # default + all-in-one profiles
 ```
 
+## The daily brief is a Space
+
+Each day's brief is a **Space** — a stable, auditable, durable surface composed from
+primitives SwarmKit already ships (correlation_id + ArtifactService + the audit log +
+governed-memory + a Funnel). Space id is `brief:<YYYY-MM-DD>`; every run started for
+that day (morning aggregation, per-item delegations, follow-ups) carries that id as
+its `correlation_id`, so `/activity` can render a complete timeline from the audit
+log and the owner can close + reopen the app without losing a draft reply.
+
+The full pattern (five primitives + when to reach for it, with DOT as the worked
+example) is in [`design/details/spaces-pattern.md`](../../../design/details/spaces-pattern.md).
+
 ## Not the SwarmKit portal
 
 DOT is a peer to `packages/ui/`, not part of it. Different origin, different auth surface,
