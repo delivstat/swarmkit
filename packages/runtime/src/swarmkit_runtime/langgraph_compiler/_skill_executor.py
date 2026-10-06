@@ -181,12 +181,22 @@ async def _execute_command(
     if not arguments and len(spec.placeholders) == 1:
         arguments = {next(iter(spec.placeholders)): input_text.strip()}
 
+    # The runtime treats structured skill input as argv placeholder values (works for
+    # simple string params) OR as JSON on stdin (works for nested payloads like
+    # write-file's `files` map). Argv wins when a placeholder matches; stdin captures
+    # the rest. If a command's argv doesn't name a placeholder for a given field, the
+    # LLM-supplied JSON blob is piped verbatim so the script can parse it. Skills whose
+    # argv consumes every input get an empty stdin and ignore it. #1045 follow-up.
+    stdin_payload: str | None = None
+    if arguments and not spec.placeholders:
+        stdin_payload = input_text if input_text.strip().startswith("{") else json.dumps(arguments)
     try:
         result = await run_command(
             pack,
             spec,
             arguments=arguments,
             workspace_root=workspace_root,
+            stdin=stdin_payload,
         )
     except CommandExecutionError as exc:
         return f"[skill:{skill.id}] {exc}"

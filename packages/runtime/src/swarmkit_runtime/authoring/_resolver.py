@@ -36,6 +36,7 @@ AUTHORING_MODES: Final[tuple[str, ...]] = (
     "archetype",
     "mcp-server",
     "init",
+    "funnel",
 )
 
 

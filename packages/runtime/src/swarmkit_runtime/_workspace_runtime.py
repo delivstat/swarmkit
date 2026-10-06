@@ -313,6 +313,12 @@ def _bundled_authoring_runtime() -> WorkspaceRuntime:
     saves the resolve + provider-register + governance-build cost on every authoring
     run. Covers CLI and both serve endpoints (``/run/{name}`` and ``/api/ag-ui/run``)
     since all three dispatch through :meth:`WorkspaceRuntime.run`.
+
+    Also sets ``SWARMKIT_AUTHOR_BUNDLED_ROOT`` so the bundled workspace.yaml can
+    reference its own on-disk path via ``pack.cwd: ${SWARMKIT_AUTHOR_BUNDLED_ROOT}/...``.
+    The compiler does not thread ``workspace_root`` through the tool loop to
+    ``execute_skill``, so ``cwd`` would otherwise fall back to the invoker's process
+    directory and the author-tools scripts would not be found. #1045 follow-up.
     """
     global _BUNDLED_AUTHORING_RUNTIME  # noqa: PLW0603
     if _BUNDLED_AUTHORING_RUNTIME is None:
@@ -320,9 +326,9 @@ def _bundled_authoring_runtime() -> WorkspaceRuntime:
             get_authoring_workspace_path,
         )
 
-        _BUNDLED_AUTHORING_RUNTIME = WorkspaceRuntime.from_workspace_path(
-            get_authoring_workspace_path()
-        )
+        bundled_path = get_authoring_workspace_path()
+        os.environ["SWARMKIT_AUTHOR_BUNDLED_ROOT"] = str(bundled_path)
+        _BUNDLED_AUTHORING_RUNTIME = WorkspaceRuntime.from_workspace_path(bundled_path)
     return _BUNDLED_AUTHORING_RUNTIME
 
 
