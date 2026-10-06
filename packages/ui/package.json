@@ -13,6 +13,7 @@
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"demo:approval": "node demos/screenshot_approval.mjs",
+		"demo:author": "node demos/screenshot_author.mjs",
 		"demo:remote-agent": "node demos/screenshot_remote_agent.mjs",
 		"demo:tutorial": "node demos/screenshot_tutorial.mjs"
 	},
