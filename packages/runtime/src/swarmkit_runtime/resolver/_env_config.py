@@ -52,6 +52,37 @@ def _read_env_file(workspace_root: Path) -> dict[str, Any]:
     return {}
 
 
+def load_env_config_typed(
+    workspace_root: Path,
+) -> tuple[dict[str, str], dict[str, Any]]:
+    """Load the workspace env config and return both string and typed views.
+
+    - **string view** (first element): what ``load_env_config`` returns — every value
+      is a ``str`` with ``${ENV_VAR}`` references resolved against the OS environment.
+      Needed for existing consumers (the System page, `_env_registry`) that build
+      display rows.
+    - **typed view** (second element): the SAME keys, but each value is the original
+      YAML-parsed scalar (int, float, bool, None, list, dict leaf). No stringification.
+      Used by :func:`interpolate_value` to return a typed result when an artifact's
+      value is a whole-string reference, so e.g. ``num_ctx: ${model.vision.num_ctx}``
+      arrives at the provider as ``4096`` rather than ``"4096"`` (#879).
+
+    The two views have the same keys. The string view only resolves ``${ENV_VAR}``
+    inside its OWN values — the typed view carries the raw scalar untouched; env
+    substitution still happens in the interpolation layer when a leaf is a string.
+    """
+    raw = _read_env_file(workspace_root)
+    if not raw:
+        return {}, {}
+    raw = {k: v for k, v in raw.items() if k != SECRETS_KEY}
+    flat_strings = _flatten(raw)
+    flat_typed = _flatten_typed(raw)
+    resolved_strings: dict[str, str] = {}
+    for key, value in flat_strings.items():
+        resolved_strings[key] = _resolve_env_vars(value)
+    return resolved_strings, flat_typed
+
+
 def load_env_config(workspace_root: Path) -> dict[str, str]:
     """Load and resolve the workspace env config.
 
@@ -98,29 +129,67 @@ def load_env_config(workspace_root: Path) -> dict[str, str]:
     return resolved
 
 
-def interpolate_value(value: Any, properties: dict[str, str]) -> Any:
+#: A string that is EXACTLY one ``${name}`` or ``${name:-default}`` with no surrounding
+#: text. Captured name goes to group 1, default (if any) to group 2.
+_WHOLE_REF = re.compile(r"^\$\{([^}:]+)(?::-(.*))?\}$")
+
+
+def interpolate_value(  # noqa: PLR0911
+    value: Any,
+    properties: dict[str, str],
+    typed_properties: dict[str, Any] | None = None,
+) -> Any:
     """Resolve ${property.path} references in a value.
 
-    - Strings with ${...} get property substitution
-    - Dicts and lists are traversed recursively
-    - Non-string values pass through unchanged
+    - Strings with ``${...}`` get property substitution.
+    - Dicts and lists are traversed recursively.
+    - Non-string values pass through unchanged.
+    - When ``typed_properties`` is provided AND the value is a **whole-string
+      reference** (the entire value is exactly ``${name}`` or ``${name:-default}``,
+      with no surrounding text), the typed property is returned instead of its
+      string form. Mixed strings (``"port ${p} open"``) keep today's behaviour
+      because concatenation only makes sense on strings. #879.
     """
     if isinstance(value, str):
+        if typed_properties is not None:
+            match = _WHOLE_REF.match(value)
+            if match:
+                name = match.group(1)
+                if name in typed_properties:
+                    return typed_properties[name]
+                # Fall back to the env-var lookup; the result is a string by nature
+                # (os.environ values are strings), so string-coercion of a default is
+                # the honest answer here too.
+                env_val = os.environ.get(name)
+                if env_val is not None:
+                    return env_val
+                default = match.group(2)
+                if default is not None:
+                    return default
+                # Unresolved — leave literal, matching the mixed-string path below.
         return _substitute_properties(value, properties)
     if isinstance(value, dict):
-        return {k: interpolate_value(v, properties) for k, v in value.items()}
+        return {k: interpolate_value(v, properties, typed_properties) for k, v in value.items()}
     if isinstance(value, list):
-        return [interpolate_value(item, properties) for item in value]
+        return [interpolate_value(item, properties, typed_properties) for item in value]
     return value
 
 
-def interpolate_dict(data: dict[str, Any], properties: dict[str, str]) -> dict[str, Any]:
-    """Resolve all ${property.path} references in a dict tree."""
-    return {k: interpolate_value(v, properties) for k, v in data.items()}
+def interpolate_dict(
+    data: dict[str, Any],
+    properties: dict[str, str],
+    typed_properties: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve all ${property.path} references in a dict tree.
+
+    ``typed_properties`` is forwarded to :func:`interpolate_value` for #879's
+    whole-string-reference type preservation.
+    """
+    return {k: interpolate_value(v, properties, typed_properties) for k, v in data.items()}
 
 
 def _flatten(data: dict[str, Any], prefix: str = "") -> dict[str, str]:
-    """Flatten a nested dict to dotted key paths."""
+    """Flatten a nested dict to dotted key paths (string-coerced leaves)."""
     result: dict[str, str] = {}
     for key, value in data.items():
         full_key = f"{prefix}{key}" if not prefix else f"{prefix}.{key}"
@@ -128,6 +197,23 @@ def _flatten(data: dict[str, Any], prefix: str = "") -> dict[str, str]:
             result.update(_flatten(value, full_key))
         else:
             result[full_key] = str(value)
+    return result
+
+
+def _flatten_typed(data: dict[str, Any], prefix: str = "") -> dict[str, Any]:
+    """Flatten a nested dict to dotted key paths, preserving the original leaf type.
+
+    Used by :func:`load_env_config_typed` so a numeric ``model.vision.num_ctx: 4096``
+    stays an ``int`` and the whole-string-reference branch of ``interpolate_value``
+    can return it unchanged. See #879.
+    """
+    result: dict[str, Any] = {}
+    for key, value in data.items():
+        full_key = f"{prefix}{key}" if not prefix else f"{prefix}.{key}"
+        if isinstance(value, dict):
+            result.update(_flatten_typed(value, full_key))
+        else:
+            result[full_key] = value
     return result
 
 

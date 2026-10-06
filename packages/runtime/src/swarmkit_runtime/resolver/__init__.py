@@ -364,14 +364,14 @@ def _apply_env_interpolation(ws_root: Path, artifacts: Sequence[DiscoveredArtifa
     """
     from swarmkit_runtime.resolver._env_config import (  # noqa: PLC0415
         interpolate_dict,
-        load_env_config,
+        load_env_config_typed,
     )
 
-    properties = load_env_config(ws_root)
+    properties, typed_properties = load_env_config_typed(ws_root)
 
     for artifact in artifacts:
         if hasattr(artifact, "raw") and isinstance(artifact.raw, dict):
-            interpolated = interpolate_dict(artifact.raw, properties)
+            interpolated = interpolate_dict(artifact.raw, properties, typed_properties)
             artifact.raw.clear()
             artifact.raw.update(interpolated)
 

@@ -11,6 +11,7 @@ from swarmkit_runtime.resolver._env_config import (
     interpolate_dict,
     interpolate_value,
     load_env_config,
+    load_env_config_typed,
 )
 
 
@@ -210,3 +211,105 @@ class TestApplyInterpolationWithoutEnvFile:
         )
         _apply_env_interpolation(tmp_path, [art])  # type: ignore[list-item]  # duck-typed .raw
         assert art.raw["defaults"]["model"]["name"] == "anthropic/claude-sonnet-5"
+
+
+class TestWholeStringReferenceTypePreservation:
+    """A whole-string reference carries the property's typed value, not its str() form.
+
+    #879 — before this landed, a numeric option like `num_ctx: ${model.vision.num_ctx}`
+    arrived at Ollama as the string "4096" and the provider 500'd. The fix: when the
+    entire artifact value is one ${name} with nothing around it, the typed property
+    wins over the stringified one.
+    """
+
+    def test_load_env_config_typed_preserves_scalar_types(self, tmp_path: Path) -> None:
+        (tmp_path / "workspace.env.yaml").write_text(
+            "model:\n"
+            "  vision:\n"
+            "    num_ctx: 4096\n"
+            "    keep_alive: 300.5\n"
+            "    stream: true\n"
+            "    stop: null\n"
+        )
+        strings, typed = load_env_config_typed(tmp_path)
+        # The string view keeps the str() coercion for System-page display.
+        assert strings["model.vision.num_ctx"] == "4096"
+        assert strings["model.vision.keep_alive"] == "300.5"
+        assert strings["model.vision.stream"] == "True"
+        # The typed view carries the original Python scalar.
+        assert typed["model.vision.num_ctx"] == 4096
+        assert isinstance(typed["model.vision.num_ctx"], int)
+        assert typed["model.vision.keep_alive"] == 300.5
+        assert isinstance(typed["model.vision.keep_alive"], float)
+        assert typed["model.vision.stream"] is True
+        assert typed["model.vision.stop"] is None
+
+    def test_whole_reference_returns_int_not_str(self) -> None:
+        strings = {"model.vision.num_ctx": "4096"}
+        typed = {"model.vision.num_ctx": 4096}
+        out = interpolate_value("${model.vision.num_ctx}", strings, typed)
+        assert out == 4096
+        assert isinstance(out, int)
+
+    def test_whole_reference_returns_bool(self) -> None:
+        typed = {"stream": True}
+        out = interpolate_value("${stream}", {"stream": "True"}, typed)
+        assert out is True
+
+    def test_whole_reference_returns_list(self) -> None:
+        typed = {"stops": ["<|end|>", "</s>"]}
+        out = interpolate_value("${stops}", {"stops": "['<|end|>', '</s>']"}, typed)
+        assert out == ["<|end|>", "</s>"]
+
+    def test_mixed_reference_stays_string(self) -> None:
+        """Concatenation only works on strings; a numeric embedded reference stays coerced."""
+        strings = {"port": "4096"}
+        typed = {"port": 4096}
+        out = interpolate_value("port ${port} open", strings, typed)
+        assert out == "port 4096 open"
+        assert isinstance(out, str)
+
+    def test_whole_reference_without_typed_dict_keeps_string(self) -> None:
+        """Back-compat: callers that don't pass typed_properties get the string form."""
+        strings = {"model.vision.num_ctx": "4096"}
+        out = interpolate_value("${model.vision.num_ctx}", strings)
+        assert out == "4096"
+
+    def test_whole_reference_env_var_fallback_returns_env_string(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MY_INT", "42")
+        out = interpolate_value("${MY_INT}", {}, {})
+        # Env values are strings by nature; honestly surface that.
+        assert out == "42"
+
+    def test_whole_reference_with_default_returns_default(self) -> None:
+        out = interpolate_value("${missing:-fallback}", {}, {})
+        assert out == "fallback"
+
+    def test_whole_reference_unresolved_leaves_literal(self) -> None:
+        out = interpolate_value("${missing}", {}, {})
+        assert out == "${missing}"
+
+    def test_apply_interpolation_lands_typed_value_in_artifact(self, tmp_path: Path) -> None:
+        """End-to-end: a whole-string reference inside an archetype's options dict lands
+        as the original int, so a provider that validates `num_ctx: int` accepts it."""
+        (tmp_path / "workspace.env.yaml").write_text("model:\n  vision:\n    num_ctx: 4096\n")
+
+        class _Art:
+            def __init__(self, raw: Any) -> None:
+                self.raw = raw
+
+        art = _Art(
+            {
+                "defaults": {
+                    "model": {
+                        "name": "qwen2.5vl",
+                        "options": {"num_ctx": "${model.vision.num_ctx}"},
+                    }
+                }
+            }
+        )
+        _apply_env_interpolation(tmp_path, [art])  # type: ignore[list-item]
+        assert art.raw["defaults"]["model"]["options"]["num_ctx"] == 4096
+        assert isinstance(art.raw["defaults"]["model"]["options"]["num_ctx"], int)
