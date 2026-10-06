@@ -15,6 +15,21 @@ runner = CliRunner()
 
 
 def _archetype(root: Path, arch_id: str, allowed: str | None = None) -> Path:
+    # swarmkit trust apply now routes writes through ArtifactService (#979), which
+    # validates the write against the full workspace and rolls back on failure.
+    # That means an archetype without a parent workspace.yaml rejects the apply —
+    # the real-world CLI runs against a real workspace, so make the test fixture
+    # a real one too.
+    workspace_file = root / "workspace.yaml"
+    if not workspace_file.exists():
+        workspace_file.write_text(
+            "apiVersion: swarmkit/v1\n"
+            "kind: Workspace\n"
+            "metadata:\n"
+            "  id: trust-test\n"
+            "  name: trust-test\n",
+            encoding="utf-8",
+        )
     directory = root / "archetypes"
     directory.mkdir(parents=True, exist_ok=True)
     config: dict[str, object] = {}
@@ -23,10 +38,18 @@ def _archetype(root: Path, arch_id: str, allowed: str | None = None) -> Path:
     doc = {
         "apiVersion": "swarmkit/v1",
         "kind": "Archetype",
-        "metadata": {"id": arch_id, "name": arch_id},
+        "metadata": {
+            "id": arch_id,
+            "name": arch_id,
+            "description": "archetype used in the trust CLI test suite",
+        },
         "role": "worker",
         "defaults": {},
         "executor": {"kind": "claude-code", "ref": "claude-code", "config": config},
+        # Required by the archetype schema; the old `trust apply` wrote direct to disk
+        # with no validation, so a fixture missing this field passed silently. Now that
+        # the write routes through ArtifactService the fixture has to be schema-valid.
+        "provenance": {"authored_by": "human", "version": "1.0.0"},
     }
     path = directory / f"{arch_id}.yaml"
     path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")

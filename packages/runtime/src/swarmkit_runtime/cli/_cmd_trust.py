@@ -57,7 +57,7 @@ def trust_apply(
         _stderr(f"Archetype {archetype!r} not found under {root / 'archetypes'}.")
         raise typer.Exit(1)
 
-    added = _add_to_allowlist(path, capability)
+    added = _add_to_allowlist(root, archetype, path, capability)
     store.apply(archetype, capability)
     if added:
         typer.echo(f"✓ Added {capability!r} to {archetype}'s allowlist ({path.name}).")
@@ -96,9 +96,18 @@ def _archetype_path(root: Path, archetype: str) -> Path | None:
     return None
 
 
-def _add_to_allowlist(path: Path, capability: str) -> bool:
-    """Append ``capability`` to the archetype's ``executor.config.allowed_tools`` (a comma-separated
-    string). Returns ``False`` when it was already present. Preserves the rest of the document."""
+def _add_to_allowlist(workspace_root: Path, archetype_id: str, path: Path, capability: str) -> bool:
+    """Append ``capability`` to the archetype's ``executor.config.allowed_tools`` (a
+    comma-separated string). Returns ``False`` when it was already present.
+
+    Routes the write through :class:`ArtifactService.put_yaml` so a bad grant is
+    validated against the full workspace and rolled back on the file before anything
+    is announced to the operator — ``swarmkit trust apply`` is a privilege-granting
+    path, and a half-applied write there widens the agent's capability allowlist
+    without any schema check (#979 site 3).
+    """
+    from swarmkit_runtime.server._services import ArtifactService  # noqa: PLC0415
+
     data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     executor = data.setdefault("executor", {})
     config = executor.setdefault("config", {})
@@ -108,5 +117,16 @@ def _add_to_allowlist(path: Path, capability: str) -> bool:
         return False
     tools.append(capability)
     config["allowed_tools"] = ", ".join(tools)
-    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    yaml_text = yaml.safe_dump(data, sort_keys=False)
+    result, _rt = ArtifactService(workspace_root).put_yaml(
+        "archetype", archetype_id, yaml_text, dry_run=False, parse_check=False
+    )
+    if not result.get("valid"):
+        errors = result.get("errors") or []
+        first = errors[0] if errors else {"code": "unknown", "message": "validation failed"}
+        _stderr(
+            f"applying {capability!r} to {archetype_id} would fail workspace validation "
+            f"({first.get('code')}: {first.get('message')}); the archetype file was left unchanged"
+        )
+        raise typer.Exit(code=1)
     return True

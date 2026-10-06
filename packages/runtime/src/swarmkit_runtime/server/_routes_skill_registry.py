@@ -100,24 +100,49 @@ def _register_skill_registry_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.post("/api/skills/import")
     async def skills_import(request: Request, body: ImportRequest) -> dict[str, Any]:
-        """Convert a SKILL.md (given as text) and, unless dry_run, write it."""
+        """Convert a SKILL.md (given as text) and, unless dry_run, write it.
+
+        Goes through :class:`ArtifactService.create_from_yaml` for validation + rollback
+        + 409-on-clash, matching every other skill write path. Before this routed through
+        the service, a SKILL.md whose derived YAML broke the workspace left the broken
+        file on disk and silently kept the previous runtime live, and an import whose id
+        clashed with an existing skill clobbered it. (#979 site 1.)
+        """
         from swarmkit_runtime.skills._registry import (  # noqa: PLC0415
             SkillRegistryError,
             _dump,
             convert_skill_md,
         )
 
+        from ._services import ArtifactService  # noqa: PLC0415
+
         workspace = request.app.state.workspace_path
         try:
             raw = convert_skill_md(body.text, body.origin)
         except SkillRegistryError as exc:
             raise HTTPException(400, str(exc)) from exc
-        path = workspace / "skills" / f"{raw['metadata']['id']}.yaml"
-        if not body.dry_run:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(_dump(raw))
-            await _reload(request)
-        return {"path": str(path.relative_to(workspace)), "skill": raw, "written": not body.dry_run}
+        skill_id = raw["metadata"]["id"]
+        relative_path = f"skills/{skill_id}.yaml"
+        if body.dry_run:
+            return {
+                "path": relative_path,
+                "skill": raw,
+                "written": False,
+            }
+        service = ArtifactService(workspace)
+        result, new_rt = service.create_from_yaml("skill", _dump(raw))
+        if not result.get("valid"):
+            errors = result.get("errors") or []
+            code = errors[0].get("code") if errors else "unknown"
+            # 409 for id-clash, 400 for everything else — matches _routes_crud's shape.
+            status = 409 if code == "exists" else 400
+            raise HTTPException(status, errors[0] if errors else {"code": code})
+        # Install the rebuilt runtime so MCP servers restart in step, same way CRUD does.
+        if new_rt is not None:
+            from ._helpers import swap_runtime  # noqa: PLC0415
+
+            await swap_runtime(request.app, new_rt)
+        return {"path": relative_path, "skill": raw, "written": True}
 
     @app.get("/api/skills/check")
     async def skills_check(request: Request) -> list[dict[str, Any]]:
