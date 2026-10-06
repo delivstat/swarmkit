@@ -794,6 +794,7 @@ def _elicit_requirement(mode: AuthoringMode) -> str:
         "skill": "Describe the skill you want: ",
         "archetype": "Describe the archetype you want: ",
         "mcp-server": "Describe the MCP server you want: ",
+        "funnel": "Describe the human-approval funnel you want: ",
     }
     try:
         return input(prompts[mode]).strip()
