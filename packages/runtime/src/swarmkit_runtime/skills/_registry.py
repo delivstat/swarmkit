@@ -738,8 +738,20 @@ def import_skill_md(workspace: Path, ref: str) -> tuple[Path, dict[str, Any]]:
         text = p.read_text()
     raw = convert_skill_md(text, ref)
     out = workspace / "skills" / f"{raw['metadata']['id']}.yaml"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_dump(raw))
+    # Route through ArtifactService.create_from_yaml for validation + rollback + the
+    # 409-on-clash check every other skill write path uses (#979 site 2b). Previously a
+    # SKILL.md whose converted YAML broke the workspace left the file on disk and the
+    # next `swarmkit serve` refused the whole workspace.
+    from swarmkit_runtime.server._services import ArtifactService  # noqa: PLC0415
+
+    result, _rt = ArtifactService(workspace).create_from_yaml("skill", _dump(raw))
+    if not result.get("valid"):
+        errors = result.get("errors") or []
+        first = errors[0] if errors else {"code": "unknown", "message": "validation failed"}
+        raise SkillRegistryError(
+            f"{ref}: converted skill did not pass workspace validation "
+            f"({first.get('code')}: {first.get('message')})"
+        )
     return out, raw
 
 
