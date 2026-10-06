@@ -1,6 +1,7 @@
 "use client";
 
 import { MessageCircle, Plus, Send } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -667,6 +668,20 @@ export default function ChatPage() {
 		refetchConvs();
 		loadConversation(id);
 	};
+
+	// Deep-link support: /chat?conversation=<id> opens that conversation on mount.
+	// Used by /author to hand off to this page after creating an authoring session —
+	// avoids duplicating the chat UI there.
+	const searchParams = useSearchParams();
+	const linkedConversation = searchParams?.get("conversation") ?? null;
+	useEffect(() => {
+		if (linkedConversation && linkedConversation !== activeId) {
+			loadConversation(linkedConversation);
+		}
+		// Only act on the id arriving fresh from the URL; subsequent user clicks drive
+		// activeId directly through loadConversation.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [linkedConversation]);
 
 	return (
 		<div className="-m-6 flex h-[calc(100vh-3rem)]">
