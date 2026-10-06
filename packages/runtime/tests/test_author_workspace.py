@@ -1,11 +1,18 @@
 """Smoke test for `reference/workspaces/author/` — the reusable authoring surface.
 
 Every reference workspace has a smoke test that loads + compiles it without executing a
-run (packages/runtime/CLAUDE.md). This one additionally pins:
+run (packages/runtime/CLAUDE.md). After #1045 PR 7 (Dot Author delegation swap) this one
+pins:
 
 - `swarmkit validate` passes on the workspace.
-- The `create-dot` script accepts a valid Dot spec and writes a topology YAML that
-  itself validates — proving the author's end-to-end commit path is sound.
+- The Dot Author's archetype declares the `author-topology` and `create-dot` skills (so
+  the delegation path is wired in metadata, not just the system prompt).
+- The `create-dot` script registers a Dot that references a topology written in the
+  target workspace — proving the Dot Author's commit path still writes a valid entry.
+  The topology itself is now authored by `swarmkit:author:topology`, exercised in that
+  bundled workspace's own tests.
+- The `create-dot` script refuses to register against a missing topology, so a Dot
+  cannot point at nothing.
 """
 
 from __future__ import annotations
@@ -16,6 +23,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from swarmkit_runtime.resolver import resolve_workspace
 
 AUTHOR_WORKSPACE = Path(__file__).resolve().parents[3] / "reference/workspaces/author"
 
@@ -39,11 +47,36 @@ def test_author_workspace_validates() -> None:
     )
 
 
-def test_create_dot_writes_a_valid_topology(tmp_path: Path) -> None:
-    """create_dot.py receives a Dot spec, writes a topology YAML, and the YAML validates.
+def test_dot_author_delegates_through_author_topology() -> None:
+    """The Dot Author archetype must declare author-topology + create-dot as its skills.
 
-    This is the Author's commit path: whatever the agent sends to the create-dot tool
-    must end up as something the runtime can serve. Pins that end-to-end.
+    This is what makes the delegation structural, not just rhetorical in the prompt. If
+    this list changes, the Dot Author stops being a thin wrapper and silently starts
+    reinventing the authoring charter again.
+    """
+
+    ws = resolve_workspace(AUTHOR_WORKSPACE)
+    archetype = ws.archetypes["dot-author"]
+    skill_ids = {
+        getattr(s, "id", getattr(s, "root", s)) if not isinstance(s, str) else s
+        for s in archetype.raw.defaults.skills or []
+    }
+    assert skill_ids == {"author-topology", "create-dot"}, (
+        f"dot-author archetype skills changed to {skill_ids}; "
+        "the delegation to swarmkit:author:topology lives in author-topology"
+    )
+    impl = ws.skills["author-topology"].raw.implementation
+    assert getattr(impl, "topology", None) == "swarmkit:author:topology", (
+        "author-topology must target the bundled authoring topology"
+    )
+
+
+def test_create_dot_registers_against_existing_topology(tmp_path: Path) -> None:
+    """create_dot.py registers a Dot once the topology is in topologies/<id>.yaml.
+
+    After PR 7 the script no longer accepts the raw YAML — swarmkit:author:topology has
+    already written it via the IAM-scoped write-file skill. The script's job is to
+    confirm the file exists and emit the dots.local.json entry.
     """
     target = tmp_path / "ws"
     (target / "topologies").mkdir(parents=True)
@@ -51,7 +84,8 @@ def test_create_dot_writes_a_valid_topology(tmp_path: Path) -> None:
         "apiVersion: swarmkit/v1\nkind: Workspace\nmetadata:\n  id: smoke\n  name: smoke\n",
         encoding="utf-8",
     )
-    topology_yaml = (
+    # Simulate what swarmkit:author:topology would have landed.
+    (target / "topologies" / "smoke-dot.yaml").write_text(
         "apiVersion: swarmkit/v1\n"
         "kind: Topology\n"
         "metadata:\n"
@@ -66,7 +100,8 @@ def test_create_dot_writes_a_valid_topology(tmp_path: Path) -> None:
         "      name: moonshotai/kimi-k2-0905\n"
         "    prompt:\n"
         "      system: smoke\n"
-        "    output_schema: null\n"
+        "    output_schema: null\n",
+        encoding="utf-8",
     )
     spec = {
         "id": "smoke-dot",
@@ -74,7 +109,7 @@ def test_create_dot_writes_a_valid_topology(tmp_path: Path) -> None:
         "role": "r",
         "greeting": "hi",
         "icon": "sunrise",
-        "topology_yaml": topology_yaml,
+        "topology": "smoke-dot",
         "renderers": [],
     }
     script = AUTHOR_WORKSPACE / "command_packs/author-tools/create_dot.py"
@@ -92,15 +127,33 @@ def test_create_dot_writes_a_valid_topology(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["id"] == "smoke-dot"
     assert payload["dot"]["topology"] == "smoke-dot"
-    assert (
-        Path(payload["topology_path"])
-        .read_text(encoding="utf-8")
-        .startswith("apiVersion: swarmkit/v1")
+
+
+def test_create_dot_refuses_missing_topology(tmp_path: Path) -> None:
+    """A Dot cannot point at a topology that doesn't exist. If the author hasn't run,
+    the registration refuses — pointing a Dot at nothing is worse than no Dot at all.
+    """
+    target = tmp_path / "ws"
+    (target / "topologies").mkdir(parents=True)
+    spec = {
+        "id": "nope",
+        "name": "Nope",
+        "role": "r",
+        "greeting": "hi",
+        "icon": "x",
+        "topology": "never-written",
+    }
+    script = AUTHOR_WORKSPACE / "command_packs/author-tools/create_dot.py"
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        input=json.dumps(spec),
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "AUTHOR_TARGET_WORKSPACE": str(target)},
+        check=False,
     )
-    validate = _run_cli(["validate", str(target)])
-    assert validate.returncode == 0, (
-        f"generated workspace fails validate:\n{validate.stdout}\n{validate.stderr}"
-    )
+    assert result.returncode == 3
+    assert "topology_missing" in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -114,7 +167,7 @@ def test_create_dot_writes_a_valid_topology(tmp_path: Path) -> None:
                 "role": "x",
                 "greeting": "x",
                 "icon": "x",
-                "topology_yaml": "x",
+                "topology": "ok",
             },
             "invalid_id",
             2,

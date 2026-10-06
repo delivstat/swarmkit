@@ -4,18 +4,16 @@ metadata:
   id: create-dot
   name: Create Dot
   description: >
-    Writes a new Dot. Takes the Dot spec + the topology YAML the author composed,
-    validates the YAML against the canonical SwarmKit topology schema, writes the
-    topology file into the target workspace's topologies/ directory, and emits the Dot
-    entry on stdout for the consumer app to persist (dots.local.json in the dots app).
-    The target workspace is picked by the AUTHOR_TARGET_WORKSPACE env var (default:
-    $CWD/workspace), so the same author topology can author into whichever workspace
-    the consumer app points it at.
+    Registers a Dot. The topology has already been written by `author-topology`
+    (bundled SwarmKit authoring agent, #1045); this skill confirms the topology
+    file exists in the target workspace and emits the Dot entry on stdout for the
+    consumer app to persist (dots.local.json in the dots app). Target workspace path
+    comes from AUTHOR_TARGET_WORKSPACE (default: $CWD/workspace).
 category: capability
 inputs:
   type: object
   additionalProperties: false
-  required: [id, name, role, greeting, icon, topology_yaml]
+  required: [id, name, role, greeting, icon, topology]
   properties:
     id:
       type: string
@@ -33,9 +31,12 @@ inputs:
     icon:
       type: string
       description: Icon name (sunrise, mail-reply, github, …).
-    topology_yaml:
+    topology:
       type: string
-      description: The full topology YAML, with its output_schema and any skills already resolved.
+      description: >
+        Id of the topology (metadata.name) the bundled author wrote into
+        topologies/<topology>.yaml. The script verifies the file exists before
+        registering the Dot — refuses to register against a missing topology.
     renderers:
       type: array
       items: { type: string }
