@@ -757,6 +757,10 @@ async def _author_repl_async(
                 store = None
 
         try:
+            # The authoring REPL maintains its own job row above; the dispatch to the
+            # bundled authoring runtime happens inside WorkspaceRuntime.run via the
+            # swarmkit:author:* intercept, not through JobService.
+            # noqa: service-layer
             result = await runtime.run(
                 f"swarmkit:author:{mode}",
                 turn_input,
