@@ -313,3 +313,22 @@ class TestWholeStringReferenceTypePreservation:
         _apply_env_interpolation(tmp_path, [art])  # type: ignore[list-item]
         assert art.raw["defaults"]["model"]["options"]["num_ctx"] == 4096
         assert isinstance(art.raw["defaults"]["model"]["options"]["num_ctx"], int)
+
+    def test_whole_reference_to_string_property_still_expands_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression for #1072: when a property is itself a string containing an
+        ``${ENV:-default}``, a whole-string reference to it must get the string-expanded
+        view, not the raw typed value. Returning the raw string broke harness configs
+        like ``model: ${models.analyst}`` where ``models.analyst: ${MY_MODEL:-sonnet}``.
+        """
+        monkeypatch.delenv("MY_ANALYST_MODEL", raising=False)
+        strings = {"models.analyst": "sonnet"}
+        typed = {"models.analyst": "${MY_ANALYST_MODEL:-sonnet}"}
+        out = interpolate_value("${models.analyst}", strings, typed)
+        assert out == "sonnet"
+
+        monkeypatch.setenv("MY_ANALYST_MODEL", "opus")
+        strings = {"models.analyst": "opus"}  # as _resolve_env_vars would produce
+        out = interpolate_value("${models.analyst}", strings, typed)
+        assert out == "opus"
