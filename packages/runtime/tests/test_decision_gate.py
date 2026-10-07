@@ -10,9 +10,11 @@ from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler._decision_gate import (
     evaluate_checkpoint,
     evaluate_post_output,
+    evaluate_pre_input,
     evaluate_pre_synthesis,
     format_gate_feedback,
 )
+from swarmkit_runtime.memory._gate import MEMORY_READER_ID, MEMORY_WRITER_ID
 
 
 @pytest.fixture
@@ -269,3 +271,60 @@ class TestFormatGateFeedback:
         assert "grounding-verifier" in feedback
         assert "Claim A" in feedback
         assert "Claim B" in feedback
+
+
+class TestMemoryBindingsSkipTheJudgePath:
+    """Regression for #1074: memory-reader / memory-writer are handled by
+    memory/_gate.py's own hooks, not by the decision-judge path. Running them
+    through governance.evaluate_decision_skill kicks off a full LLM judge call
+    per turn with no memory context — a visible-to-the-user stall + a false
+    `fail` verdict on every turn because the bundled prompts don't ask for the
+    JSON contract _parse_result expects.
+    """
+
+    @pytest.fixture
+    def spy_gov(self) -> MockGovernanceProvider:
+        return MockGovernanceProvider(allow_all=True)
+
+    @pytest.mark.asyncio
+    async def test_pre_input_skips_memory_reader(self, spy_gov: MockGovernanceProvider) -> None:
+        bindings = [
+            DecisionSkillBinding(id=MEMORY_READER_ID, trigger="pre_input"),
+            DecisionSkillBinding(id="scope-check", trigger="pre_input"),
+        ]
+        _ok, _msg, results = await evaluate_pre_input(
+            agent_id="agent-1",
+            user_input="hi",
+            bindings=bindings,
+            governance=spy_gov,
+        )
+        assert [r.skill_id for r in results] == ["scope-check"]
+
+    @pytest.mark.asyncio
+    async def test_post_output_skips_memory_writer(self, spy_gov: MockGovernanceProvider) -> None:
+        bindings = [
+            DecisionSkillBinding(id=MEMORY_WRITER_ID, trigger="post_output"),
+            DecisionSkillBinding(id="grounding-verifier", trigger="post_output"),
+        ]
+        _out, results = await evaluate_post_output(
+            agent_id="agent-1",
+            output="an answer",
+            bindings=bindings,
+            governance=spy_gov,
+        )
+        assert [r.skill_id for r in results] == ["grounding-verifier"]
+
+    @pytest.mark.asyncio
+    async def test_pre_input_with_only_memory_bindings_short_circuits(
+        self, spy_gov: MockGovernanceProvider
+    ) -> None:
+        bindings = [DecisionSkillBinding(id=MEMORY_READER_ID, trigger="pre_input")]
+        ok, msg, results = await evaluate_pre_input(
+            agent_id="agent-1",
+            user_input="hi",
+            bindings=bindings,
+            governance=spy_gov,
+        )
+        assert ok is True
+        assert msg is None
+        assert results == []

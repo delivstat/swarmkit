@@ -4,9 +4,9 @@
 binding was accepted, validated, displayed — and never evaluated. There was no path by which one
 could run.
 
-`memory-reader` is bound that way by the runtime's own docs and examples, because a memory read that
-can fail a run is worse than no memory. So the only sane configuration was the one that silently did
-nothing, and the governed-memory read path added in 1.168.0 sat behind it, correct and unreachable.
+(History: memory-reader used to be the exemplar bound this way. #1074 moved memory bindings out
+of the judge path entirely — they're handled by memory/_gate.py's own hooks now — so this test
+uses a plain advisory id instead to isolate the `required: false` semantics it is checking.)
 
 The two flags mean different things and the code collapsed them:
 
@@ -29,7 +29,7 @@ import pytest
 from swarmkit_runtime.governance import DecisionSkillResult, merge_decision_skills
 from swarmkit_runtime.langgraph_compiler._decision_gate import _blocking, evaluate_pre_input
 
-ADVISORY = {"id": "memory-reader", "trigger": "pre_input", "required": False, "config": {}}
+ADVISORY = {"id": "topic-nudge", "trigger": "pre_input", "required": False, "config": {}}
 BLOCKING = {"id": "spec-conformance", "trigger": "post_output", "required": True}
 
 
@@ -58,7 +58,7 @@ def test_an_advisory_binding_is_not_discarded() -> None:
     """The reported reproduction: this returned an empty list."""
     merged = merge_decision_skills([ADVISORY], [])
 
-    assert [b.id for b in merged] == ["memory-reader"]
+    assert [b.id for b in merged] == ["topic-nudge"]
     assert merged[0].required is False
 
 
@@ -69,12 +69,12 @@ def test_a_required_binding_still_survives() -> None:
 def test_both_kinds_come_through_together() -> None:
     merged = merge_decision_skills([ADVISORY], [BLOCKING])
 
-    assert {b.id for b in merged} == {"memory-reader", "spec-conformance"}
+    assert {b.id for b in merged} == {"topic-nudge", "spec-conformance"}
 
 
 def test_the_topology_still_overrides_the_workspace() -> None:
     """The merge's actual job, unchanged: same id, topology wins."""
-    override = {"id": "memory-reader", "trigger": "pre_input", "required": True}
+    override = {"id": "topic-nudge", "trigger": "pre_input", "required": True}
 
     merged = merge_decision_skills([ADVISORY], [override])
 
@@ -90,7 +90,7 @@ def test_an_advisory_failure_does_not_block() -> None:
     these through unguarded would let a memory read abort a run."""
     bindings = merge_decision_skills([ADVISORY], [])
 
-    assert _blocking([_result("memory-reader")], bindings) == []
+    assert _blocking([_result("topic-nudge")], bindings) == []
 
 
 def test_a_required_failure_does_block() -> None:
@@ -131,7 +131,7 @@ async def test_an_advisory_skill_runs_and_the_input_proceeds() -> None:
         governance=governance,  # type: ignore[arg-type]
     )
 
-    assert governance.asked == ["memory-reader"], "the skill must actually be evaluated"
+    assert governance.asked == ["topic-nudge"], "the skill must actually be evaluated"
     assert proceed is True, "an advisory rejection must not stop the run"
     assert message is None
     assert len(results) == 1, "and its result is still reported"
@@ -183,10 +183,18 @@ async def test_a_curated_fact_reaches_a_run_through_the_real_merge() -> None:
         )
     )
 
+    # memory_pre_input acts on the memory-reader binding specifically; use that id here
+    # (ADVISORY uses a generic id to keep the judge-path tests clean of memory-aware filtering).
+    memory_advisory = {
+        "id": "memory-reader",
+        "trigger": "pre_input",
+        "required": False,
+        "config": {},
+    }
     context = await memory_pre_input(
         agent_id="triage",
         user_input="enumerate the cartons for this outbound shipment",
-        bindings=merge_decision_skills([ADVISORY], []),
+        bindings=merge_decision_skills([memory_advisory], []),
         store=None,
         governed_store=store,
     )
