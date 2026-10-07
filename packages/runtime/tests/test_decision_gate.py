@@ -287,9 +287,7 @@ class TestMemoryBindingsSkipTheJudgePath:
         return MockGovernanceProvider(allow_all=True)
 
     @pytest.mark.asyncio
-    async def test_pre_input_skips_memory_reader(
-        self, spy_gov: MockGovernanceProvider
-    ) -> None:
+    async def test_pre_input_skips_memory_reader(self, spy_gov: MockGovernanceProvider) -> None:
         bindings = [
             DecisionSkillBinding(id=MEMORY_READER_ID, trigger="pre_input"),
             DecisionSkillBinding(id="scope-check", trigger="pre_input"),
@@ -303,9 +301,7 @@ class TestMemoryBindingsSkipTheJudgePath:
         assert [r.skill_id for r in results] == ["scope-check"]
 
     @pytest.mark.asyncio
-    async def test_post_output_skips_memory_writer(
-        self, spy_gov: MockGovernanceProvider
-    ) -> None:
+    async def test_post_output_skips_memory_writer(self, spy_gov: MockGovernanceProvider) -> None:
         bindings = [
             DecisionSkillBinding(id=MEMORY_WRITER_ID, trigger="post_output"),
             DecisionSkillBinding(id="grounding-verifier", trigger="post_output"),
