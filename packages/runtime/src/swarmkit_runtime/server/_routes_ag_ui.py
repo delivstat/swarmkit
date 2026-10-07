@@ -99,6 +99,16 @@ def _register_ag_ui_routes(app: FastAPI, job_store: JobStore) -> None:
 
         canary, store, cfg, semaphore = _app_state_run_deps(request)
 
+        # Correlation id defaults to the AG-UI thread_id (one group per chat thread).
+        # The caller MAY override via context.correlation_id when the chat happens inside
+        # a scope broader than one thread — e.g. a Space in the dots app, where every
+        # Dot the user chats with inside the Space should group under one id. See
+        # design/details/spaces-pattern.md.
+        caller_corr = str(body.context.get("correlation_id", "")).strip()
+        correlation_id = caller_corr or thread_id
+        labels = {"ag_ui.thread_id": thread_id}
+        if caller_corr:
+            labels["ag_ui.correlation_source"] = "context"
         try:
             job = await jobs.start(
                 rt=rt,
@@ -109,8 +119,8 @@ def _register_ag_ui_routes(app: FastAPI, job_store: JobStore) -> None:
                 topology_name=topology_name,
                 user_input=last_user,
                 max_steps=10,
-                correlation_id=thread_id,
-                labels={"ag_ui.thread_id": thread_id},
+                correlation_id=correlation_id,
+                labels=labels,
                 parent_job_id=None,
                 attachments=[],
                 enqueue_only=getattr(request.app.state, "enqueue_only", False),
