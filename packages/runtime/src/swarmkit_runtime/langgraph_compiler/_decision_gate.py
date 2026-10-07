@@ -19,6 +19,7 @@ from swarmkit_runtime.governance import (
     DecisionSkillResult,
     GovernanceProvider,
 )
+from swarmkit_runtime.memory._gate import is_memory_binding
 
 from ._helpers import _progress
 
@@ -114,7 +115,16 @@ async def evaluate_pre_input(
     proceeding with the LLM call — saving tokens on off-topic or
     malicious queries.
     """
-    applicable = [b for b in bindings if b.trigger == "pre_input" and b.applies_to(agent_id)]
+    # Memory bindings (memory-reader / memory-writer) are not judges — the memory
+    # subsystem's own hooks (memory_pre_input / memory_post_output in memory/_gate.py)
+    # do the real work. Running them through the judge path too kicks off a full LLM
+    # call per turn, with no memory context to judge against, and the bundled prompts
+    # don't match the JSON contract so every verdict parses as `fail`. See #1074.
+    applicable = [
+        b
+        for b in bindings
+        if b.trigger == "pre_input" and b.applies_to(agent_id) and not is_memory_binding(b)
+    ]
     if not applicable:
         return True, None, []
 
@@ -171,7 +181,12 @@ async def evaluate_post_output(
 
     Returns (final output, list of all results from last evaluation).
     """
-    applicable = [b for b in bindings if b.trigger == "post_output" and b.applies_to(agent_id)]
+    # See the pre_input comment: memory-writer runs through memory_post_output, not here.
+    applicable = [
+        b
+        for b in bindings
+        if b.trigger == "post_output" and b.applies_to(agent_id) and not is_memory_binding(b)
+    ]
     if not applicable:
         return output, []
 
@@ -253,7 +268,11 @@ async def evaluate_checkpoint(
     Returns list of results. Failed results are injected into the
     coordinator's checkpoint review as feedback.
     """
-    applicable = [b for b in bindings if b.trigger == "checkpoint" and b.applies_to(agent_id)]
+    applicable = [
+        b
+        for b in bindings
+        if b.trigger == "checkpoint" and b.applies_to(agent_id) and not is_memory_binding(b)
+    ]
     if not applicable:
         return []
 
@@ -292,7 +311,11 @@ async def evaluate_pre_synthesis(
     context to the decision skill. This enables spec-conformance
     checking against the frozen scope.
     """
-    applicable = [b for b in bindings if b.trigger == "pre_synthesis" and b.applies_to(agent_id)]
+    applicable = [
+        b
+        for b in bindings
+        if b.trigger == "pre_synthesis" and b.applies_to(agent_id) and not is_memory_binding(b)
+    ]
     if not applicable:
         return []
 
