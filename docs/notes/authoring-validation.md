@@ -98,7 +98,7 @@ EOF
 1. `/tmp/author-smoke/topologies/url-brief.yaml` exists after turn 2.
 2. Its `output_schema.properties.items.maxItems` is `5`, not `3` — proves the
    checkpointer resumed and the agent kept the first-turn context.
-3. One correlation id groups both turns in `swarmkit jobs history` (visible via the
+3. One correlation id groups both turns in `GET /jobs/history` (visible via the
    portal Dashboard as `swarmkit:author:topology · 2 runs` with the same
    `correlation_id`).
 
