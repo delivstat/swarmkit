@@ -156,7 +156,14 @@ def interpolate_value(  # noqa: PLR0911
             if match:
                 name = match.group(1)
                 if name in typed_properties:
-                    return typed_properties[name]
+                    typed = typed_properties[name]
+                    # A non-string typed leaf (int/float/bool/null/list/dict) is the whole
+                    # point of #879 — return it verbatim. A string typed leaf may itself
+                    # contain ${ENV} / ${ENV:-default}; fall through to the string-expanded
+                    # view so #1072 isn't a regression on #879.
+                    if not isinstance(typed, str):
+                        return typed
+                    return properties.get(name, typed)
                 # Fall back to the env-var lookup; the result is a string by nature
                 # (os.environ values are strings), so string-coercion of a default is
                 # the honest answer here too.
