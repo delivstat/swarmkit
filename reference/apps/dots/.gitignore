@@ -1,2 +1,3 @@
 lib/dots.local.json
+lib/spaces.local.json
 workspace/topologies/*.yaml

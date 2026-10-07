@@ -39,9 +39,19 @@ export async function POST(req: NextRequest): Promise<Response> {
 		return NextResponse.json({ error: "invalid_json" }, { status: 400 });
 	}
 
+	// Space scoping: when the chat happens inside a Space, the client sends ?spaceId=<id>
+	// and the proxy threads it into context.correlation_id so every run under this chat
+	// groups under one Space-level id in /jobs/history and /audit. See
+	// design/details/spaces-pattern.md.
+	const spaceId = req.nextUrl.searchParams.get("spaceId");
+	const extraContext: Record<string, unknown> = { topology: dot.topology };
+	if (spaceId?.trim()) {
+		extraContext.correlation_id = `space:${spaceId.trim()}`;
+	}
+
 	const forwarded = {
 		...body,
-		context: { ...(body.context ?? {}), topology: dot.topology },
+		context: { ...(body.context ?? {}), ...extraContext },
 	};
 
 	const base = process.env.SWARMKIT_URL ?? "http://127.0.0.1:8000";
