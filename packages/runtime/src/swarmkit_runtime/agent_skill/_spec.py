@@ -80,11 +80,15 @@ def parse_agent_spec(impl: Any) -> AgentSkillSpec:
 def find_bad_agent_targets(workspace: Any) -> list[tuple[str, str]]:
     """``(skill_id, description)`` pairs whose ``agent`` target cannot be resolved at load.
 
-    A local target must be a topology in this workspace. Reported here, next to missing command
-    packs and MCP servers, so a skill that would fail on first use fails the load instead. A remote
-    card is not fetched at load — the network is not a precondition for starting — it is checked
-    when the skill is first called and by ``swarmkit validate``.
+    A local target must be a topology in this workspace, OR a bundled authoring topology
+    (``swarmkit:author:*``) that ``WorkspaceRuntime.start_run`` resolves against the bundled
+    authoring workspace. Reported here, next to missing command packs and MCP servers, so a
+    skill that would fail on first use fails the load instead. A remote card is not fetched at
+    load — the network is not a precondition for starting — it is checked when the skill is
+    first called and by ``swarmkit validate``.
     """
+    from swarmkit_runtime.authoring._resolver import is_authoring_id  # noqa: PLC0415
+
     bad: list[tuple[str, str]] = []
     for skill_id, skill in workspace.skills.items():
         impl = skill.raw.implementation
@@ -95,6 +99,14 @@ def find_bad_agent_targets(workspace: Any) -> list[tuple[str, str]]:
         except ValueError as exc:
             bad.append((skill_id, f"an agent target ({exc})"))
             continue
-        if spec.topology is not None and spec.topology not in workspace.topologies:
-            bad.append((skill_id, f"topology '{spec.topology}'"))
+        if spec.topology is None:
+            continue
+        if spec.topology in workspace.topologies:
+            continue
+        if is_authoring_id(spec.topology):
+            # Resolved at runtime by WorkspaceRuntime.start_run against the bundled authoring
+            # workspace — not a local topology. Accept at load time; `swarmkit validate` and the
+            # first run still catch it if the bundled topology is removed.
+            continue
+        bad.append((skill_id, f"topology '{spec.topology}'"))
     return bad
