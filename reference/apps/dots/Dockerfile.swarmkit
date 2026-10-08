@@ -1,9 +1,8 @@
-# swarmkit serve image for the dots compose. Built from local monorepo source via uv so this
-# can ship ahead of PyPI (the AG-UI protocol surface in #1020 is post-1.261.0; a plain
-# `pip install swarmkit-runtime[ui]==1.261.0` does not include it yet).
-#
-# After v1.262.0 is cut, this Dockerfile should be replaced with the one-liner
-# `RUN pip install --no-cache-dir uv && uv pip install --system "swarmkit-runtime[ui]==1.262.0"`.
+# swarmkit serve image for the dots compose. Built from local monorepo source via uv so a
+# work-in-progress commit on this branch can run under compose without first needing to be
+# released to PyPI. Once a change stabilises, swap this for:
+#   RUN pip install --no-cache-dir uv && uv pip install --system "swarmkit-runtime[ui]==<ver>"
+# — at the time of this edit the latest tag is 1.263.0.
 #
 # Build context must be the repo root (see docker-compose.yml → services.swarmkit.build.context).
 

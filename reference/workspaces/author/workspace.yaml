@@ -40,3 +40,10 @@ command_packs:
         effects: read
         output:
           parse: json
+
+# Expose the runtime's bundled `swarmkit:author:topology` (shipped since 1.055) so the
+# `author-topology` skill below can target it. Without this, workspace startup fails with
+# `skill 'author-topology' targets topology 'swarmkit:author:topology' but the workspace
+# declares no such thing`.
+authoring:
+  expose: true

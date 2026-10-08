@@ -75,28 +75,42 @@ services:
       # local-dev reference app with no auth, --insecure is the sanctioned switch. In a
       # real deployment, configure server.auth (api_key/jwt) in the workspace instead.
       - --insecure
+      # Browser origins the portal + any dots-app embed/fetch may come from. Includes the
+      # local dev port and the Cloudflare hostnames this stack is published through — add
+      # or override via SWARMKIT_PUBLIC_DOTS_URL / SWARMKIT_PUBLIC_SERVE_URL in .env.
+      - --cors-origin
+      - http://127.0.0.1:3509
+      - --cors-origin
+      - ${SWARMKIT_PUBLIC_DOTS_URL:-https://dots.delivstat.com}
+      - --cors-origin
+      - ${SWARMKIT_PUBLIC_SERVE_URL:-https://dots-serve.delivstat.com}
     volumes:
       - dots-workspace:/workspace
     ports:
-      - "8000:8000"
+      # Host port 8099 keeps the Cloudflare tunnel wiring stable with the dev-up.sh script.
+      - "8099:8000"
     depends_on:
       seed:
         condition: service_completed_successfully
     restart: unless-stopped
 
   dots-app:
-    build: .
+    build:
+      context: ../../..
+      dockerfile: reference/apps/dots/Dockerfile
+    # IMPORTANT: compose reads .env.docker (NOT .env). The dev `.env` / `.env.local` keep
+    # `$$` escapes for @next/env; docker-passed env vars must use literal `$` or the scrypt
+    # hash's separators arrive doubled in the container and login silently 401s.
+    #
+    # Generate it from the dev .env with:
+    #   sed 's/\$\$/\$/g' .env > .env.docker
+    env_file:
+      - .env.docker
     environment:
-      - SESSION_SECRET=${SESSION_SECRET:?set SESSION_SECRET to a 32+ char random string}
-      - DOTS_OWNER_USERNAME=${DOTS_OWNER_USERNAME:-owner}
-      - DOTS_OWNER_PASSWORD_HASH=${DOTS_OWNER_PASSWORD_HASH:?run `node scripts/hash-password.mjs`}
       - SWARMKIT_URL=http://swarmkit:8000
-      # Shared secret the SwarmKit side forwards on /api/dots/intake calls. Leave unset in
-      # local dev — the intake endpoint falls back to accepting unauthenticated requests
-      # from the compose network when the token is empty.
-      - DOTS_INTAKE_TOKEN=${DOTS_INTAKE_TOKEN:-}
     ports:
-      - "3500:3500"
+      # Host port 3509 keeps the Cloudflare tunnel wiring stable with the dev-up.sh script.
+      - "3509:3500"
     depends_on:
       - swarmkit
     restart: unless-stopped
