@@ -32,9 +32,21 @@ RUN corepack enable
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3500
+# Disable pnpm's `verifyDepsBeforeRun` so it doesn't re-run `install` on every container
+# start — that re-install swaps the baked node_modules for a fresh one that can disagree
+# with the compiled .next tree in subtle ways (we burned hours on login silently 401ing
+# because of exactly this). Script-time install stays available in dev.
+ENV NPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false
 COPY --from=build /repo/node_modules /repo/node_modules
 COPY --from=build /repo/package.json /repo/pnpm-workspace.yaml /repo/
 COPY --from=build /repo/reference/apps/dots /app/
-# The dots-app package.json's "start" script invokes `next start --port 3500`.
+# `.dockerignore` only filters the ROOT build context. This Dockerfile's context is the
+# repo root (compose: dots-app.build.context=../../..), so a `.dockerignore` placed in
+# reference/apps/dots is NOT consulted and .env/.env.local/.env.docker get baked in.
+# Baked env files are loaded by @next/env on startup and SHADOW the vars Compose passes
+# via env_file — causing silent login 401s. Strip them explicitly.
+RUN rm -f /app/.env /app/.env.local /app/.env.production /app/.env.production.local /app/.env.docker
+# pnpm start → `next start --port 3500`; keeps workspace symlinks intact (invoking
+# ./node_modules/.bin/next directly fails because its symlinks point into /repo).
 EXPOSE 3500
 CMD ["pnpm", "start"]

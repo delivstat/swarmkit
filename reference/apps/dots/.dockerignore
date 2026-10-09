@@ -1,10 +1,32 @@
+# Keep ALL env files out of the build context — they contain developer-specific secrets
+# (SESSION_SECRET, OWNER_PASSWORD_HASH, OPENROUTER_API_KEY) and any that get baked into the
+# image are read by @next/env on startup and shadow the vars Compose passes via env_file.
+# That exact bug ate hours: baked `.env.local` with a stale hash overrode the fresh hash
+# the running container was given, so login kept returning 401 even after a password reset.
+.env
+.env.*
+!.env.example
+
+# Dev artifacts that shouldn't bloat the build context
 node_modules
 .next
-.env
-.env.local
-docs/screenshots
-workspace/topologies/*.yaml
+.pnpm-store
+dist
+
+# Scripts that aren't needed at runtime (they live in the host checkout)
+scripts/dev-up.sh
+scripts/dev-down.sh
+scripts/reset-password.sh
+scripts/capture-*.sh
+scripts/screenshot-*.mjs
+
+# Local dev data
 lib/dots.local.json
-tests
-*.log
+lib/spaces.local.json
+workspace/topologies/*.yaml
+
+# IDE / OS cruft
+.vscode
+.idea
 .DS_Store
+*.log
