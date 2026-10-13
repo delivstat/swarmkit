@@ -319,3 +319,25 @@ def test_the_storage_service_owns_the_pool_config(
     assert _pool_config() == (50, 5)
     monkeypatch.setenv("SWARMKIT_STORE_POOL_SIZE", "not-a-number")
     assert _pool_config()[0] == 20  # a bad value falls back, it does not crash
+
+
+def test_the_store_is_built_once_per_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The run path asks for the store every run (the stop checker). Rebuilding it re-ran
+    `create_all` + two column-inspection migrations and, on SQLite, opened a new engine each time —
+    ~6.6 ms of event-loop time per run (load-and-scale.md, Run 6)."""
+    import swarmkit_runtime.persistence._store as store_mod  # noqa: PLC0415
+
+    built = {"n": 0}
+    real = store_mod.create_all_idempotent
+
+    def _count(*a: Any, **k: Any) -> Any:
+        built["n"] += 1
+        return real(*a, **k)
+
+    monkeypatch.setattr(store_mod, "create_all_idempotent", _count)
+    svc = _svc(tmp_path)
+    first = svc.store()
+    assert all(svc.store() is first for _ in range(5))
+    assert built["n"] == 1

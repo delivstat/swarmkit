@@ -160,3 +160,71 @@ async def test_sqlite_audit_write_stays_on_the_loop(tmp_path: Path, monkeypatch:
     await provider.record(_event("agent.started", "worker"))
     assert called["to_thread"] is False, "the SQLite audit write must stay on the loop"
     assert ("agent.started", "worker") in await _all(provider)
+
+
+# ---- the end-of-run batch skips what the journal already wrote (load-and-scale.md, Run 6) -------
+
+
+class _CountingProvider:
+    """Wraps the real provider, counting `record` calls and optionally failing the first N."""
+
+    def __init__(self, inner: Any, *, fail_first: int = 0) -> None:
+        self._inner = inner
+        self.calls = 0
+        self._fail = fail_first
+
+    async def record(self, event: AuditEvent) -> None:
+        self.calls += 1
+        if self._fail:
+            self._fail -= 1
+            raise RuntimeError("store is down")
+        await self._inner.record(event)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+async def _journal_then_batch(rt: WorkspaceRuntime, run_id: str) -> None:
+    from swarmkit_runtime._workspace_runtime import _extract_events  # noqa: PLC0415
+
+    run_token = set_current_run_id(run_id)
+    topo_token = set_current_topology("t")
+    try:
+        await rt._governance.record_event(_event("skill.executed", "worker"))
+        await rt._persist_events_to_audit(
+            _extract_events(rt._governance, run_id=run_id), "t", run_id, {}
+        )
+    finally:
+        reset_current_topology(topo_token)
+        reset_current_run_id(run_token)
+
+
+@pytest.mark.asyncio
+async def test_the_batch_does_not_rewrite_an_event_the_journal_wrote(tmp_path: Path) -> None:
+    """Dedup made the re-write harmless, not free: each rejected insert was a full write
+    transaction on the loop. A journaled event costs one write, not two."""
+    rt = _runtime(tmp_path)
+    counting = _CountingProvider(rt._audit_provider)
+    rt._audit_provider = counting
+    await _journal_then_batch(rt, "run-3")
+    assert counting.calls == 1, "journal wrote it; the batch must not write it again"
+    assert (await _all(counting)).count(("skill.executed", "worker")) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_batch_still_writes_an_event_whose_journal_write_failed(tmp_path: Path) -> None:
+    """The safety net is unchanged: only a write that SUCCEEDED is skipped."""
+    rt = _runtime(tmp_path)
+    counting = _CountingProvider(rt._audit_provider, fail_first=1)
+    rt._audit_provider = counting
+    await _journal_then_batch(rt, "run-4")
+    assert counting.calls == 2, "journal failed, so the batch retried it"
+    assert ("skill.executed", "worker") in await _all(counting)
+
+
+@pytest.mark.asyncio
+async def test_the_journaled_ledger_is_dropped_when_the_run_ends(tmp_path: Path) -> None:
+    """A long-lived serve must not keep one id set per run it ever ran."""
+    rt = _runtime(tmp_path)
+    await _journal_then_batch(rt, "run-5")
+    assert rt._journaled == {}

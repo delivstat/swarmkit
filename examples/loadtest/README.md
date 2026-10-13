@@ -19,6 +19,11 @@ and no network egress. Full write-up and measured numbers:
   `storm` fires N submissions at a low `max_concurrent` to measure the admission/429 path. httpx +
   the standard library — no k6, no psutil.
 
+- **Per-process ceiling** (`checkpointer_contention.py`): N concurrent `WorkspaceRuntime.run` calls
+  in one process — no HTTP, no driver in the measurement — reporting runs/s, latency, **CPU per run**
+  and the checkpointer lock's wait/hold time. Use it to tell "the loop is CPU-bound" from "runs are
+  queued on the checkpointer" (Run 6).
+
 ## Run
 
 ```bash
