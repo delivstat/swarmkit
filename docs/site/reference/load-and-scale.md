@@ -20,6 +20,7 @@ These numbers are a **baseline**, dated so a post-improvement run can be compare
 | 4 | 2026-09-19 | 1.245.0 | same box | profiled a run + isolated driver vs serve — located the cost, corrected earlier runs |
 | 5 | 2026-09-19 | 1.249.0 | same box | the API/worker split under load — throughput scales with worker count (the payoff) |
 | 6 | 2026-10-13 | 1.263.2 | same box | per-process ceiling: store built once, audit written once (+46%); checkpointer lock measured |
+| 7 | 2026-10-13 | 1.263.2 | same box | uvicorn vs Granian on the API tier — the HTTP server is not the lever; the enqueue path is |
 
 Run 5 is the payoff measurement: the fix Runs 1–4 pointed to — decoupling execution into worker
 processes (`design/details/worker-execution.md`) — shipped in 1.247.0–1.249.0, and this run shows
@@ -340,6 +341,30 @@ store numbers stand; their checkpointer was not what the labels imply.
 reruns gave 16–17. It is excluded above. This is a shared WSL2 box with other stacks running;
 treat differences under ~10% as noise.
 
+## Run 7 (2026-10-13, runtime 1.263.2) — uvicorn vs Granian: the HTTP server is not the lever
+
+Granian is a Rust HTTP server (tokio/hyper) for Python ASGI apps; published benchmarks put it at
+20–50% to 2x uvicorn's req/s. Tested on the tier where the HTTP layer should matter most, `serve
+--role api` (accept + enqueue, no execution): the same `create_app()` under each server
+(`examples/loadtest/asgi_app.py`), one worker each, Postgres store, 2,000 `POST /run` over 200
+connections, queue depth 1,000 — so about half are accepted and half are 429s. Three repeats each
+(`examples/loadtest/server_compare.sh api 2000 200`):
+
+| server | submits/s | p50 | p99 | errors |
+|---|---|---|---|---|
+| uvicorn + uvloop (shipped) | **28** | **5.1–5.3 s** | 28–31 s | 1–6 |
+| Granian 2.8.4 | 20–22 | 7.8–9.1 s | **18.7–19.0 s** | 0 |
+
+Granian is ~25% slower in throughput and median, better at the tail. **Not adopted** (#1085).
+
+The reason is that both numbers are terrible for an enqueue, and the cause is inside the handler.
+Profiled in-process, one `POST /run` costs 60 ms wall and 40 ms CPU: four synchronous Postgres
+calls on the loop — the queue-depth `COUNT`, `create_job`, an immediate `update_job` of the same
+row, and a per-request `record_access` — about 23 round trips, plus ~7 ms rendering the request log
+through `rich`. A handler that blocks the loop gives a faster I/O layer nothing to accelerate, and
+the 429 path pays most of the same calls, which is why rejections are slow (Result 4). That is the
+fix, tracked in #1084; re-run this comparison after it.
+
 ## What this means for sizing
 
 - **A single serve process is not a throughput engine for CPU-bound-per-run work.** Plan for
@@ -405,6 +430,9 @@ uv run python examples/loadtest/checkpointer_contention.py --workspace examples/
     --topology tiny --checkpoints sqlite --levels 1,5,25,50 --duration 15 --latency-ms 500
 uv run --extra postgres python examples/loadtest/checkpointer_contention.py ... \
     --checkpoints postgres --checkpoints-url postgresql://user:pw@host:5432/db
+
+# Run 7 — the same app under uvicorn vs Granian, API tier (Postgres) or all-in-one:
+SWARMKIT_STORE_URL=postgresql+psycopg://... examples/loadtest/server_compare.sh api 2000 200
 
 # Soak — steady load, sample RSS/fds over time, report the slope (soak-testing.md):
 uv run python examples/loadtest/driver/loadtest.py soak --topology tiny --concurrency 5 \
