@@ -28,6 +28,7 @@ from swarmkit_runtime.oauth._client_store import ClientStore
 from swarmkit_runtime.persistence import storage_for_workspace
 from swarmkit_runtime.telemetry import configure_telemetry, load_telemetry_config
 
+from ._access_audit import AccessAuditWriter
 from ._config import (
     _parse_server_config,
     _parse_trigger_configs,
@@ -219,6 +220,10 @@ def create_app(  # noqa: PLR0915
         app.state.workspace_path = workspace_path  # for GET /fleet/state (reads artifact content)
         _warn_if_identity_is_not_a_role_member(_auth, runtime)
         _wire_storage(app, workspace_path, runtime)
+        # Access-audit rows are buffered and written in batches off the loop (issue 1084).
+        access_audit = AccessAuditWriter(app.state.store)
+        app.state.access_audit = access_audit
+        access_audit.start()
 
         # The inbound event seam. It had one consumer — the bundled sequencer — and its queue left
         # with it, so nothing is wired by default: an application that wants correlated webhook
@@ -285,6 +290,7 @@ def create_app(  # noqa: PLR0915
         # The MCP transport's session manager lives exactly as long as the app does.
         async with mcp_session_lifespan(app):
             yield
+        await access_audit.stop()
         await scheduler.stop()
         # The *current* runtime — a reload may have replaced the one this lifespan booted.
         await app.state.runtime.close()

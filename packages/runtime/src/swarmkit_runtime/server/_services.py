@@ -14,7 +14,10 @@ that stays in the route.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
+import weakref
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +93,63 @@ class InvalidRequestError(ServiceError):
     """
 
     status = 422
+
+
+#: How stale the queue-depth reading behind queue-mode admission may be, in seconds.
+QUEUE_DEPTH_MAX_AGE_S = 0.25
+
+
+class _QueueDepthGauge:
+    """The queued backlog depth that queue-mode admission checks, without a ``COUNT(*)`` per
+    request (issue 1084).
+
+    Re-read from the store at most every :data:`QUEUE_DEPTH_MAX_AGE_S`. Between reads it adds what
+    this process did since: inserts that landed, and inserts still in flight. In-flight places are
+    kept apart from the reading because a re-read cannot see an insert that has not committed —
+    folding them into the reading is how a 1,000 bound admitted 1,001. Within one process the
+    depth can only over-count (an insert that commits just before a re-read is briefly counted
+    twice), so the bound holds.
+
+    What it cannot see between reads is other API processes' admissions and workers' claims; the
+    bound can overshoot by what other processes admit in one window. It protects against an
+    unbounded backlog, not an exact one — a round trip per request was the price of exactness,
+    and the 429 path paid it too.
+    """
+
+    def __init__(self) -> None:
+        self._read = 0  # the store's count at the last read
+        self._since = 0  # this process's inserts that landed after it
+        self._in_flight = 0  # admitted, insert not finished
+        self._read_at = float("-inf")
+
+    def depth(self, store: Store) -> int:
+        now = time.monotonic()
+        if now - self._read_at >= QUEUE_DEPTH_MAX_AGE_S:
+            self._read = store.count_jobs("queued")
+            self._since = 0
+            self._read_at = now
+        return self._read + self._since + self._in_flight
+
+    def reserve(self) -> None:
+        self._in_flight += 1
+
+    def landed(self) -> None:
+        self._in_flight = max(0, self._in_flight - 1)
+        self._since += 1
+
+    def release(self) -> None:
+        self._in_flight = max(0, self._in_flight - 1)
+
+
+# One per store (one per database): JobService is built per call site, the backlog is per store.
+_QUEUE_GAUGES: weakref.WeakKeyDictionary[Store, _QueueDepthGauge] = weakref.WeakKeyDictionary()
+
+
+def _queue_gauge(store: Store) -> _QueueDepthGauge:
+    gauge = _QUEUE_GAUGES.get(store)
+    if gauge is None:
+        gauge = _QUEUE_GAUGES[store] = _QueueDepthGauge()
+    return gauge
 
 
 class JobService:
@@ -198,13 +258,15 @@ class JobService:
         # Admission, per mode. All-in-one: reject-when-full on the in-process semaphore. Queue mode:
         # the semaphore does not apply (workers, not this loop, execute), but an unbounded queue
         # would accept work that may never begin — so bound backlog depth and 429 when it is full.
+        gauge: _QueueDepthGauge | None = None
         if enqueue_only:
-            if (
-                queue_max_depth > 0
-                and store is not None
-                and store.count_jobs("queued") >= queue_max_depth
-            ):
-                raise BusyError(f"Queue is full ({queue_max_depth} runs waiting). Try again later.")
+            if queue_max_depth > 0 and store is not None:
+                gauge = _queue_gauge(store)
+                if gauge.depth(store) >= queue_max_depth:
+                    raise BusyError(
+                        f"Queue is full ({queue_max_depth} runs waiting). Try again later."
+                    )
+                gauge.reserve()
         elif semaphore is not None and semaphore.locked():
             raise BusyError("Max concurrent jobs reached. Try again later.")
         job = await self._jobs.create(resolved_name, user_input, job_id=job_id)
@@ -219,29 +281,19 @@ class JobService:
             err.status = 500
             raise err
         if store:
-            store.create_job(
-                job.id,
-                resolved_name,
+            await self._persist(
+                store,
+                job,
+                resolved_topo,
                 user_input,
-                correlation_id,
-                source,
                 labels=labels,
                 parent_job_id=parent_job_id,
+                enqueue_only=enqueue_only,
+                gauge=gauge,
             )
-            if selected_version:
-                store.update_job(job.id, version=selected_version)
         if enqueue_only:
-            # Mark it claimable and return; a worker (swarmkit worker) drains the queue. The
-            # in-memory Job mirrors the durable status so the submit response reads "queued". The
-            # workload class (worker-fairness.md) routes it to the right worker pool, and priority
-            # (from a `priority` label, higher first) orders it within the queue.
-            if store:
-                store.update_job(
-                    job.id,
-                    status="queued",
-                    job_class=_workload_class(resolved_topo),
-                    priority=_label_priority(labels),
-                )
+            # Claimable now; a worker (swarmkit worker) drains the queue. The in-memory Job
+            # mirrors the durable status so the submit response reads "queued".
             job.status = "queued"
             # Drop the in-memory stub: the API tier never executes this job, so its live copy would
             # stay "queued" forever and shadow the durable row a worker keeps current (GET merges
@@ -262,6 +314,50 @@ class JobService:
             budget_override=budget_override,
         )
         return job
+
+    async def _persist(
+        self,
+        store: Store,
+        job: Job,
+        topology: Any,
+        user_input: str,
+        *,
+        labels: dict[str, str] | None,
+        parent_job_id: str | None,
+        enqueue_only: bool,
+        gauge: _QueueDepthGauge | None,
+    ) -> None:
+        """Write the job row in one insert, off the loop.
+
+        In queue mode the row is born claimable: ``queued``, with the workload class
+        (worker-fairness.md) that routes it to a worker pool and the priority (a ``priority``
+        label, higher first) that orders it. This used to be an insert plus up to two updates, all
+        on the loop — three transactions every other request waited behind (issue 1084). The queue
+        place reserved at admission is settled here: counted as landed, or given back on failure
+        along with the in-memory stub.
+        """
+        try:
+            await asyncio.to_thread(
+                store.create_job,
+                job.id,
+                job.topology,
+                user_input,
+                job.correlation_id,
+                job.source,
+                labels=labels,
+                parent_job_id=parent_job_id,
+                status="queued" if enqueue_only else "pending",
+                version=job.version,
+                job_class=_workload_class(topology) if enqueue_only else None,
+                priority=_label_priority(labels) if enqueue_only else None,
+            )
+        except BaseException:
+            if gauge is not None:
+                gauge.release()
+            await self._jobs.remove(job.id)
+            raise
+        if gauge is not None:
+            gauge.landed()
 
     async def resume(
         self,

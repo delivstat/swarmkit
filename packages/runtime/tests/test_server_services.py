@@ -86,6 +86,7 @@ class _FakeStore:
         self.labels: list[dict[str, str]] = []
         self.parents: list[str | None] = []
         self.updated: list[Any] = []
+        self.inserted_fields: list[dict[str, Any]] = []
 
     def create_job(
         self,
@@ -98,7 +99,17 @@ class _FakeStore:
         # Completed rather than absorbed by **kwargs: a double that silently swallows a new
         # argument is how a field the caller passes stops reaching the store with every test green.
         parent_job_id: str | None = None,
+        *,
+        status: str = "pending",
+        version: str | None = None,
+        job_class: str | None = None,
+        priority: int | None = None,
     ) -> None:
+        # The row is one insert now (issue 1084): what used to arrive as follow-up updates is
+        # recorded here, so a test can assert it reached the insert.
+        self.inserted_fields.append(
+            {"status": status, "version": version, "job_class": job_class, "priority": priority}
+        )
         # Correlation and labels recorded, so a test can assert the HTTP surface passes them —
         # `RunRequest` could not carry either until now, so a run started over the API was
         # uncorrelated no matter what the caller sent.
@@ -133,7 +144,9 @@ async def test_start_creates_persists_and_delegates(monkeypatch: pytest.MonkeyPa
     )
     assert job.topology == "hello@v2" and job.version == "v2"
     assert store.created == [(job.id, "hello@v2", "hi")]
-    assert store.updated == [(job.id, {"version": "v2"})]
+    # The canary version rides in the insert; no follow-up update of the row just written.
+    assert store.inserted_fields[0]["version"] == "v2"
+    assert store.updated == []
     assert launched  # delegated to _start_job (the background launcher)
 
 

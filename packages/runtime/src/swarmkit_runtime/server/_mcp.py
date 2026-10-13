@@ -143,6 +143,23 @@ async def _run_as_job(app: FastAPI, topology_name: str, user_input: str) -> str:
     return f"Run {job.id} is still running; poll GET /jobs/{job.id} for its result."
 
 
+#: Serve's log line when nothing else configured logging: plain ``%``-formatting, no markup.
+SERVE_LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
+
+
+def _claim_root_logging() -> None:
+    """Give the root logger a plain stderr handler before FastMCP can give it a ``RichHandler``.
+
+    FastMCP's constructor calls ``logging.basicConfig(handlers=[RichHandler(...)])``. Under
+    ``swarmkit serve`` nothing has configured the root logger yet, so that took — and every log
+    line in the process, serve's own per-request line included, was rendered through rich's table
+    layout: ~7 ms of CPU per ``POST /run`` on the event loop (issue 1084). Installed first, this
+    handler makes FastMCP's ``basicConfig`` a no-op. An embedder that configured logging keeps its
+    own: ``basicConfig`` adds nothing to a root logger that already has a handler.
+    """
+    logging.basicConfig(level=logging.INFO, format=SERVE_LOG_FORMAT)
+
+
 def _mount_mcp(app: FastAPI) -> None:
     """Set up MCP server and mount on the FastAPI app.
 
@@ -150,6 +167,7 @@ def _mount_mcp(app: FastAPI) -> None:
     """
     from swarmkit_runtime.mcp._sdk_compat import MCPServerClass  # noqa: PLC0415
 
+    _claim_root_logging()
     # The SDK switches on DNS-rebinding protection for a loopback host and then refuses any
     # `Host:` it does not recognise with a 421 — including `127.0.0.1` without a port, and every
     # name a container or reverse proxy is reached by. Serve already decides what it binds to and
