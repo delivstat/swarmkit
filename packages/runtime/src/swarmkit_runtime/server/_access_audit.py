@@ -39,6 +39,7 @@ class AccessAuditWriter:
         self._buffer: list[dict[str, Any]] = []
         self._dropped = 0
         self._task: asyncio.Task[None] | None = None
+        self._stopping = asyncio.Event()
 
     def record(
         self,
@@ -93,15 +94,20 @@ class AccessAuditWriter:
             self._task = asyncio.create_task(self._run(), name="serve-access-audit")
 
     async def stop(self) -> None:
-        """Stop the periodic flush and write what is left."""
+        """Stop the periodic flush and write what is left.
+
+        Signalled, not cancelled: a cancel could land while a batch is being written from its
+        thread. The thread would finish the write unobserved — a failure lost silently, and the
+        final flush racing it — so the loop is asked to finish its current flush and exit.
+        """
+        self._stopping.set()
         if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+            await self._task
             self._task = None
         await self.flush()
 
     async def _run(self) -> None:
-        while True:
-            await asyncio.sleep(self._interval)
+        while not self._stopping.is_set():
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._stopping.wait(), self._interval)
             await self.flush()

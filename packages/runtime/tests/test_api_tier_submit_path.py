@@ -128,9 +128,8 @@ class _CountingStore:
 
 def test_the_backlog_is_read_at_most_once_per_window(monkeypatch: pytest.MonkeyPatch) -> None:
     now = [100.0]
-    monkeypatch.setattr("swarmkit_runtime.server._services.time.monotonic", lambda: now[0])
     store = _CountingStore(depth=3)
-    gauge = _QueueDepthGauge()
+    gauge = _QueueDepthGauge(clock=lambda: now[0])
     for _ in range(50):
         assert gauge.depth(store) == 3  # type: ignore[arg-type]
     assert store.reads == 1
@@ -141,9 +140,8 @@ def test_the_backlog_is_read_at_most_once_per_window(monkeypatch: pytest.MonkeyP
 
 
 def test_a_reserved_place_is_seen_before_the_next_read(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("swarmkit_runtime.server._services.time.monotonic", lambda: 0.0)
     store = _CountingStore(depth=1)
-    gauge = _QueueDepthGauge()
+    gauge = _QueueDepthGauge(clock=lambda: 0.0)
     assert gauge.depth(store) == 1  # type: ignore[arg-type]
     gauge.reserve()
     gauge.reserve()
@@ -158,9 +156,8 @@ def test_a_re_read_still_counts_inserts_in_flight(monkeypatch: pytest.MonkeyPatc
     """The overshoot this guards: a re-read sees only committed rows. Had in-flight places been
     folded into the reading, the re-read would forget them and admit past the bound."""
     now = [0.0]
-    monkeypatch.setattr("swarmkit_runtime.server._services.time.monotonic", lambda: now[0])
     store = _CountingStore(depth=0)
-    gauge = _QueueDepthGauge()
+    gauge = _QueueDepthGauge(clock=lambda: now[0])
     gauge.depth(store)  # type: ignore[arg-type]
     gauge.reserve()
     gauge.reserve()  # two inserts in flight, neither committed
@@ -328,3 +325,114 @@ def test_an_embedder_keeps_its_own_logging(ws: Path) -> None:
         assert root.handlers == [mine]
     finally:
         root.handlers = saved
+
+
+# ---- cancellation mid-insert -------------------------------------------------------------------
+#
+# The insert runs in a worker thread, and a thread cannot be cancelled: if the request is cancelled
+# while it runs (a graceful-shutdown timeout, a cancelling middleware), the row lands anyway. The
+# submit therefore finishes what it started, as the old on-loop insert did by having no
+# cancellation point at all — otherwise an all-in-one run is left `pending` with nothing to run it.
+
+
+class _SlowStore:
+    def __init__(self, inner: Any, delay: float) -> None:
+        self._inner = inner
+        self._delay = delay
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def create_job(self, *a: Any, **k: Any) -> Any:
+        import time  # noqa: PLC0415
+
+        time.sleep(self._delay)
+        return self._inner.create_job(*a, **k)
+
+
+async def _start_and_cancel(
+    store: Any, *, enqueue_only: bool, monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[Any], Any]:
+    from swarmkit_runtime.server._config import ServerCfg  # noqa: PLC0415
+    from swarmkit_runtime.server._jobs import JobStore  # noqa: PLC0415
+    from swarmkit_runtime.server._services import JobService  # noqa: PLC0415
+
+    launched: list[Any] = []
+    monkeypatch.setattr(_services, "_start_job", lambda *a, **k: launched.append(a[1].id))
+
+    class _RT:
+        workspace = type("W", (), {"topologies": {"hello": object()}})()
+        workspace_root = Path(".")
+
+    jobs = JobStore()
+    task = asyncio.create_task(
+        JobService(jobs).start(
+            rt=_RT(),  # type: ignore[arg-type]
+            canary=None,
+            store=store,
+            cfg=ServerCfg(),
+            semaphore=None,
+            topology_name="hello",
+            user_input="hi",
+            max_steps=5,
+            enqueue_only=enqueue_only,
+            queue_max_depth=10 if enqueue_only else 0,
+            job_id="cancelled-1",
+        )
+    )
+    await asyncio.sleep(0.05)  # inside the insert
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.sleep(0.4)  # the thread's insert, and whatever follows it, completes
+    return launched, jobs
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_all_in_one_submit_still_starts_the_row_it_wrote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _SlowStore(SqliteStore(tmp_path), delay=0.2)
+    launched, _ = await _start_and_cancel(store, enqueue_only=False, monkeypatch=monkeypatch)
+    row = store.get_job("cancelled-1")
+    assert row is not None and row.status == "pending"
+    assert launched == ["cancelled-1"], "a written row nobody starts is stuck `pending`"
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_queue_submit_leaves_a_claimable_row_and_counts_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inner = SqliteStore(tmp_path)
+    store = _SlowStore(inner, delay=0.2)
+    # Never re-read during the test: the depth seen is the gauge's own accounting.
+    monkeypatch.setattr(_services, "QUEUE_DEPTH_MAX_AGE_S", 3600.0)
+    _, jobs = await _start_and_cancel(store, enqueue_only=True, monkeypatch=monkeypatch)
+    row = inner.get_job("cancelled-1")
+    assert row is not None and row.status == "queued"
+    # The row is in the queue, so the bound must count it — not give its place back.
+    assert _services._queue_gauge(store).depth(store) == 1  # type: ignore[arg-type]
+    assert await jobs.get("cancelled-1") is None  # no in-memory stub left behind
+
+
+@pytest.mark.asyncio
+async def test_stop_during_a_slow_flush_loses_and_duplicates_nothing(tmp_path: Path) -> None:
+    import time  # noqa: PLC0415
+
+    store = SqliteStore(tmp_path)
+    real = store.record_access_many
+
+    def slow(records: list[dict[str, Any]]) -> None:
+        time.sleep(0.2)
+        real(records)
+
+    store.record_access_many = slow  # type: ignore[method-assign]
+    writer = AccessAuditWriter(store, flush_interval_s=0.01)
+    writer.start()
+    writer.record(**_row(path="/first"))
+    await asyncio.sleep(0.05)  # the periodic flush is now inside the slow write
+    writer.record(**_row(path="/second"))
+    await writer.stop()
+    paths = [r["path"] for r in store.list_access()]
+    assert sorted(paths) == ["/first", "/second"], paths
+    assert paths == ["/second", "/first"], "newest first, in the order they were recorded"

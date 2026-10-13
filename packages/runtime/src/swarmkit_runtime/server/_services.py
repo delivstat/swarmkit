@@ -18,6 +18,7 @@ import asyncio
 import logging
 import time
 import weakref
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -116,14 +117,15 @@ class _QueueDepthGauge:
     and the 429 path paid it too.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
         self._read = 0  # the store's count at the last read
         self._since = 0  # this process's inserts that landed after it
         self._in_flight = 0  # admitted, insert not finished
         self._read_at = float("-inf")
 
     def depth(self, store: Store) -> int:
-        now = time.monotonic()
+        now = self._clock()
         if now - self._read_at >= QUEUE_DEPTH_MAX_AGE_S:
             self._read = store.count_jobs("queued")
             self._since = 0
@@ -150,6 +152,16 @@ def _queue_gauge(store: Store) -> _QueueDepthGauge:
     if gauge is None:
         gauge = _QUEUE_GAUGES[store] = _QueueDepthGauge()
     return gauge
+
+
+def _log_if_unobserved(task: asyncio.Future[Any]) -> None:
+    """A submit whose request was cancelled still finishes (see ``JobService.start``); if it then
+    fails, nobody is awaiting it — log it rather than leave asyncio's "never retrieved" warning."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("a submit failed after its request was cancelled: %s", exc)
 
 
 class JobService:
@@ -269,51 +281,62 @@ class JobService:
                 gauge.reserve()
         elif semaphore is not None and semaphore.locked():
             raise BusyError("Max concurrent jobs reached. Try again later.")
-        job = await self._jobs.create(resolved_name, user_input, job_id=job_id)
-        job.version = selected_version
-        job.correlation_id = correlation_id
-        job.source = source
-        job.labels = dict(labels or {})
-        if enqueue_only and store is None:
-            err = ServiceError(
-                "queue mode requires a durable store; a worker cannot claim an unpersisted job"
-            )
-            err.status = 500
-            raise err
-        if store:
-            await self._persist(
-                store,
+        # From admission on, the submit runs to completion even if this request is cancelled. The
+        # insert runs in a worker thread, and a thread cannot be cancelled: the row lands whatever
+        # happens to the request. Left cancellable, an all-in-one run would be written `pending`
+        # and never started, and a queued one would give back a queue place its row still holds.
+        # The on-loop insert this replaced had no cancellation point at all; this keeps that.
+
+        async def _admitted() -> Job:
+            job = await self._jobs.create(resolved_name, user_input, job_id=job_id)
+            job.version = selected_version
+            job.correlation_id = correlation_id
+            job.source = source
+            job.labels = dict(labels or {})
+            if enqueue_only and store is None:
+                err = ServiceError(
+                    "queue mode requires a durable store; a worker cannot claim an unpersisted job"
+                )
+                err.status = 500
+                raise err
+            if store:
+                await self._persist(
+                    store,
+                    job,
+                    resolved_topo,
+                    user_input,
+                    labels=labels,
+                    parent_job_id=parent_job_id,
+                    enqueue_only=enqueue_only,
+                    gauge=gauge,
+                )
+            if enqueue_only:
+                # Claimable now; a worker (swarmkit worker) drains the queue. The in-memory Job
+                # mirrors the durable status so the submit response reads "queued".
+                job.status = "queued"
+                # Drop the in-memory stub: the API tier never executes this job, so its live copy
+                # would stay "queued" forever and shadow the durable row a worker keeps current (GET
+                # merges live-over-row). The returned object still shapes the submit response.
+                await self._jobs.remove(job.id)
+                return job
+            _start_job(
+                self._jobs,
                 job,
-                resolved_topo,
-                user_input,
+                rt,
+                max_steps,
+                timeout_seconds=cfg.timeout_seconds,
+                semaphore=semaphore,
+                canary_router=canary,
+                store=store,
                 labels=labels,
-                parent_job_id=parent_job_id,
-                enqueue_only=enqueue_only,
-                gauge=gauge,
+                attachments=resolved_attachments,
+                budget_override=budget_override,
             )
-        if enqueue_only:
-            # Claimable now; a worker (swarmkit worker) drains the queue. The in-memory Job
-            # mirrors the durable status so the submit response reads "queued".
-            job.status = "queued"
-            # Drop the in-memory stub: the API tier never executes this job, so its live copy would
-            # stay "queued" forever and shadow the durable row a worker keeps current (GET merges
-            # live-over-row). The returned object still shapes the submit response.
-            await self._jobs.remove(job.id)
             return job
-        _start_job(
-            self._jobs,
-            job,
-            rt,
-            max_steps,
-            timeout_seconds=cfg.timeout_seconds,
-            semaphore=semaphore,
-            canary_router=canary,
-            store=store,
-            labels=labels,
-            attachments=resolved_attachments,
-            budget_override=budget_override,
-        )
-        return job
+
+        admitted = asyncio.ensure_future(_admitted())
+        admitted.add_done_callback(_log_if_unobserved)
+        return await asyncio.shield(admitted)
 
     async def _persist(
         self,

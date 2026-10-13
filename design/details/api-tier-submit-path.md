@@ -76,6 +76,21 @@ No HTTP or CLI change.
   keep their write-through journal (`audit-event-journal.md`), untouched here.
 - **Queue bound across processes.** It's approximate by up to one window of other processes'
   admissions, as described above.
+- **Acknowledged before durable.** A mutating call's response can reach the client before its
+  access row is committed. Before this change, the commit came first. Nothing in the runtime reads
+  `serve_access` back on the request path: it's for operators, and the storage CLI only migrates it.
+  The order is per process: `created_at` is stamped at record time, and rows from one process are
+  inserted in that order. Across processes, `id` order (what `list_access` sorts by) can differ from
+  `created_at` order by up to one window.
+- **Cancellation.** A thread can't be cancelled, so once a submit is admitted it runs to
+  completion under `asyncio.shield`, even if the request is cancelled (for example by a
+  graceful-shutdown timeout). Otherwise, a cancelled all-in-one submit would leave its row
+  `pending` with nothing to run it, and a queued one would give back a place its row still holds.
+  The on-loop insert had no cancellation point, so this keeps the old behaviour. A failure nobody
+  is left to observe is logged.
+- **Stopping the writer** signals the flush loop and waits for it; it doesn't cancel it. A cancel
+  could land while a batch was being written from its thread, which would leave that write's
+  failure unseen and let the final flush race it.
 
 ## Non-goals
 
@@ -99,6 +114,10 @@ No HTTP or CLI change.
   - A re-read still counts inserts in flight (the 1,001 regression).
   - 20 concurrent submits against a bound of 5 admit exactly 5.
   - A failed insert gives its place back.
+- **Cancellation**
+  - A cancelled all-in-one submit still starts the row it wrote. This failed before the shield.
+  - A cancelled queue submit leaves a claimable row, still counted by the bound.
+  - `stop()` during a slow flush loses and duplicates nothing, and keeps the order.
 - **Access audit**
   - Recording does no I/O, and a flush is one batch call.
   - `created_at` is the record time.
