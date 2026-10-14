@@ -63,6 +63,11 @@ No HTTP or CLI change.
     the cap are logged with a count.
   - An app without the lifespan, such as an embedder calling the helper directly, still writes
     inline.
+- **`serve --access-audit batched|sync`** (env `SWARMKIT_ACCESS_AUDIT`, or
+  `create_app(access_audit=...)`). `batched` is the default and uses the writer above. `sync`
+  starts no writer, so `_record_serve_access` writes each row inline before the response, as
+  before. This is the opt-out for an operator who needs every acknowledged call durably recorded.
+  An unknown value is refused: exit 2 from the CLI, `ValueError` from `create_app`.
 - **`_claim_root_logging()`** runs before FastMCP is constructed. It calls
   `logging.basicConfig(level=INFO, format=...)` with a plain `StreamHandler`, so FastMCP's own
   `basicConfig` becomes a no-op. An embedder that already configured logging keeps its own,
@@ -70,8 +75,9 @@ No HTTP or CLI change.
 
 ## Trade-offs, stated
 
-- **Access audit on `kill -9`.** A hard kill loses at most 0.25 s of access rows; a clean shutdown
-  loses none. The write was already best-effort, since a failing store never broke the request.
+- **Access audit on `kill -9`.** In `batched` mode, a hard kill loses at most 0.25 s of access
+  rows, and they aren't recovered on restart. A clean shutdown loses none, and `sync` mode loses
+  none either. The write was already best-effort, since a failing store never broke the request.
   The `serve_access` table is the transport access log, not the run audit trail. Run audit events
   keep their write-through journal (`audit-event-journal.md`), untouched here.
 - **Queue bound across processes.** It's approximate by up to one window of other processes'
@@ -123,6 +129,11 @@ No HTTP or CLI change.
   - `created_at` is the record time.
   - A failed flush keeps its rows.
   - The periodic flush writes, and `stop()` writes the rest.
+- **The opt-out**
+  - In `sync` mode the row is committed before the response, with no writer.
+  - `batched` is the default.
+  - An unknown mode is refused by `create_app`, and by the CLI from both the flag and the env var.
+  - The env var reaches `create_app`.
 - **Logging**
   - Serve's root logger is not a `RichHandler`.
   - An embedder's own handler is left alone.

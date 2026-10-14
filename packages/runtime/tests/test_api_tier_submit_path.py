@@ -436,3 +436,83 @@ async def test_stop_during_a_slow_flush_loses_and_duplicates_nothing(tmp_path: P
     paths = [r["path"] for r in store.list_access()]
     assert sorted(paths) == ["/first", "/second"], paths
     assert paths == ["/second", "/first"], "newest first, in the order they were recorded"
+
+
+# ---- the opt-out: --access-audit sync ----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sync_access_audit_writes_the_row_before_the_response(ws: Path) -> None:
+    """`sync` is the pre-1.263.3 behaviour: no writer, and the row is committed by the time the
+    caller has its response — so a kill -9 after the response cannot lose it."""
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    app = create_app(ws, enqueue_only=True, access_audit="sync")
+    async with app.router.lifespan_context(app):
+        assert app.state.access_audit is None
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1"
+        ) as client:
+            r = await client.post("/run/hello", json={"input": "x"})
+        assert r.status_code == 200
+        # Read inside the lifespan, before any shutdown flush could have written it.
+        assert any(
+            row["path"] == "/run/hello" and row["status"] == 200
+            for row in app.state.store.list_access(limit=10)
+        )
+
+
+@pytest.mark.asyncio
+async def test_batched_is_the_default(ws: Path) -> None:
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    app = create_app(ws, enqueue_only=True)
+    async with app.router.lifespan_context(app):
+        assert isinstance(app.state.access_audit, AccessAuditWriter)
+
+
+def test_an_unknown_access_audit_mode_is_refused(ws: Path) -> None:
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    with pytest.raises(ValueError, match="access_audit"):
+        create_app(ws, access_audit="sometimes")
+
+
+@pytest.mark.parametrize("how", ["flag", "env"])
+def test_serve_refuses_an_unknown_mode_from_flag_or_env(
+    ws: Path, how: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from swarmkit_runtime.cli import app as cli  # noqa: PLC0415
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    args = ["serve", str(ws)]
+    if how == "flag":
+        args += ["--access-audit", "sometimes"]
+    else:
+        monkeypatch.setenv("SWARMKIT_ACCESS_AUDIT", "sometimes")
+    result = CliRunner().invoke(cli, args)
+    assert result.exit_code == 2, result.output
+    assert "invalid access audit mode 'sometimes'" in result.output
+
+
+def test_serve_passes_the_mode_through(ws: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The env var reaches create_app, so a container sets it without changing its command."""
+    import uvicorn  # noqa: PLC0415
+    from swarmkit_runtime import server  # noqa: PLC0415
+    from swarmkit_runtime.cli import app as cli  # noqa: PLC0415
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    seen: dict[str, Any] = {}
+    real = server.create_app
+
+    def spy(*a: Any, **k: Any) -> Any:
+        seen.update(k)
+        return real(*a, **k)
+
+    monkeypatch.setattr(server, "create_app", spy)
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+    monkeypatch.setenv("SWARMKIT_ACCESS_AUDIT", "sync")
+    result = CliRunner().invoke(cli, ["serve", str(ws), "--host", "127.0.0.1"])
+    assert result.exit_code == 0, result.output
+    assert seen["access_audit"] == "sync"
+    assert "access audit: sync" in result.output

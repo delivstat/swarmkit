@@ -27,6 +27,10 @@ and no network egress. Full write-up and measured numbers:
 - **Server comparison** (`server_compare.sh` + `asgi_app.py`): the same `create_app()` under uvicorn
   and Granian, one worker each, stormed past a bounded queue (Run 7). `asgi_app.py` is an importable
   factory, since Granian imports its target by path rather than taking an app object.
+- **Access audit under `kill -9`** (`access_audit_kill9.sh`): serves the tiny workspace, sends N
+  `POST /run` calls, sends SIGKILL right after the last response, and counts the `serve_access`
+  rows on disk for each `--access-audit` mode. `sync` keeps every acknowledged call. `batched`
+  loses the last ~250 ms.
 
 ## Run
 

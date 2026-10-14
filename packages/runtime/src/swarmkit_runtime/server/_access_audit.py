@@ -10,8 +10,9 @@ buffers them in memory and writes each batch in one transaction from a worker th
 :data:`FLUSH_INTERVAL_S`. Each row is stamped when the call is recorded, not when it is written.
 
 The trade is the batch window: a process killed with ``kill -9`` loses at most the rows recorded
-since the last flush. A clean shutdown flushes. The write was already best-effort — a failing store
-never broke the request — so this narrows nothing a caller could rely on.
+since the last flush. A clean shutdown flushes. An operator who needs every row durable before its
+response sets ``serve --access-audit sync`` (``SWARMKIT_ACCESS_AUDIT=sync``), which skips this
+writer and writes each row inline, as serve did before.
 """
 
 from __future__ import annotations
@@ -24,6 +25,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+#: `serve --access-audit` / `create_app(access_audit=...)`: ``batched`` uses this writer; ``sync``
+#: writes each row inline before the response (the pre-1.263.3 behaviour, durable on kill -9).
+ACCESS_AUDIT_MODES = ("batched", "sync")
 #: How often buffered access rows are written.
 FLUSH_INTERVAL_S = 0.25
 #: Rows held while the store is unreachable before new ones are dropped (and counted in the log).
