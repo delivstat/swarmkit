@@ -239,6 +239,7 @@ class StorageService:
         self._astack = AsyncExitStack()
         #: What `checkpointer()` actually built, for `report()` to tell the truth about.
         self._checkpoint_effective: str = ""
+        self._store: Store | None = None
 
     @classmethod
     def for_workspace(cls, root: Path | str, workspace_raw: Any = None) -> StorageService:
@@ -369,11 +370,21 @@ class StorageService:
     # ---- the stores ----------------------------------------------------------------------------
 
     def store(self) -> Store:
-        """Jobs, conversations, usage."""
-        target = self.target(StoreKind.RUNTIME)
-        if target.backend == "sqlite":
-            return SqliteStore(self._root)
-        return Store(self.engine(StoreKind.RUNTIME))
+        """Jobs, conversations, usage — built once per service, like the engines.
+
+        Building one is not free: ``Store.__init__`` runs ``create_all`` and two column-inspection
+        migrations, and ``SqliteStore`` opens a NEW engine each time. The run path asks for the
+        store on every run (the stop checker), so rebuilding it cost ~6.6 ms of event-loop time per
+        run and a fresh SQLite engine with it (load-and-scale.md, Run 6). A ``Store`` holds only its
+        engine and is thread-safe through the engine's pool, so one instance serves every caller.
+        """
+        if self._store is None:
+            target = self.target(StoreKind.RUNTIME)
+            if target.backend == "sqlite":
+                self._store = SqliteStore(self._root)
+            else:
+                self._store = Store(self.engine(StoreKind.RUNTIME))
+        return self._store
 
     def artifact_store(self) -> Any:
         from swarmkit_runtime.artifacts import build_artifact_store  # noqa: PLC0415

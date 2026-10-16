@@ -389,6 +389,12 @@ class WorkspaceRuntime:
             GovernanceProvider,
             JournalingGovernance(self._governance, write=self._journal_write),
         )
+        #: Event ids the journal has durably written, per run. The end-of-run batch skips these
+        #: rather than re-inserting them for the primary key to reject: on SQLite each rejected
+        #: insert was still a full write transaction on the event loop, and it doubled the audit
+        #: writes of every run (load-and-scale.md, Run 6). A journal write that FAILED is not in
+        #: here, so the batch still retries exactly those — the safety net is unchanged.
+        self._journaled: dict[str, set[str]] = {}
         self._session_active = False
         # Compile once per topology, reuse across runs. Compiling rebuilds the LangGraph graph,
         # which is pure CPU on the event loop; the load benchmark (load-and-scale.md) showed it
@@ -1546,8 +1552,11 @@ class WorkspaceRuntime:
         from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
 
         ws_audit_level = self._get_workspace_audit_level()
+        already_written = self._journaled.pop(str(run_id), set()) if run_id else set()
 
         for evt in events:
+            if evt.event_id and evt.event_id in already_written:
+                continue
             try:
                 ts = (
                     datetime.fromisoformat(evt.timestamp) if evt.timestamp else datetime.now(tz=UTC)
@@ -1700,6 +1709,9 @@ class WorkspaceRuntime:
         topology_id = current_topology() or getattr(event, "topology_id", None)
         durable = dataclasses.replace(event, payload=payload, topology_id=topology_id)
         await self._audit_provider.record(durable)
+        run_id = getattr(durable, "run_id", None)
+        if run_id:
+            self._journaled.setdefault(str(run_id), set()).add(str(durable.event_id))
 
     def _get_workspace_audit_level(self) -> str | None:
         """Read workspace-level audit.level from storage config."""

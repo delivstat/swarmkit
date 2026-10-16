@@ -19,6 +19,7 @@ These numbers are a **baseline**, dated so a post-improvement run can be compare
 | 3 | 2026-09-18 | 1.244.0 | same box | audit write off-loop + pool=100 — one of several sync writes moved |
 | 4 | 2026-09-19 | 1.245.0 | same box | profiled a run + isolated driver vs serve — located the cost, corrected earlier runs |
 | 5 | 2026-09-19 | 1.249.0 | same box | the API/worker split under load — throughput scales with worker count (the payoff) |
+| 6 | 2026-10-13 | 1.263.2 | same box | per-process ceiling: store built once, audit written once (+46%); checkpointer lock measured |
 
 Run 5 is the payoff measurement: the fix Runs 1–4 pointed to — decoupling execution into worker
 processes (`design/details/worker-execution.md`) — shipped in 1.247.0–1.249.0, and this run shows
@@ -281,6 +282,64 @@ single-worker cross-check (641 ms/run from Postgres `completed_at` timestamps) c
 corrected figure. Short-run measurements (Runs 1–4) were close either way, but under queueing the
 distinction is 2×.
 
+## Run 6 (2026-10-13, runtime 1.263.2) — the per-process ceiling, located and lifted
+
+The question that started this run was whether FastAPI's event loop is the bottleneck, and whether
+serve should move to a faster loop or a Rust server. It is not, on the evidence: `uvicorn[standard]`
+already runs **uvloop** (libuv, C), and the cost is Python work *on* the loop, which no loop or
+server swap touches. Run 6 measures that work directly.
+
+**Instrument.** `examples/loadtest/checkpointer_contention.py` drives N concurrent
+`WorkspaceRuntime.run` calls in one process (no HTTP, no driver in the measurement), wraps the
+checkpointer's lock to time wait vs hold, and reports CPU per run. `tiny` topology, 500 ms mock
+latency, 15 s per level. Checkpoints are pinned explicitly — see the caveat on Runs 1–5 below.
+
+**What the profile found** (200 sequential runs, 0 ms latency, SQLite): two avoidable costs,
+together over half of the runtime's own time per run —
+
+- `StorageService.store()` rebuilt the runtime store on **every call** — `create_all` plus two
+  column-inspection migrations, and a **new SQLite engine** each time. The stop checker calls it
+  once per run: ~6.6 ms/run.
+- Every audit event was written **twice**: once by the write-through journal, then again by the
+  end-of-run batch, relying on primary-key dedup to reject it. Harmless, not free — each rejected
+  insert was a write transaction on the loop.
+
+Both fixed in 1.263.2 (`design/details/per-run-write-path.md`). Same box, `main` vs fix:
+
+| SQLite checkpoints | c | runs/s | p50 | p95 | CPU/run |
+|---|---|---|---|---|---|
+| before | 25 | 26.2 | 926 ms | 1164 ms | 28.8 ms |
+| after  | 25 | **35.3** | 689 ms | 851 ms | 18.9 ms |
+| before | 50 | 25.1 | 1949 ms | 2261 ms | 31.0 ms |
+| after  | 50 | **36.7** | 1338 ms | 1506 ms | 18.7 ms |
+
+| Postgres checkpoints | c | runs/s | p50 | p95 | CPU/run |
+|---|---|---|---|---|---|
+| before | 25 | 14.4 | 1709 ms | 1994 ms | 51.2 ms |
+| after  | 25 | **18.7** | 1317 ms | 1475 ms | 36.6 ms |
+| before | 50 | 15.3 | 3220 ms | 3535 ms | 49.2 ms |
+| after  | 50 | **17.9** | 2837 ms | 3044 ms | 37.7 ms |
+
+At c=1 and c=5 nothing changes, as it should: there the 500 ms model call is the run.
+
+**The checkpointer lock** (#1081). Every LangGraph async saver serializes its I/O behind one
+`asyncio.Lock` per instance, held across the database round trip, and the runtime has one saver
+per process. With Postgres checkpoints a run holds it ~45–53 ms over 6 acquisitions, so the
+all-in-one ceiling is ≈ 1000/50 ≈ 20 runs/s — exactly where the Postgres rows above flatten
+(17.9–20.5 runs/s across three runs at c=50). Sharding the saver by `thread_id` was prototyped:
++29% throughput at 4 shards on Postgres, but a worse p95, no gain on SQLite, and an unexplained
+stall at 8 shards. Not shipped; the measurements are in #1081. A worker runs one job at a time and
+is unaffected.
+
+**A caveat on Runs 1–5** (#1082). The loadtest workspaces have no `storage.checkpoints` block, and
+checkpoints deliberately do not follow `SWARMKIT_STORE_URL` — so every "Postgres" run above
+checkpointed to **SQLite**, and in Run 5 all N workers shared one SQLite checkpoint file. Their
+store numbers stand; their checkpointer was not what the labels imply.
+
+**Noise.** One cold first run of the original code on Postgres measured 2.5 runs/s at c=50; two
+reruns gave 16–17. It is excluded above. This is a shared WSL2 box with other stacks running;
+treat differences under ~10% as noise.
+
 ## What this means for sizing
 
 - **A single serve process is not a throughput engine for CPU-bound-per-run work.** Plan for
@@ -339,6 +398,13 @@ uv run python examples/loadtest/driver/loadtest.py storm --topology tiny --n 100
 SWARMKIT_STORE_URL=postgresql://... examples/loadtest/run5.sh typical typical 500 50 30 "1,2,4,8"
 SWARMKIT_STORE_URL=postgresql://... uv run python examples/loadtest/run5_drain.py \
     --workspace examples/loadtest/workspaces/typical --backlog 200 --workers 1,2,4,8 --latency-ms 500
+
+# Run 6 — the per-process ceiling: CPU per run and checkpointer lock wait/hold, in-process.
+# Checkpoints are pinned explicitly (they never follow SWARMKIT_STORE_URL):
+uv run python examples/loadtest/checkpointer_contention.py --workspace examples/loadtest/workspaces/tiny \
+    --topology tiny --checkpoints sqlite --levels 1,5,25,50 --duration 15 --latency-ms 500
+uv run --extra postgres python examples/loadtest/checkpointer_contention.py ... \
+    --checkpoints postgres --checkpoints-url postgresql://user:pw@host:5432/db
 
 # Soak — steady load, sample RSS/fds over time, report the slope (soak-testing.md):
 uv run python examples/loadtest/driver/loadtest.py soak --topology tiny --concurrency 5 \
