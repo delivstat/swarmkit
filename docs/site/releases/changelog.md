@@ -6,6 +6,15 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 <!-- BEGIN GENERATED: tags -->
 
+## October 2026
+
+- **v1.263.3** (2026-10-16) — serve: API-tier POST /run off the event loop; store built once per run
+- **v1.263.1** (2026-10-08) — fix(runtime): find_bad_agent_targets accepts bundled authoring ids
+- **v1.263.0** (2026-10-07) — fix(decisions): memory bindings skip the decision-judge path
+- **v1.262.1** (2026-10-07) — fix(resolver): string property with env placeholder expands on whole-string ref
+- **v1.262.0** (2026-10-07) — Spaces primitive in the dots reference app
+- **v1.261.0** (2026-10-02) — persistent oauth_clients + requires_credentials
+
 ## September 2026
 
 - **v1.260.0** (2026-09-30) — POST /api/mcp/{server_id}/invoke for direct MCP tool invocation
