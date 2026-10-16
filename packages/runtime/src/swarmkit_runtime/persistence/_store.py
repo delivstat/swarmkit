@@ -318,33 +318,47 @@ class Store:
         source: str | None = None,
         labels: dict[str, str] | None = None,
         parent_job_id: str | None = None,
+        *,
+        status: str = "pending",
+        version: str | None = None,
+        job_class: str | None = None,
+        priority: int | None = None,
     ) -> JobRow:
+        """Insert a job row. *status*, *version*, *job_class* and *priority* are written in the
+        same insert — the submit path used to follow it with one ``update_job`` per field, each a
+        transaction of its own on the request path (issue 1084)."""
         now = datetime.now(UTC).isoformat()
         row = JobRow(
             id=job_id,
             topology=topology,
-            status="pending",
+            status=status,
             input=user_input,
+            version=version,
             created_at=now,
             correlation_id=correlation_id,
             source=source,
             labels=dict(labels or {}),
             parent_job_id=parent_job_id,
+            job_class=job_class,
+            priority=priority or 0,
         )
+        values: dict[str, Any] = {
+            "id": row.id,
+            "topology": row.topology,
+            "status": row.status,
+            "input": row.input,
+            "created_at": row.created_at,
+            "correlation_id": row.correlation_id,
+            "source": row.source,
+            "labels": json.dumps(row.labels) if row.labels else None,
+            "parent_job_id": row.parent_job_id,
+        }
+        # Only what was given, so an unset column keeps its table default.
+        for col, val in (("version", version), ("job_class", job_class), ("priority", priority)):
+            if val is not None:
+                values[col] = val
         with self._engine.begin() as conn:
-            conn.execute(
-                insert(jobs).values(
-                    id=row.id,
-                    topology=row.topology,
-                    status=row.status,
-                    input=row.input,
-                    created_at=row.created_at,
-                    correlation_id=row.correlation_id,
-                    source=row.source,
-                    labels=json.dumps(row.labels) if row.labels else None,
-                    parent_job_id=row.parent_job_id,
-                )
-            )
+            conn.execute(insert(jobs).values(**values))
         return row
 
     def update_job(
@@ -661,6 +675,15 @@ class Store:
                     created_at=datetime.now(UTC).isoformat(),
                 )
             )
+
+    def record_access_many(self, records: list[dict[str, Any]]) -> None:
+        """Append several access-audit records in one transaction. Each record carries the
+        :meth:`record_access` fields plus its own ``created_at`` — stamped when the call was made,
+        not when the batch is written (serve batches these off the request path, issue 1084)."""
+        if not records:
+            return
+        with self._engine.begin() as conn:
+            conn.execute(insert(serve_access), records)
 
     def list_access(self, limit: int = 100) -> list[dict[str, Any]]:
         """Return recent serve access-audit records, newest first."""

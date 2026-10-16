@@ -181,6 +181,31 @@ Available providers:
 | `api_key` | Bearer keys declared in `workspace.yaml` — `server.auth.config.keys[]`, each a `key_ref: env:<VAR>` (a reference, never the literal), a `client_id` and a `tier` (`read` / `run` / `admin`) or explicit `scopes`. See the [serve auth guide](https://github.com/delivstat/swarmkit/blob/main/docs/guides/serve-auth.md) |
 | `jwt` | JWT with JWKS auto-discovery |
 
+## Access audit
+
+Every authenticated mutating call (`serve:run` / `serve:admin` tier, including 403s) is recorded in
+the `serve_access` table: client id, auth provider, method, path, required action, status and time.
+This is the transport access log. Run audit events (what agents did, gates and decisions) are
+separate and use their own write-through journal.
+
+`--access-audit` (env `SWARMKIT_ACCESS_AUDIT`) chooses how the rows are written:
+
+| Mode | How | On `kill -9` | Cost |
+|---|---|---|---|
+| `batched` (default) | buffered in memory, written in one transaction every 250 ms off the request path; flushed on clean shutdown; a failed write is retried at the next flush | loses at most the last ~250 ms of rows, which are not recovered on restart | none on the request path |
+| `sync` | written before the response, one transaction per mutating request | nothing acknowledged is lost | one database write on the event loop per mutating request |
+
+Choose `sync` when a requirement says every API call must be durably recorded before it is
+acknowledged. Each row's time is when the call completed in either mode. With several serve
+processes in `batched` mode, row ids can be up to one batch window out of time order. See
+`design/details/api-tier-submit-path.md` and `load-and-scale.md` Run 8.
+
+```console
+$ swarmkit serve ./ws --access-audit sync
+...
+access audit: sync — each row written before its response.
+```
+
 ## Production profile (fail-closed preflight)
 
 `swarmkit serve --profile production` refuses to start unless the deployment is safe to expose,

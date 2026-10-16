@@ -565,19 +565,28 @@ def _membership_authenticates(request: Any, method: str, path: str) -> bool:  # 
 
 
 def _record_serve_access(request: Any, identity: Any, action: str | None, status: int) -> None:
-    """Append a serve access-audit record (best-effort; never breaks the request)."""
+    """Append a serve access-audit record (best-effort; never breaks the request).
+
+    Buffered through the app's :class:`AccessAuditWriter` when the lifespan started one, so the
+    request does no I/O for it (issue 1084); written directly otherwise.
+    """
+    fields: dict[str, Any] = {
+        "client_id": identity.client_id,
+        "provider": identity.provider,
+        "method": request.method,
+        "path": request.url.path,
+        "action": action,
+        "status": status,
+    }
+    writer = getattr(request.app.state, "access_audit", None)
+    if writer is not None:
+        writer.record(**fields)
+        return
     store = getattr(request.app.state, "store", None)
     if store is None:
         return
     try:
-        store.record_access(
-            client_id=identity.client_id,
-            provider=identity.provider,
-            method=request.method,
-            path=request.url.path,
-            action=action,
-            status=status,
-        )
+        store.record_access(**fields)
     except Exception:  # audit must not break serving
         logger.debug("serve access-audit write failed", exc_info=True)
 

@@ -268,7 +268,8 @@ def test_server_records_access_audit() -> None:
         client.get("/topologies", headers=hdr)  # read — not audited
         client.post("/api/reload", headers=hdr)  # admin — audited (as a 403)
         store = client.app.state.store  # type: ignore[attr-defined]
-        rows = store.list_access(limit=50)
+    # Rows are buffered and written in batches off the request path (issue 1084); shutdown flushes.
+    rows = store.list_access(limit=50)
     # The mutating call is recorded with the acting client_id. (Store is shared on disk
     # across tests, so assert the row exists rather than asserting the whole table.)
     assert any(

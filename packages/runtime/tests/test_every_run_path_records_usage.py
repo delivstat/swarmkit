@@ -176,8 +176,12 @@ def test_every_path_names_its_source() -> None:
         # the formatter, and a guard a reformat can silently satisfy is not a guard. The window
         # only has to cover one call's arguments.
         lines = body.splitlines()
+        # `server/_services.py` hands the method to `asyncio.to_thread` (issue 1084), so a
+        # reference followed by its arguments counts as a call too.
         spans = [
-            "\n".join(lines[i : i + 8]) for i, line in enumerate(lines) if "create_job(" in line
+            "\n".join(lines[i : i + 8])
+            for i, line in enumerate(lines)
+            if "create_job(" in line or ".create_job," in line
         ]
         if rel == "server/_a2a.py":
             assert "source=SOURCE" in body, "the A2A handler no longer names its source"

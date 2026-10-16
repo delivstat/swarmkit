@@ -21,6 +21,7 @@ These numbers are a **baseline**, dated so a post-improvement run can be compare
 | 5 | 2026-09-19 | 1.249.0 | same box | the API/worker split under load — throughput scales with worker count (the payoff) |
 | 6 | 2026-10-13 | 1.263.2 | same box | per-process ceiling: store built once, audit written once (+46%); checkpointer lock measured |
 | 7 | 2026-10-13 | 1.263.2 | same box | uvicorn vs Granian on the API tier — the HTTP server is not the lever; the enqueue path is |
+| 8 | 2026-10-13 | 1.263.3 | same box | API-tier submit path: one off-loop insert, cached queue bound, batched access audit — +45% submits/s, p99 halved |
 
 Run 5 is the payoff measurement: the fix Runs 1–4 pointed to — decoupling execution into worker
 processes (`design/details/worker-execution.md`) — shipped in 1.247.0–1.249.0, and this run shows
@@ -363,7 +364,57 @@ calls on the loop — the queue-depth `COUNT`, `create_job`, an immediate `updat
 row, and a per-request `record_access` — about 23 round trips, plus ~7 ms rendering the request log
 through `rich`. A handler that blocks the loop gives a faster I/O layer nothing to accelerate, and
 the 429 path pays most of the same calls, which is why rejections are slow (Result 4). That is the
-fix, tracked in #1084; re-run this comparison after it.
+fix, tracked in #1084, and Run 8 is this comparison re-run after it.
+
+## Run 8 (2026-10-13, runtime 1.263.3) — the API-tier submit path, fixed
+
+Run 7's profile located the API tier's cost inside `POST /run`. Each submit made about 23
+synchronous Postgres round trips on the loop, and its log line went through `rich`. Runtime 1.263.3
+takes all of that off the request path (#1084, `design/details/api-tier-submit-path.md`):
+
+- **One insert.** The row is born `queued`, with class and priority, in a single insert run in a
+  worker thread. Before, it was an insert plus up to two updates of the same row, all on the loop.
+- **Cached queue bound.** The queue-depth `COUNT(*)` is read at most every 250 ms. In between, the
+  process counts its own admissions, including inserts still in flight.
+- **Batched access audit.** Access-audit rows are buffered and written in one transaction every
+  250 ms, off the loop. No row is coalesced or dropped on a clean shutdown.
+- **Plain logging.** Serve gives the root logger a plain handler before FastMCP can install its
+  `RichHandler`, which had been formatting every log line in the process.
+
+Same harness, box and Postgres as Run 7. Base is runtime 1.263.2 (#1083), measured in the same
+session.
+
+**Sequential submits**, in-process, 300 per sample, no profiler:
+
+| | wall per submit | CPU per submit |
+|---|---|---|
+| 1.263.2 | 46–51 ms | 21.5–22.9 ms |
+| **1.263.3** | **19–23 ms** (one outlier at 42 ms) | **11.4–13.6 ms** |
+
+**Storm**: 2,000 `POST /run` over 200 connections, queue depth 1,000, uvicorn, one worker
+(`server_compare.sh api 2000 200`):
+
+| | submits/s | p50 | p99 | accepted | errors |
+|---|---|---|---|---|---|
+| 1.263.2, 3 repeats | 21–26 | 5.3–5.5 s | 31–33 s | 1,000 | 4–6 |
+| **1.263.3**, 4 repeats | **34–37** | 4.9–5.4 s | **11–15 s** | **1,000** | 8–16 |
+| 1.263.3 under Granian, 3 repeats | 18–21 | 7.9–9.2 s | 23–24 s | 1,000 | 0 |
+
+Reading it:
+
+- **Throughput is up about 45%, and the tail is cut by more than half.**
+- **The median barely moves.** With 200 connections queued against one loop, p50 is mostly time
+  spent waiting behind other requests, and that only shrinks when per-request work does.
+- **The remaining ~12 ms of CPU per submit is spread across the framework.** That is routing, five
+  `BaseHTTPMiddleware` layers, auth and pydantic. No database call dominates it any more.
+- **"Errors" are client-side transport errors** (`httpx.HTTPError`), not server failures; the
+  server log has none. There were a few more than at base, in the same range.
+- **The queue bound held at exactly 1,000 in every run.** Getting there took a fix: the first
+  version of the gauge folded in-flight inserts into its reading, re-read the database before they
+  committed, and admitted 1,001. The shipped gauge counts in-flight inserts apart from the reading,
+  and `test_a_re_read_still_counts_inserts_in_flight` pins it.
+- **Granian did not benefit at all.** It is unchanged from Run 7 while uvicorn improved, so the
+  decision in #1085 stands with a wider margin.
 
 ## What this means for sizing
 
@@ -433,6 +484,8 @@ uv run --extra postgres python examples/loadtest/checkpointer_contention.py ... 
 
 # Run 7 — the same app under uvicorn vs Granian, API tier (Postgres) or all-in-one:
 SWARMKIT_STORE_URL=postgresql+psycopg://... examples/loadtest/server_compare.sh api 2000 200
+# Run 8 — the same storm, before/after the submit-path fix (check out each runtime in turn):
+SWARMKIT_STORE_URL=postgresql+psycopg://... REPEATS=4 examples/loadtest/server_compare.sh api 2000 200
 
 # Soak — steady load, sample RSS/fds over time, report the slope (soak-testing.md):
 uv run python examples/loadtest/driver/loadtest.py soak --topology tiny --concurrency 5 \

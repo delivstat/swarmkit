@@ -28,6 +28,7 @@ from swarmkit_runtime.oauth._client_store import ClientStore
 from swarmkit_runtime.persistence import storage_for_workspace
 from swarmkit_runtime.telemetry import configure_telemetry, load_telemetry_config
 
+from ._access_audit import ACCESS_AUDIT_MODES, AccessAuditWriter
 from ._config import (
     _parse_server_config,
     _parse_trigger_configs,
@@ -169,6 +170,7 @@ def create_app(  # noqa: PLR0915
     enqueue_only: bool = False,
     queue_max_depth: int = 0,
     profile: str = "standard",
+    access_audit: str = "batched",
 ) -> FastAPI:
     """Build the FastAPI app for a given workspace.
 
@@ -180,11 +182,18 @@ def create_app(  # noqa: PLR0915
     this many runs are waiting, so the queue cannot grow without limit. 0 means unbounded; the CLI
     sets a non-zero default.
 
+    *access_audit* is how serve access-audit rows are written (api-tier-submit-path.md):
+    ``"batched"`` (default) buffers them and writes every 250 ms off the request path — a hard
+    kill loses at most that window; ``"sync"`` writes each row before its response, one
+    transaction per mutating request, as serve did before 1.263.3.
+
     *profile* ``"production"`` runs a fail-closed preflight (production-profile.md) and refuses to
     start unless the deployment is safe to expose — real auth, a persistent ``SWARMKIT_OAUTH_KEY``,
     sandboxed MCP, no wildcard CORS, not ``--insecure``. ``"standard"`` (default) is unchanged.
     """
 
+    if access_audit not in ACCESS_AUDIT_MODES:
+        raise ValueError(f"access_audit must be one of {ACCESS_AUDIT_MODES}, not {access_audit!r}")
     _auth = auth_provider or NoneAuthProvider()
     # Default-secure lives here (not just in the CLI) so every embedder inherits it: an
     # unauthenticated serve on a non-loopback bind refuses to start unless opted in.
@@ -219,6 +228,13 @@ def create_app(  # noqa: PLR0915
         app.state.workspace_path = workspace_path  # for GET /fleet/state (reads artifact content)
         _warn_if_identity_is_not_a_role_member(_auth, runtime)
         _wire_storage(app, workspace_path, runtime)
+        # Access-audit rows are buffered and written in batches off the loop (issue 1084), unless
+        # the operator chose `sync`: then `_record_serve_access` writes each one inline.
+        audit_writer: AccessAuditWriter | None = None
+        if access_audit == "batched":
+            audit_writer = AccessAuditWriter(app.state.store)
+            audit_writer.start()
+        app.state.access_audit = audit_writer
 
         # The inbound event seam. It had one consumer — the bundled sequencer — and its queue left
         # with it, so nothing is wired by default: an application that wants correlated webhook
@@ -285,6 +301,8 @@ def create_app(  # noqa: PLR0915
         # The MCP transport's session manager lives exactly as long as the app does.
         async with mcp_session_lifespan(app):
             yield
+        if audit_writer is not None:
+            await audit_writer.stop()
         await scheduler.stop()
         # The *current* runtime — a reload may have replaced the one this lifespan booted.
         await app.state.runtime.close()

@@ -172,6 +172,17 @@ def serve(
             "start unless auth, SWARMKIT_OAUTH_KEY, sandboxed MCP and non-wildcard CORS are set).",
         ),
     ] = "standard",
+    access_audit: Annotated[
+        str,
+        typer.Option(
+            "--access-audit",
+            envvar="SWARMKIT_ACCESS_AUDIT",
+            help="How serve access-audit rows are written. batched (default): buffered and "
+            "written every 250 ms off the request path; a kill -9 loses at most that window. "
+            "sync: written before the response, one transaction per mutating request — durable, "
+            "slower under load (api-tier-submit-path.md).",
+        ),
+    ] = "batched",
 ) -> None:
     """Start the SwarmKit HTTP server (design §14.1).
 
@@ -195,6 +206,9 @@ def serve(
     if profile not in ("standard", "production"):
         typer.echo(f"invalid profile '{profile}' — use standard | production", err=True)
         raise typer.Exit(code=2)
+    if access_audit not in ("batched", "sync"):
+        typer.echo(f"invalid access audit mode '{access_audit}' — use batched | sync", err=True)
+        raise typer.Exit(code=2)
 
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
 
@@ -214,6 +228,7 @@ def serve(
             enqueue_only=(role == "api"),
             queue_max_depth=max_queue_depth,
             profile=profile,
+            access_audit=access_audit,
         )
     except RuntimeError as exc:
         # The production preflight's message is already a complete, numbered gap list with its own
@@ -241,6 +256,8 @@ def serve(
         typer.echo("role: api — enqueue only; start `swarmkit worker` to execute queued jobs.")
     if profile == "production":
         typer.echo("profile: production — fail-closed preflight passed.")
+    if access_audit == "sync":
+        typer.echo("access audit: sync — each row written before its response.")
     uvicorn.run(app_instance, host=host, port=port)
 
 
