@@ -24,6 +24,10 @@ and no network egress. Full write-up and measured numbers:
   and the checkpointer lock's wait/hold time. Use it to tell "the loop is CPU-bound" from "runs are
   queued on the checkpointer" (Run 6).
 
+- **Server comparison** (`server_compare.sh` + `asgi_app.py`): the same `create_app()` under uvicorn
+  and Granian, one worker each, stormed past a bounded queue (Run 7). `asgi_app.py` is an importable
+  factory, since Granian imports its target by path rather than taking an app object.
+
 ## Run
 
 ```bash
