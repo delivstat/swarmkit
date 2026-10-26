@@ -492,6 +492,14 @@ class _Meter:
         return estimate_cost(ref, self.input_tokens, self.output_tokens) if ref else 0.0
 
 
+def _price_key(config: Mapping[str, Any], ref: str) -> str:
+    """What a harness run is priced by: the MODEL it ran, when the archetype names one. ``ref`` is
+    the adapter id (``copilot``, ``claude-code``), which no price table has an entry for, so a
+    harness that reports tokens but no cost of its own was always recorded as $0.00 (#1096)."""
+    model = config.get("model")
+    return model if isinstance(model, str) and model else ref
+
+
 def _record_trace_step(
     agent: ResolvedAgent,
     kind: str,
@@ -927,7 +935,7 @@ async def _execute(  # noqa: PLR0912, PLR0915
                     if not persistent:
                         raise
 
-            cost_usd = meter.cost(ref)
+            cost_usd = meter.cost(_price_key(agent.executor.config, ref))
             _record_trace_step(agent, kind, ref, start_ts, meter, cost_usd, terminal, diff)
             return await _finish(
                 governance,
@@ -1052,7 +1060,11 @@ async def _finish(
     )
 
     if terminal.status == "success":
-        summary = terminal.output if isinstance(terminal.output, str) else "completed"
+        # A harness whose terminal event carries no answer (Copilot CLI's `result` is status and
+        # usage only; opencode's is a step marker) said it in its last message. "completed" was all
+        # such a run returned, with the answer sitting in the session it had already recorded.
+        last = next((m for m in reversed(session_messages) if m.strip()), None)
+        summary = terminal.output if isinstance(terminal.output, str) else (last or "completed")
         if schema is not None:
             summary, recovered = _artifact_from_session(summary, session_messages, schema)
             if recovered:

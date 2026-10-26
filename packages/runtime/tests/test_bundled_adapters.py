@@ -43,7 +43,7 @@ def _bundled_ids() -> list[str]:
 
 def test_the_library_ships_the_expected_harnesses() -> None:
     ids = _bundled_ids()
-    for expected in ("claude-code", "codex", "opencode", "gemini-cli"):
+    for expected in ("claude-code", "codex", "opencode", "gemini-cli", "copilot"):
         assert expected in ids
 
 

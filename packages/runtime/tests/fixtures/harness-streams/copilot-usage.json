@@ -1,0 +1,80 @@
+{
+  "totalPremiumRequestCost": 0,
+  "totalUserRequests": 1,
+  "totalNanoAiu": 0,
+  "aiCreditsStatus": "unavailable",
+  "totalApiDurationMs": 23368,
+  "sessionStartTime": "2026-10-26T02:21:51.999Z",
+  "codeChanges": {
+    "linesAdded": 1,
+    "linesRemoved": 1,
+    "filesModifiedCount": 1,
+    "filesModified": [
+      "/work/calc.py"
+    ]
+  },
+  "modelMetrics": {
+    "moonshotai/kimi-k2.5": {
+      "requests": {
+        "count": 4,
+        "cost": 0
+      },
+      "usage": {
+        "inputTokens": 46253,
+        "outputTokens": 317,
+        "cacheReadTokens": 22912,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 84
+      },
+      "totalNanoAiu": 0,
+      "aiCreditsStatus": "unavailable"
+    }
+  },
+  "agentMetrics": {
+    "main": {
+      "totalApiDurationMs": 23368,
+      "totalNanoAiu": 0,
+      "modelMetrics": {
+        "moonshotai/kimi-k2.5": {
+          "requests": {
+            "count": 4,
+            "cost": 0
+          },
+          "usage": {
+            "inputTokens": 46253,
+            "outputTokens": 317,
+            "cacheReadTokens": 22912,
+            "cacheWriteTokens": 0,
+            "reasoningTokens": 84
+          },
+          "totalNanoAiu": 0
+        }
+      }
+    }
+  },
+  "providerModelMetrics": [
+    {
+      "provider": null,
+      "modelId": "moonshotai/kimi-k2.5",
+      "metrics": {
+        "requests": {
+          "count": 4,
+          "cost": 0
+        },
+        "usage": {
+          "inputTokens": 46253,
+          "outputTokens": 317,
+          "cacheReadTokens": 22912,
+          "cacheWriteTokens": 0,
+          "reasoningTokens": 84
+        },
+        "totalNanoAiu": 0,
+        "aiCreditsStatus": "unavailable"
+      },
+      "modelDisplayName": "moonshotai/kimi-k2.5"
+    }
+  ],
+  "currentModel": "moonshotai/kimi-k2.5",
+  "lastCallInputTokens": 11767,
+  "lastCallOutputTokens": 46
+}

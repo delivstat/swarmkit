@@ -34,6 +34,7 @@ swarmkit adapters list ./workspace
 ```
   claude-code          bundled    pre-vetted
   codex                bundled    pre-vetted
+  copilot              bundled    pre-vetted
   gemini-cli           bundled    pre-vetted
   opencode             bundled    pre-vetted
 ```
@@ -72,6 +73,35 @@ provenance: { authored_by: human, version: 1.0.0 }
 
 `executor` is optional; absent means `kind: model`. `config` is opaque to the runtime and validated by
 the adapter.
+
+#### The same agent on GitHub Copilot CLI
+
+```yaml
+executor:
+  kind: harness
+  ref: copilot
+  config:
+    auth_mode: api_key                      # BYOK; omit for a Copilot plan (`copilot login`)
+    provider_base_url: https://openrouter.ai/api/v1
+    model: openai/gpt-4.1-mini
+    allowed_tools: view,edit,bash           # comma-separated; only these are offered
+    budget:
+      max_turns: 20                         # always set one — see below
+      max_wall_clock_minutes: 15
+```
+
+- **Auth.** `subscription` (the default) uses a saved `copilot login`, or `COPILOT_GITHUB_TOKEN`
+  headless. `api_key` is bring-your-own-endpoint: the key in `COPILOT_PROVIDER_API_KEY`, the
+  endpoint from `provider_base_url` (plus optional `provider_type`, `provider_wire_api`).
+- **Always set `max_turns`.** A tool Copilot is denied does not end its session — the model retries
+  it. The adapter narrows tools with `--available-tools` so a tool outside the grant is never
+  offered, and `max_turns` is the backstop.
+- **Usage** comes from the report Copilot writes at exit, so tokens and cost are recorded, but
+  `max_cost_usd` cannot stop a Copilot run mid-way.
+- **Gateway tools** appear to Copilot as `swarmkit-<server>__<tool>`; a granted MCP skill is added to
+  `allowed_tools` in that spelling for you.
+- Copilot reads `AGENTS.md` and `CLAUDE.md` from the worktree, so the workspace's `CLAUDE.md` reaches
+  it the same way it reaches Claude Code.
 
 ### 3. Use it in a topology, gated
 

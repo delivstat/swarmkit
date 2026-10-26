@@ -11,7 +11,7 @@ status: active
 
 **Status:** originally drafted 2026-04-21. Reorganised 2026-05-08 to incorporate product architecture (`design/archive/rynko/product-architecture.md` (archived)), OpenTelemetry observability (`opentelemetry-observability.md`), intent drift detection (`intent-drift-detection.md`), market analysis (`market-analysis-and-risk-mitigations.md`), and ecosystem features.
 
-> **Read this paragraph as history.** It was written at runtime v1.103.0 and describes Phase 6 (M21) as shipped, including the bundled pipeline layer — `StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, the Temporal adapter, the pipeline-editor canvas and `deploy/pipeline`. **That layer was removed in 1.189.0** (`design/details/extracting-the-pipeline.md`): sequencing is the application's, and `examples/pipeline-orchestrator/` is the reference. The governance half — funnels, contracts, multi-party approval, defer-and-resume, correlated runs, the SDLC example — is what remains of M21. The runtime is at v1.264.0; `README.md` "Roadmap" is the current one-paragraph status.
+> **Read this paragraph as history.** It was written at runtime v1.103.0 and describes Phase 6 (M21) as shipped, including the bundled pipeline layer — `StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, the Temporal adapter, the pipeline-editor canvas and `deploy/pipeline`. **That layer was removed in 1.189.0** (`design/details/extracting-the-pipeline.md`): sequencing is the application's, and `examples/pipeline-orchestrator/` is the reference. The governance half — funnels, contracts, multi-party approval, defer-and-resume, correlated runs, the SDLC example — is what remains of M21. The runtime is at v1.265.0; `README.md` "Roadmap" is the current one-paragraph status.
 
 **Current (runtime v1.103.0):** Phases 1–4 shipped. Phase 5 (fleet & self-improvement) is largely shipped — eval harness (M15), fleet aggregation + control-plane/panel UI (M16), the executor/harness-isolation stack (M19), and the topology canvas (M20) all landed; the self-improvement distribution loop (M17) and workflow-archetype interop (M18) are the remaining tails. **Phase 6 — the delivery-pipeline & orchestration layer (M21)** shipped: `StageGraph` + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the pipeline-editor canvas, the end-to-end SDLC example, and the **bundled durable orchestrator** (`swarmkit orchestrator` + run-stage execution + `swarmkit pipeline` CLI + the UI Runs view + `deploy/pipeline` compose) that makes pipelines usable out of the box. Remaining before a public launch: M11 (launch prep) and the M9 reference-topology tail.
 
@@ -727,6 +727,8 @@ under the same governance + observability, with a real isolation boundary.
       path), wired via `--mcp-config`; container-reachable via `host.docker.internal`. Shipped across
       runtime 1.92.0–1.94.0 (PRs #565, #566, +close-out). `design/details/executor-mcp-gateway.md`;
       demo `demos/mcp_gateway.py`.
+- [x] **GitHub Copilot CLI adapter** — `copilot`, verified e2e against Copilot CLI 1.0.103 (BYOK and
+      the governed gateway); usage from its exit report (`spec.report`, #1090). (#1091)
 - [ ] Verify codex + gemini-cli adapters e2e against the real binaries (drop the EXPERIMENTAL marker).
 
 ### M20 — Topology canvas ✅
