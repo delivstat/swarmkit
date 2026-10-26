@@ -208,7 +208,7 @@ metadata: { id: architect-reviewer, name: Architect Reviewer (harness) }
 role: worker
 executor:
   kind: harness
-  ref: claude-code            # swap for opencode / codex / gemini-cli
+  ref: claude-code            # swap for opencode / codex / gemini-cli / copilot
 defaults:
   prompt: { system: "Investigate — verify the design matches the code. Read only." }
   iam: { base_scope: [app:read, kb:read] }

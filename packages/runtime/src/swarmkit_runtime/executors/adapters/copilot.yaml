@@ -1,0 +1,116 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: copilot
+  name: GitHub Copilot CLI
+  description: >-
+    GitHub's Copilot coding CLI, run headless with `copilot -p --output-format json`. Verified
+    against Copilot CLI 1.0.103. Its JSONL carries no token counts, so usage comes from the
+    `--usage-output-file` report it writes at exit (`spec.report`). A denied tool does not end a
+    Copilot session — the model retries — so the grant goes through `--available-tools` (a tool
+    outside it is never offered) and an archetype should always set `max_turns`.
+spec:
+  launch:
+    command:
+      - copilot
+      - -p
+      - "{task.statement}"
+      - --output-format
+      - json
+      # Headless needs it. What the agent may use is narrowed by `--available-tools` below, which
+      # hides a tool from the model — denying it instead leaves the model retrying it every turn.
+      - --allow-all-tools
+      - --no-ask-user
+      - --no-auto-update
+      - --no-color
+      # The built-in GitHub MCP server would be an ungoverned tool path. MCP reaches this harness
+      # only through SwarmKit's gateway (`task.mcp_config`).
+      - --disable-builtin-mcps
+      # The model-provider credential must not reach the agent's shell or MCP server environments.
+      - --secret-env-vars
+      - COPILOT_GITHUB_TOKEN,COPILOT_PROVIDER_API_KEY
+      - --usage-output-file
+      - "{report.path}"
+    optional_args:
+      - when: config.model
+        args: [--model, "{config.model}"]
+      - when: config.reasoning_effort
+        args: [--reasoning-effort, "{config.reasoning_effort}"]
+      # Comma-separated tool names (`view,edit,bash,…`); only these are offered to the model.
+      - when: config.allowed_tools
+        args: [--available-tools, "{config.allowed_tools}"]
+      # GitHub-billed sessions only — a soft cap enforced by Copilot itself.
+      - when: config.max_ai_credits
+        args: [--max-ai-credits, "{config.max_ai_credits}"]
+      - when: task.mcp_config
+        args: [--additional-mcp-config, "@{task.mcp_config}"]
+    mcp_tool_name: "{gateway}-{tool}"
+  # Keys are read from the environment, never templated from `{credential.model_provider}`: the
+  # harness node fills that from ANTHROPIC_API_KEY / CODEX_API_KEY, which would hand Copilot the
+  # wrong vendor's key. Set the variable the mode names.
+  auth:
+    default: subscription
+    modes:
+      # A Copilot plan: a saved `copilot login`, or — headless — a fine-grained GitHub token with
+      # the "Copilot Requests" permission in COPILOT_GITHUB_TOKEN (Copilot's own precedence: a token
+      # in the environment wins over a saved login).
+      subscription:
+        credential_paths:
+          - ~/.copilot
+      # Bring your own model endpoint (OpenAI-compatible, Azure or Anthropic), no GitHub account.
+      # The key goes in COPILOT_PROVIDER_API_KEY; the endpoint comes from the archetype's config,
+      # and is stripped in subscription mode so an inherited endpoint cannot redirect it.
+      api_key:
+        env:
+          COPILOT_PROVIDER_BASE_URL: "{config.provider_base_url}"
+          COPILOT_PROVIDER_TYPE: "{config.provider_type}"
+          COPILOT_PROVIDER_WIRE_API: "{config.provider_wire_api}"
+          COPILOT_PROVIDER_MODEL_ID: "{config.model}"
+  stream:
+    format: jsonl
+  event_map:
+    # One per model turn — which is what `max_turns` counts. A tool-only turn has empty content.
+    - when: { type: assistant.message }
+      emit:
+        - event: message
+          with: { role: assistant, text: "$.data.content" }
+    - when: { type: tool.execution_start }
+      emit:
+        - event: tool_call
+          with: { tool: "$.data.toolName", input_summary: "$.data.arguments" }
+    # The outcome arrives separately and does not repeat the tool's name, only its call id.
+    - when: { type: tool.execution_complete, data.success: false }
+      emit:
+        - event: tool_call
+          with: { tool: "$.data.toolCallId", status: error, input_summary: "$.data.error.message" }
+    - when: { type: result }
+      set: { session_id: "$.sessionId" }
+    - when: { type: result }
+      emit:
+        - event: result
+          with: { status: { from: "$.exitCode", map: exit_code_map } }
+  exit_code_map:
+    "0": success
+    _default: failure
+  report:
+    format: json
+    event_map:
+      # Keyed by model id; a session that switched models has one entry per model.
+      - for_each: "$.modelMetrics"
+        emit:
+          - event: usage
+            with:
+              input_tokens: "$.usage.inputTokens"
+              output_tokens: "$.usage.outputTokens"
+              cached_tokens: "$.usage.cacheReadTokens"
+              reasoning_tokens: "$.usage.reasoningTokens"
+  resume:
+    arg: [--resume, "{resume.token}"]
+  success_when: { exit_code: 0 }
+  on_unanswerable: abort
+  telemetry_grade: normalized
+  artifacts: { profile: files }
+provenance:
+  authored_by: human
+  version: 0.1.0
+  vendor: github

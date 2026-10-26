@@ -188,6 +188,11 @@ demo-named-operator:
 demo-harness-tool-outcomes:
     uv run python packages/runtime/demos/harness_tool_outcomes.py
 
+# Demo the GitHub Copilot CLI adapter (#1091): a recorded run through the bundled adapter, usage from
+# its exit report (#1090), and max_turns ending a denied-tool loop. `--live` runs the real binary.
+demo-copilot-harness:
+    uv run python packages/runtime/demos/copilot_harness.py
+
 # Demo the gate funnel (slice 3): the validate->judge->approve subgraph + structural invariant,
 # real multi-party approval, bounded retry, and retry-exhaustion escalation.
 demo-gate-funnel:
