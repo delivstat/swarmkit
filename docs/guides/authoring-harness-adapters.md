@@ -82,10 +82,31 @@ provenance:
 
 - **Input:** line-delimited JSON, one object per line.
 - **`when` (match):** literal equality on dotted field paths (`{type: message}`, `{part.reason: stop}`). No regex, no conditionals.
-- **`$.a.b.c` (extract):** dotted paths + array indices. `for_each: "$.items"` iterates one array, running the rule's `emit` per item.
+- **`$.a.b.c` (extract):** dotted paths + array indices. `for_each: "$.items"` iterates one array, running the rule's `emit` per item; pointed at an object it iterates the object's values (useful when the keys are model ids, which contain the path separator).
 - **`set`:** capture into adapter state — only `session_id` is recognized (for resume tokens).
 - **`emit`:** build an `ExecEvent`. `with` maps event fields to extractions/literals, or `{from: "$.x", map: <table>}` to translate a vendor enum via a named `status_map`.
-- **Substitution vars (closed set):** `{task.statement}`, `{task.base_ref}`, `{sandbox.root}`, `{budget.max_turns|max_cost_usd|max_wall_clock_minutes}`, `{resume.token}`, `{config.*}`, `{credential.model_provider}`. Substituted into argv positions only — **never** a shell string.
+- **Substitution vars (closed set):** `{task.statement}`, `{task.base_ref}`, `{sandbox.root}`, `{budget.max_turns|max_cost_usd|max_wall_clock_minutes}`, `{resume.token}`, `{report.path}`, `{config.*}`, `{credential.model_provider}`. Substituted into argv positions only — **never** a shell string.
+
+### Usage that is not on stdout
+
+Some harnesses report tokens only in a file written at exit (GitHub Copilot CLI's
+`--usage-output-file`). Declare it as `spec.report` and pass `{report.path}` in the launch; the
+runtime reads it after the process exits and emits its events before the terminal `result`:
+
+```yaml
+  launch:
+    command: [copilot, -p, "{task.statement}", --output-format, json, --usage-output-file, "{report.path}"]
+  report:
+    format: json
+    event_map:
+      - for_each: "$.modelMetrics"
+        emit:
+          - event: usage
+            with: { input_tokens: "$.usage.inputTokens", output_tokens: "$.usage.outputTokens" }
+```
+
+Exit-time usage cannot stop a run on `max_cost_usd` while it is still running, so give such a harness
+a `max_turns` and a wall-clock budget.
 
 ### Classifying result status across two fields
 

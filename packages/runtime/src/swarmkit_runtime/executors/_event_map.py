@@ -203,13 +203,16 @@ def _collapse_results(events: list[ExecEvent]) -> list[ExecEvent]:
 class AdapterInterpreter:
     """Stateful translator: parsed JSON lines → ExecEvents, capturing ``session_id`` for resume."""
 
-    def __init__(self, spec: AdapterSpec) -> None:
+    def __init__(self, spec: AdapterSpec, rules: tuple[Rule, ...] | None = None) -> None:
         self._spec = spec
+        # The stream map by default; the post-exit report reuses the same interpreter with its own
+        # rules (``spec.report.event_map``), so the two cannot drift into two DSLs.
+        self._rules = spec.event_map if rules is None else rules
         self.session_id: str | None = None
 
     def feed(self, obj: Mapping[str, Any]) -> list[ExecEvent]:
         events: list[ExecEvent] = []
-        for rule in self._spec.event_map:
+        for rule in self._rules:
             if not _matches(rule.when, obj):
                 continue
             self._apply_set(rule, obj)
@@ -225,6 +228,11 @@ class AdapterInterpreter:
     def _apply_emit(self, rule: Rule, obj: Mapping[str, Any]) -> list[ExecEvent]:
         if rule.for_each is not None:
             items = _get(obj, _path(rule.for_each))
+            # An object iterates its values: a report keyed by model id (Copilot's `modelMetrics`)
+            # has one entry per model, and the key is not something a dotted path can name — a
+            # model id like `moonshotai/kimi-k2.5` contains the path separator.
+            if isinstance(items, Mapping):
+                items = list(items.values())
             if not isinstance(items, (list, tuple)):
                 return []
             out: list[ExecEvent] = []

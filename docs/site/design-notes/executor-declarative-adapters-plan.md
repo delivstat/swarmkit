@@ -114,18 +114,53 @@ spec:
 
 - **Input:** line-delimited JSON only. One line → one parsed object.
 - **Matching (`when`):** literal equality on dotted field paths. No regex, no conditionals.
-- **Extraction (`$.a.b.c`):** dotted paths + array indexing; `for_each` iterates one array. No filter
-  expressions, no multi-line aggregation.
+- **Extraction (`$.a.b.c`):** dotted paths + array indexing; `for_each` iterates one array, or the
+  values of one object (a report keyed by model id — #1090). No filter expressions, no multi-line
+  aggregation.
 - **`map`:** a named lookup table translates a vendor enum to an `ExecEvent` field (the only
   "logic"). `_default` covers the rest.
 - **Substitution vars (closed set):** `{task.statement}`, `{task.base_ref}`, `{sandbox.root}`,
-  `{budget.max_turns|max_cost_usd|max_wall_clock_minutes}`, `{resume.token}`, `{config.*}` (adapter
+  `{budget.max_turns|max_cost_usd|max_wall_clock_minutes}`, `{resume.token}`, `{report.path}`, `{config.*}` (adapter
   knobs), `{credential.model_provider}` (env only). A var that expands empty drops its `optional_args`
   group. Values are substituted into argv positions — **never** concatenated into a shell string.
 
 Anything past this ceiling declares `requires: code` and graduates to a Tier-1 Python `Executor`
 (still supported as an escape hatch — the base class and registry are unchanged). The point is that
 the *common* subprocess+JSONL shape, which is every major coding harness, needs none.
+
+### Usage reported in a file at exit (`spec.report`, #1090)
+
+The stream is not always the whole story. GitHub Copilot CLI's JSONL carries no token counts at
+all; they exist only in the JSON file `--usage-output-file` writes when the process exits. An
+adapter that could only read stdout would record every Copilot run as 0 tokens and $0.00.
+
+`spec.report` declares that file as a second, one-shot input — still data:
+
+```yaml
+spec:
+  launch:
+    command: [copilot, -p, "{task.statement}", --usage-output-file, "{report.path}"]
+  report:
+    format: json
+    event_map:                      # the same rule DSL as the stream map
+      - for_each: "$.modelMetrics"  # an object keyed by model id: its values are iterated
+        emit:
+          - event: usage
+            with: { input_tokens: "$.usage.inputTokens", output_tokens: "$.usage.outputTokens" }
+```
+
+- `{report.path}` is a file name **relative to the harness's working directory** (the sandbox
+  root), so the container tier — which mounts the worktree at its own workdir — writes the file the
+  host reads. It is runtime-written: deleted before launch (a persistent working dir must not hand
+  last run's numbers to this one), deleted after reading, and excluded from the collected diff.
+- The terminal `result` is **held** until the process has exited and the report is read, then the
+  report's events are emitted before it. Every consumer stops at the first `result`
+  (`enforce_budget` returns on it), so usage that arrived after it would be dropped.
+- The stream owns the outcome: a `result` rule in a report is ignored.
+- A missing, oversized (> 8 MiB) or unparseable report is "no usage", logged, never a failed run —
+  a harness killed on a budget breach exits without writing one.
+- **Limitation, stated rather than hidden:** usage that arrives at exit cannot trip `max_cost_usd`
+  mid-run. `max_turns` and the wall clock still can, and are the caps to set for such a harness.
 
 ### Auth — both modes, expressed generically (RFC decision 4)
 
