@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -336,9 +337,15 @@ def test_an_embedder_keeps_its_own_logging(ws: Path) -> None:
 
 
 class _SlowStore:
+    """``create_job`` signals when it is entered and when the real insert has returned, so the
+    test cancels inside the insert and checks after it — never by guessing how long either takes
+    on the machine it runs on (#1102)."""
+
     def __init__(self, inner: Any, delay: float) -> None:
         self._inner = inner
         self._delay = delay
+        self.entered = threading.Event()
+        self.inserted = threading.Event()
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
@@ -346,12 +353,29 @@ class _SlowStore:
     def create_job(self, *a: Any, **k: Any) -> Any:
         import time  # noqa: PLC0415
 
+        self.entered.set()
         time.sleep(self._delay)
-        return self._inner.create_job(*a, **k)
+        try:
+            return self._inner.create_job(*a, **k)
+        finally:
+            self.inserted.set()
+
+
+async def _settled(timeout: float = 10.0) -> None:
+    """Wait for the shielded rest of the submit — it runs on the loop as its own task, after the
+    request that started it was cancelled."""
+    me = asyncio.current_task()
+    deadline = asyncio.get_running_loop().time() + timeout
+    while any(t is not me and not t.done() for t in asyncio.all_tasks()):
+        assert asyncio.get_running_loop().time() < deadline, "the submit never settled"
+        await asyncio.sleep(0.01)
 
 
 async def _start_and_cancel(
-    store: Any, *, enqueue_only: bool, monkeypatch: pytest.MonkeyPatch
+    store: _SlowStore,
+    *,
+    enqueue_only: bool,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[list[Any], Any]:
     from swarmkit_runtime.server._config import ServerCfg  # noqa: PLC0415
     from swarmkit_runtime.server._jobs import JobStore  # noqa: PLC0415
@@ -369,7 +393,7 @@ async def _start_and_cancel(
         JobService(jobs).start(
             rt=_RT(),  # type: ignore[arg-type]
             canary=None,
-            store=store,
+            store=store,  # type: ignore[arg-type]
             cfg=ServerCfg(),
             semaphore=None,
             topology_name="hello",
@@ -380,11 +404,12 @@ async def _start_and_cancel(
             job_id="cancelled-1",
         )
     )
-    await asyncio.sleep(0.05)  # inside the insert
+    assert await asyncio.to_thread(store.entered.wait, 10), "the submit never reached the insert"
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    await asyncio.sleep(0.4)  # the thread's insert, and whatever follows it, completes
+    assert await asyncio.to_thread(store.inserted.wait, 10), "the thread's insert never finished"
+    await _settled()  # and whatever follows it, on the loop
     return launched, jobs
 
 
