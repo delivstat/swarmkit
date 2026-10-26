@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: report-no-map
+  name: Report No Map
+  description: Invalid — a report block must say how to translate the file.
+spec:
+  launch:
+    command: [harness, "{task.statement}", --usage-file, "{report.path}"]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: done }
+      emit:
+        - event: result
+          with: { status: success }
+  report:
+    format: json
+provenance:
+  authored_by: human
+  version: 0.1.0

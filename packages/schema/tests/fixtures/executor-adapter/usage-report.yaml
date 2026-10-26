@@ -1,0 +1,28 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: report-harness
+  name: Report Harness
+  description: A harness that writes its token usage to a file at exit, not to stdout.
+spec:
+  launch:
+    command: [report-harness, "{task.statement}", --usage-file, "{report.path}"]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: done }
+      emit:
+        - event: result
+          with: { status: success, output: "$.text" }
+  report:
+    format: json
+    event_map:
+      - for_each: "$.models"
+        emit:
+          - event: usage
+            with:
+              input_tokens: "$.usage.in"
+              output_tokens: "$.usage.out"
+provenance:
+  authored_by: human
+  version: 0.1.0

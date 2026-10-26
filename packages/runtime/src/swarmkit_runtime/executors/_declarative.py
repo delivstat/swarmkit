@@ -59,6 +59,13 @@ _STDERR_DRAIN_TIMEOUT = 2.0
 #: named nothing, so nobody could tell which tool produced it.
 _STDOUT_LINE_LIMIT = 16 * 1024 * 1024
 
+#: Where a harness with a ``spec.report`` writes it, relative to its working directory (the sandbox
+#: root). Relative, not absolute, so the container tier — which mounts the worktree at its own
+#: workdir — sees the same file the host reads. Runtime-written: excluded from the collected diff.
+REPORT_FILE_NAME = ".swarmkit-report.json"
+#: A report is a summary, not a transcript. Past this it is skipped with a warning, not parsed.
+_REPORT_MAX_BYTES = 8 * 1024 * 1024
+
 
 def _merged_tool_grant(task: TaskSpec, spec: Any, config: Mapping[str, Any]) -> str:
     """The harness's ``allowed_tools`` value: the operator's grant, plus the agent's gateway tools
@@ -112,7 +119,33 @@ def _ctx(
     grant = _merged_tool_grant(task, spec, config)
     if grant:
         ctx["config.allowed_tools"] = grant
+    if spec is not None and getattr(spec, "report", None) is not None:
+        ctx["report.path"] = REPORT_FILE_NAME
     return ctx
+
+
+def _read_report(path: Path, kind: str) -> Any:
+    """The harness's exit report as parsed JSON, or ``None``. Never raises: a report is telemetry,
+    and a harness that exited before writing it (killed on a budget breach, crashed) must not turn
+    a finished run into a failed one — it means "no usage", which is what the run then records."""
+    try:
+        if not path.is_file():
+            logger.info("[harness:%s] declared a report but wrote none at %s", kind, path.name)
+            return None
+        if path.stat().st_size > _REPORT_MAX_BYTES:
+            logger.warning(
+                "[harness:%s] report %s exceeds %d bytes; skipped",
+                kind,
+                path.name,
+                _REPORT_MAX_BYTES,
+            )
+            return None
+        import json  # noqa: PLC0415
+
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("[harness:%s] unreadable report %s: %s", kind, path.name, exc)
+        return None
 
 
 class DeclarativeExecutor(Executor):
@@ -281,20 +314,16 @@ class DeclarativeExecutor(Executor):
             }
             self._active.pop(run_id, None)
 
-    async def run(
+    def _launch(
         self,
         task: TaskSpec,
         sandbox: SandboxHandle,
         budget: BudgetEnvelope,
-        *,
-        resume_token: str | None = None,
-        granted: tuple[str, ...] = (),
-        answer: str | None = None,
-    ) -> AsyncIterator[ExecEvent]:
-        import json  # noqa: PLC0415
-
-        run_id = uuid.uuid4().hex
-        interp = AdapterInterpreter(self._spec)
+        resume_token: str | None,
+        granted: tuple[str, ...],
+        answer: str | None,
+    ) -> tuple[list[str], dict[str, str]]:
+        """The argv + env for one launch (first run or a park-resume relaunch)."""
         resuming = resume_token is not None
         # On a park-resume relaunch (RFC §6.2/§6.3): the resumed session's message is the resolved
         # input answer if one was supplied, else the declared permission-nudge; plus the resume
@@ -315,9 +344,38 @@ class DeclarativeExecutor(Executor):
         if sandbox.exec_prefix:
             argv = [*sandbox.exec_prefix, *argv]
         env = self._launch_env(ctx)
+        return argv, env
+
+    async def run(
+        self,
+        task: TaskSpec,
+        sandbox: SandboxHandle,
+        budget: BudgetEnvelope,
+        *,
+        resume_token: str | None = None,
+        granted: tuple[str, ...] = (),
+        answer: str | None = None,
+    ) -> AsyncIterator[ExecEvent]:
+        import json  # noqa: PLC0415
+
+        run_id = uuid.uuid4().hex
+        interp = AdapterInterpreter(self._spec)
+        argv, env = self._launch(task, sandbox, budget, resume_token, granted, answer)
+
+        report = self._spec.report
+        report_path = Path(sandbox.root) / REPORT_FILE_NAME
+        if report is not None:
+            # A persistent working dir outlives the run; last run's report must not be read as this
+            # run's usage.
+            with suppress(OSError):
+                report_path.unlink()
 
         yield ExecStarted(run_id=run_id, kind=self._spec.kind, ref=self._config.get("model"))
         saw_terminal = False
+        # With a report, the terminal result is HELD until the process has exited and the report is
+        # read. Consumers stop at the first result (`enforce_budget` returns on it), so usage that
+        # arrives after it would otherwise be dropped — the run recorded as 0 tokens, $0.00.
+        held: ExecResult | None = None
         async for raw in self._open_stream(argv, env, sandbox.root, run_id):
             line = raw.strip()
             if not line:
@@ -329,10 +387,19 @@ class DeclarativeExecutor(Executor):
             except json.JSONDecodeError:
                 continue
             for event in interp.feed(obj):
-                saw_terminal = saw_terminal or isinstance(event, ExecResult)
+                if isinstance(event, ExecResult):
+                    saw_terminal = True
+                    if report is not None:
+                        # The first result is the one a consumer acts on without a report too.
+                        held = held or event
+                        continue
                 yield event
             if interp.session_id is not None:
                 self._sessions[run_id] = interp.session_id
+
+        if report is not None:
+            for event in [*self._report_events(report_path), *([held] if held else [])]:
+                yield event
 
         # The harness exited without its terminal `result` event. Emit one carrying the process exit
         # code + the retained stderr tail, so the failure is diagnosable instead of being recorded
@@ -340,6 +407,19 @@ class DeclarativeExecutor(Executor):
         exit_info = self._exits.pop(run_id, None)
         if not saw_terminal:
             yield ExecResult(status="failure", exit_metadata=dict(exit_info or {}))
+
+    def _report_events(self, path: Path) -> list[ExecEvent]:
+        """Translate the exit report through ``spec.report.event_map``, then delete it. A result
+        rule in a report is ignored: the stream owns the run's outcome, the report only adds what
+        the stream lacked."""
+        report = self._spec.report
+        doc = _read_report(path, self._spec.kind)
+        with suppress(OSError):
+            path.unlink()
+        if report is None or doc is None:
+            return []
+        events = AdapterInterpreter(self._spec, rules=report.event_map).feed(doc)
+        return [e for e in events if not isinstance(e, ExecResult)]
 
     async def cancel(self, run_id: str) -> None:
         proc = self._active.get(run_id)

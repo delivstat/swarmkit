@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from swarmkit_runtime.executors import (
+    REPORT_FILE_NAME,
     BudgetEnvelope,
     DeclarativeExecutor,
     ExecApprovalRequested,
@@ -256,7 +257,9 @@ def _usage_summary(event: Any) -> str:
 #: Written into the sandbox by the runtime, never by the agent — excluded from the collected diff
 #: so it is not presented as authored work. It also carries the gateway's bearer token.
 _MCP_CONFIG_NAME = ".swarmkit-mcp.json"
-_RUNTIME_WRITTEN: tuple[str, ...] = (_MCP_CONFIG_NAME,)
+#: The harness's exit report (`spec.report`) lands in the sandbox root too; the executor deletes it
+#: once read, but a run cancelled mid-read must not leave it to be diffed as authored work.
+_RUNTIME_WRITTEN: tuple[str, ...] = (_MCP_CONFIG_NAME, REPORT_FILE_NAME)
 
 
 async def _record(

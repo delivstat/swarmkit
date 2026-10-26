@@ -16,6 +16,7 @@ from swarmkit_runtime.executors._adapter_spec import (
     AdapterSpec,
     BuildSpec,
     MountSpec,
+    ReportSpec,
     SandboxSpec,
     parse_adapter_spec,
 )
@@ -27,6 +28,7 @@ from swarmkit_runtime.executors._approval import (
 from swarmkit_runtime.executors._budget import enforce_budget
 from swarmkit_runtime.executors._container import container_sandbox
 from swarmkit_runtime.executors._declarative import (
+    REPORT_FILE_NAME,
     DeclarativeExecutor,
     load_adapter_specs,
     load_workspace_adapter_specs,
@@ -69,6 +71,7 @@ from swarmkit_runtime.executors._sandbox import (
 )
 
 __all__ = [
+    "REPORT_FILE_NAME",
     "AdapterInterpreter",
     "AdapterSpec",
     "BudgetEnvelope",
@@ -96,6 +99,7 @@ __all__ = [
     "MountSpec",
     "NoInteractionDriver",
     "PreflightReport",
+    "ReportSpec",
     "ResolvedExecutor",
     "ResumeToken",
     "SandboxError",

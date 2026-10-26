@@ -150,6 +150,17 @@ class Rule:
 
 
 @dataclass(frozen=True)
+class ReportSpec:
+    """A report the harness writes to a FILE at exit (``spec.report``), for a harness whose stdout
+    stream does not carry everything — GitHub Copilot CLI's token counts exist only in its
+    ``--usage-output-file``. Read once after the process exits and fed through ``event_map``, the
+    same rule DSL as the stream map."""
+
+    event_map: tuple[Rule, ...]
+    format: str = "json"
+
+
+@dataclass(frozen=True)
 class AdapterSpec:
     """The runnable shape of a declarative adapter."""
 
@@ -180,6 +191,8 @@ class AdapterSpec:
     requires_code: bool = False
     # Opt-in isolation tier (executor-container-sandbox.md). Default ≡ worktree (today's behaviour).
     sandbox: SandboxSpec = field(default_factory=SandboxSpec)
+    # A report file read at exit (usage a harness does not put on stdout). None ⇒ stream only.
+    report: ReportSpec | None = None
 
     def env_keys(self) -> tuple[str, ...]:
         """Every env var name the harness launch may set — the union of `launch.env` and all auth
@@ -239,6 +252,7 @@ def parse_adapter_spec(raw: Mapping[str, Any]) -> AdapterSpec:
     grant = spec.get("grant") or {}
     success_when: Mapping[str, Any] = spec.get("success_when") or {}
     interaction: Mapping[str, Any] = spec.get("interaction") or {}
+    report_raw: Mapping[str, Any] | None = spec.get("report")
     return AdapterSpec(
         kind=str(raw["metadata"]["id"]),
         launch=launch,
@@ -263,6 +277,12 @@ def parse_adapter_spec(raw: Mapping[str, Any]) -> AdapterSpec:
         success_exit_code=success_when.get("exit_code"),
         requires_code=spec.get("requires") == "code",
         sandbox=SandboxSpec.from_raw(spec.get("sandbox")),
+        report=ReportSpec(
+            event_map=tuple(_rule(r) for r in report_raw["event_map"]),
+            format=str(report_raw.get("format", "json")),
+        )
+        if report_raw
+        else None,
     )
 
 

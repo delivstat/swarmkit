@@ -511,13 +511,28 @@ class Rule(BaseModel):
     )
     for_each: str | None = Field(
         None,
-        description="A dotted path to an array; the rule's `emit` runs once per item, with `$.` resolving against the item.",
+        description="A dotted path to an array, or to an object whose VALUES are iterated (a report keyed by model id); the rule's `emit` runs once per item, with `$.` resolving against the item.",
     )
     set: dict[str, str | float | bool | None] | None = Field(
         None,
         description="Capture values into adapter state (no event). The only recognized key is `session_id` (used for resume tokens).",
     )
     emit: list[EmitSpec] | None = None
+
+
+class Report(BaseModel):
+    """
+    A usage/summary report the harness writes to a FILE when it exits, for a harness whose stdout stream does not carry everything (GitHub Copilot CLI's tokens exist only in `--usage-output-file`). The runtime substitutes `{report.path}` (a file name relative to the harness's working directory, the sandbox root, so the container tier sees the same file) into the launch template, reads the file once after the process exits, and feeds it through `event_map` — the same rule DSL as the stream map — before the run's terminal `result`. A missing or unparseable report means no usage, never a failed run. Usage that arrives at exit cannot trip `max_cost_usd` mid-run; `max_turns` and the wall clock still can.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    format: Literal["json"] = Field(
+        ..., description="One JSON document (not line-delimited)."
+    )
+    event_map: list[Rule] = Field(..., min_length=1)
 
 
 class Spec(BaseModel):
@@ -529,6 +544,7 @@ class Spec(BaseModel):
     auth: Auth | None = None
     stream: Stream
     event_map: list[Rule] = Field(..., min_length=1)
+    report: Report | None = None
     status_map: dict[str, str] | None = Field(
         None,
         description="Vendor discriminator value -> ExecResultStatus (success|failure|budget_exceeded|cancelled|needs_approval|stalled). `_default` covers the rest.",

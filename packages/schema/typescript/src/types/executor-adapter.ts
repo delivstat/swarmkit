@@ -60,6 +60,7 @@ export interface Spec {
      * `interaction` block with a driver (the one Tier-1 seam — bidirectional session control).
      */
     on_unanswerable?: OnUnanswerable;
+    report?:          Report;
     /**
      * Present only when this adapter has hit the declarative DSL ceiling and must be
      * implemented as a Tier-1 Python Executor instead. A validator/loader treats `requires:
@@ -157,8 +158,8 @@ export interface APIKey {
 export interface EventMapElement {
     emit?: EmitElement[];
     /**
-     * A dotted path to an array; the rule's `emit` runs once per item, with `$.` resolving
-     * against the item.
+     * A dotted path to an array, or to an object whose VALUES are iterated (a report keyed by
+     * model id); the rule's `emit` runs once per item, with `$.` resolving against the item.
      */
     for_each?: string;
     /**
@@ -292,6 +293,27 @@ export interface OptionalArg {
  * `interaction` block with a driver (the one Tier-1 seam — bidirectional session control).
  */
 export type OnUnanswerable = "deny" | "abort" | "relay";
+
+/**
+ * A usage/summary report the harness writes to a FILE when it exits, for a harness whose
+ * stdout stream does not carry everything (GitHub Copilot CLI's tokens exist only in
+ * `--usage-output-file`). The runtime substitutes `{report.path}` (a file name relative to
+ * the harness's working directory, the sandbox root, so the container tier sees the same
+ * file) into the launch template, reads the file once after the process exits, and feeds it
+ * through `event_map` — the same rule DSL as the stream map — before the run's terminal
+ * `result`. A missing or unparseable report means no usage, never a failed run. Usage that
+ * arrives at exit cannot trip `max_cost_usd` mid-run; `max_turns` and the wall clock still
+ * can.
+ */
+export interface Report {
+    event_map: EventMapElement[];
+    /**
+     * One JSON document (not line-delimited).
+     */
+    format: ReportFormat;
+}
+
+export type ReportFormat = "json";
 
 /**
  * Present only when this adapter has hit the declarative DSL ceiling and must be
@@ -462,14 +484,14 @@ export interface Stream {
     /**
      * Line-delimited JSON only (RFC decision 1a).
      */
-    format: Format;
+    format: StreamFormat;
     /**
      * Tee each untranslated vendor line as exec.raw for a forensic trail.
      */
     retain_raw?: boolean;
 }
 
-export type Format = "jsonl";
+export type StreamFormat = "jsonl";
 
 /**
  * Terminal success predicate. Core layers its semantic check (typed output +
