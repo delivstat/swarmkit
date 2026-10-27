@@ -402,6 +402,34 @@ PRs 3 and 4 are independent of each other; both need 1 and 2 first for a safe de
    several tasks. Leaning in-process.
 2. **Verification for model-node workers with no diff.** `on: output` runs the command with the
    output on stdin. Is that enough, or do output-only batches want a judge only?
+
+   **Proposed answer:** keep `on: output` for anything a script can check. Where no script can, use
+   a judge that asks a few yes/no questions and decides in code, not a judge that returns one score.
+   OpenChamber's goal auditor does this (`packages/web/server/lib/session-goal/audit.js`, commit
+   `6b48aec`). It works like this:
+   - It reads only the objective and the worker's final message, so it can't be swayed by the
+     conversation.
+   - It asks three questions, each with written criteria for true and false. `all_done`: is
+     every requested part reported done? `remaining`: does the worker name requested work it still
+     has to do? `needs_user`: is it stopped by something only a person can provide?
+   - Plain code combines the answers. `needs_user` means blocked. `all_done` with nothing
+     `remaining` means complete. Anything else means continue.
+   - It accepts a classifier answering with probabilities or a small model answering with JSON
+     booleans; both go through the same decision code.
+   - It was measured on 144 hand-labelled turns. Jev got 142 right, and both misses were on the
+     safe side.
+   - Its working agent is told to end every turn with a factual done / verified / remaining report,
+     because that report is all the auditor sees.
+
+   For a batch, that suggests three things:
+   - The task contract requires that end-of-task report.
+   - The funnel `judge` layer takes a `questions:` form beside `threshold:`, each question
+     classified separately and combined by a declared rule. Each answer is then auditable on its
+     own, and a cheap classifier can answer them.
+   - `needs_user` maps to the task being parked for a person, not to retrying.
+
+   OpenChamber's limit is that "done" is still the agent's own claim, so this only verifies output
+   no command can check. It never replaces `on: diff`.
 3. **Mid-turn push.** Agensh appends new peer entries to the next tool result. For harness nodes that
    would mean the gateway appending a "new findings since your last read" footer to every gateway
    tool result. It is cheap to build but changes tool results the model sees, so it should be
@@ -409,5 +437,25 @@ PRs 3 and 4 are independent of each other; both need 1 and 2 first for a safe de
 4. **Merging.** v1 leaves each task's diff separate, for a person or the app to merge. Should the
    batch offer an integration step (apply passing diffs in order to one branch, re-verify) or leave
    that to the app, as sequencing is?
+
+   **Proposed answer:** for independent tasks, leave merging to the app in v1. The diffs touch
+   separate files by construction, so a merge is a deterministic `git apply` in order, followed by
+   one re-run of `verify` on the combined result. That needs no agent.
+
+   A **different pattern** does need a merge step: N attempts at the *same* task, keeping the best.
+   OpenChamber's "code fusion" (`packages/ui/src/lib/multirun/fusion.ts`, commit `6b48aec`) is a
+   recipe worth adopting there:
+   - Each attempt's worktree, including uncommitted and new files, is saved as a snapshot commit.
+   - The merging agent gets a fresh worktree at the base commit and a list of the attempts: each
+     one's final answer, change counts and snapshot commit.
+   - Diffs go into its prompt only if all of them together fit in 10% of its context window.
+     Otherwise it reads them with `git diff <base> <snapshot> -- <path>`, one file at a time.
+   - It picks the strongest attempt as the base, ports the better fixes and tests from the others,
+     doesn't commit, and ends by saying what it took from each attempt.
+
+   In SwarmKit that would be a second topology, "N attempts → merge → verify". The merged diff goes
+   through the same `validate.command` as any other task. OpenChamber's merged result is checked only
+   by the model that produced it; here the merge would be one more task, verified by the command like
+   the rest. It's not in this note's scope, but the snapshot-commit handoff is the part to reuse.
 5. **Promotion rubric.** Which `fact` and `fail` entries are worth proposing to governed memory, and
    who decides: a curator agent, or a person picking from the Findings tab?
