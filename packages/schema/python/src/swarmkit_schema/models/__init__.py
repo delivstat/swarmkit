@@ -16,6 +16,7 @@ from .role_registry import SwarmKitRoleRegistry
 from .approval_policy import SwarmKitApprovalPolicy
 from .funnel import SwarmKitFunnel
 from .contract import SwarmKitContract
+from .eval_set import SwarmKitEvalSet
 
 __all__ = [
     "SwarmKitTopology",
@@ -29,4 +30,5 @@ __all__ = [
     "SwarmKitApprovalPolicy",
     "SwarmKitFunnel",
     "SwarmKitContract",
+    "SwarmKitEvalSet",
 ]

@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:swarmkit:schema:v1:eval-set",
+  "title": "SwarmKitEvalSet",
+  "description": "An eval set: the cases a topology is scored against by `swarmkit eval` and the serve's eval routes. Each case runs the target topology on its input and passes when every expectation set on it passes; a case with no expectations is a smoke test that passes when the run completes. The test gate of growth through authoring (§12). Case ids must be unique within a set and the target must name a topology in the workspace — both checked by the runtime, since JSON Schema cannot express them. See design/details/eval-set-schema-v1.md.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "target", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "swarmkit/v1" },
+    "kind": { "const": "EvalSet" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "target": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(@\\d+\\.\\d+\\.\\d+)?$",
+      "title": "Target topology",
+      "description": "The topology every case runs against. `name@version` pins one version (for example a canary candidate); a bare name runs the workspace's current version. Cases are never routed through a canary split, so a report always scores one version.",
+      "x-swarmkit-ref": "topology"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "title": "Cases",
+      "description": "The cases to run, in order. Reports and comparisons between runs are keyed by case id.",
+      "items": { "$ref": "#/$defs/case" }
+    },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Lowercase kebab. Must start with a letter."
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "title": "Id",
+          "description": "The set's id — what `swarmkit eval <workspace> <id>` and the serve's `/evals/<id>` routes name."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "title": "Name",
+          "description": "A display name. Defaults to the id."
+        },
+        "description": {
+          "type": "string",
+          "title": "Description",
+          "description": "What this set checks, for the person reviewing it."
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "input"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "title": "Case id",
+          "description": "Unique within the set. A case keeps its id across edits so its results stay comparable from run to run."
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "title": "Input",
+          "description": "What the target topology is run on — the same text a caller would send to `POST /run`."
+        },
+        "expect": { "$ref": "#/$defs/expect" }
+      }
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "title": "Expectations",
+      "description": "Checks on the run's output. The case passes when every check set here passes. Deterministic checks cost nothing; `judge` and `rubric` each make one model call.",
+      "properties": {
+        "contains": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "title": "Substring" },
+          "title": "Contains",
+          "description": "Each string must appear in the output (case-insensitive)."
+        },
+        "not_contains": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "title": "Substring" },
+          "title": "Does not contain",
+          "description": "No string may appear in the output (case-insensitive)."
+        },
+        "regex": {
+          "type": "string",
+          "minLength": 1,
+          "title": "Matches pattern",
+          "description": "A Python regular expression the output must match somewhere (`re.search`)."
+        },
+        "equals": {
+          "type": "string",
+          "title": "Equals",
+          "description": "The whole output, after trimming whitespace, must equal this. Model output varies, so prefer the other checks unless the topology is deterministic."
+        },
+        "not_empty": {
+          "type": "boolean",
+          "default": false,
+          "title": "Not empty",
+          "description": "The output must contain something other than whitespace."
+        },
+        "used_skills": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier", "x-swarmkit-ref": "skill" },
+          "title": "Used skills",
+          "description": "Skills the run must have invoked, read from its events."
+        },
+        "judge": {
+          "$ref": "#/$defs/identifier",
+          "title": "Judge (decision skill)",
+          "description": "A decision skill that scores the output. Passes when its verdict is `pass` at `min_confidence` or above.",
+          "x-swarmkit-ref": "skill"
+        },
+        "rubric": {
+          "type": "string",
+          "minLength": 1,
+          "title": "Rubric",
+          "description": "An inline rubric the workspace's judge model scores the output against — no skill needed. Passes like `judge`."
+        },
+        "min_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5,
+          "title": "Minimum confidence",
+          "description": "The confidence `judge` and `rubric` must reach to pass."
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authored_by", "version"],
+      "properties": {
+        "authored_by": {
+          "enum": [
+            "human",
+            "authored_by_swarm",
+            "derived_from_template",
+            "imported_from_registry",
+            "vendor_published"
+          ]
+        },
+        "authored_date": { "type": "string", "format": "date" },
+        "version": { "$ref": "#/$defs/semver" },
+        "registry": { "type": "string" },
+        "vendor": { "type": "string" }
+      }
+    }
+  }
+}

@@ -21,6 +21,9 @@ import archetypeSchema from "../../schemas/archetype.schema.json" with {
 import contractSchema from "../../schemas/contract.schema.json" with {
 	type: "json",
 };
+import evalSetSchema from "../../schemas/eval-set.schema.json" with {
+	type: "json",
+};
 import executorAdapterSchema from "../../schemas/executor-adapter.schema.json" with {
 	type: "json",
 };
@@ -76,7 +79,8 @@ export type SchemaName =
 	| "role-registry"
 	| "approval-policy"
 	| "funnel"
-	| "contract";
+	| "contract"
+	| "eval-set";
 
 const SCHEMAS = {
 	topology: topologySchema,
@@ -90,6 +94,7 @@ const SCHEMAS = {
 	"approval-policy": approvalPolicySchema,
 	funnel: funnelSchema,
 	contract: contractSchema,
+	"eval-set": evalSetSchema,
 } as const;
 
 // Fleet-enrollment wire schemas (design details/control-plane/19-fleet-enrollment-protocol.md).

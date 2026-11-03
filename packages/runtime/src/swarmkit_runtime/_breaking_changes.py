@@ -36,6 +36,13 @@ BREAKING_CHANGES: tuple[BreakingChange, ...] = (
         "`effects: {tool: read|write}` on the server.",
         "https://github.com/delivstat/swarmkit/blob/main/docs/notes/mcp-effects-migration.md",
     ),
+    BreakingChange(
+        "1.266.0",
+        "Eval sets are validated against `eval-set.schema.json`. An unknown key at any level, an "
+        "empty `cases` list, a non-kebab set or case id, an empty case input and a duplicate case "
+        "id are now refused, where they were ignored before. The error names the field.",
+        "https://github.com/delivstat/swarmkit/blob/main/design/details/eval-set-schema-v1.md",
+    ),
 )
 
 

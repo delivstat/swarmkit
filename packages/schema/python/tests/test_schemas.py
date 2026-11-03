@@ -21,6 +21,7 @@ ALL: tuple[SchemaName, ...] = (
     "approval-policy",
     "funnel",
     "contract",
+    "eval-set",
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures"
@@ -158,6 +159,26 @@ def test_contract_valid_fixtures(fixture: Path) -> None:
 def test_contract_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("contract", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("eval-set"), ids=lambda p: p.name)
+def test_eval_set_valid_fixtures(fixture: Path) -> None:
+    validate("eval-set", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("eval-set-invalid"), ids=lambda p: p.name)
+def test_eval_set_invalid_fixtures_fail(fixture: Path) -> None:
+    with pytest.raises(ValidationError):
+        validate("eval-set", _load_yaml(fixture))
+
+
+def test_eval_set_reference_fields_carry_x_swarmkit_ref() -> None:
+    """The portal renders these as pickers over the workspace's topologies and skills."""
+    es = get_schema("eval-set")
+    assert es["properties"]["target"]["x-swarmkit-ref"] == "topology"
+    expect = es["$defs"]["expect"]["properties"]
+    assert expect["judge"]["x-swarmkit-ref"] == "skill"
+    assert expect["used_skills"]["items"]["x-swarmkit-ref"] == "skill"
 
 
 def test_workspace_reference_fields_carry_x_swarmkit_ref() -> None:

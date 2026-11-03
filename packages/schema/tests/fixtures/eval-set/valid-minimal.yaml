@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: EvalSet
+metadata:
+  id: smoke
+target: hello
+cases:
+  - id: runs
+    input: Greet the engineering team
