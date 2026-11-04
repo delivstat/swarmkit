@@ -41,6 +41,7 @@ from ._routes_ag_ui import _register_ag_ui_routes
 from ._routes_config import _register_config_routes
 from ._routes_conversations import _register_conversation_routes
 from ._routes_crud import _register_crud_routes
+from ._routes_evals import _register_eval_routes, _sweep_stale_eval_runs, cancel_eval_tasks
 from ._routes_events import _register_event_routes
 from ._routes_events_stream import _register_event_stream_routes
 from ._routes_fleet import _register_fleet_routes
@@ -258,6 +259,9 @@ def create_app(  # noqa: PLR0915
         # Bounded by the job timeout, not by "everything running right now": several instances can
         # share one Postgres store, and a blanket sweep would close another live instance's jobs.
         _sweep_stale_jobs(app.state.store, cfg.timeout_seconds)
+        # The same for eval runs, bounded by their heartbeat (eval-on-serve.md §4).
+        _sweep_stale_eval_runs(app.state.store)
+        app.state.eval_tasks = {}
 
         logger.info(
             "Server config: max_concurrent=%d, timeout=%ds, mcp_enabled=%s",
@@ -301,6 +305,8 @@ def create_app(  # noqa: PLR0915
         # The MCP transport's session manager lives exactly as long as the app does.
         async with mcp_session_lifespan(app):
             yield
+        # Evals in flight mark themselves `interrupted` (resumable) rather than wait for a sweep.
+        await cancel_eval_tasks(app)
         if audit_writer is not None:
             await audit_writer.stop()
         await scheduler.stop()
@@ -472,7 +478,9 @@ def create_app(  # noqa: PLR0915
     _register_conversation_routes(app, workspace_path)
     # Before the CRUD routes: `GET /api/skills/check` must beat `GET /api/skills/{skill_id}`.
     _register_skill_registry_routes(app)
-    _register_crud_routes(app, ArtifactService(workspace_path))
+    _artifacts = ArtifactService(workspace_path)
+    _register_crud_routes(app, _artifacts)
+    _register_eval_routes(app, workspace_path, _artifacts)
     _register_config_routes(app, WorkspaceConfigService(workspace_path))
     _register_event_stream_routes(app)
     _register_oauth_routes(

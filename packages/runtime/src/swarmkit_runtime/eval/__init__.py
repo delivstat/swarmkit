@@ -17,7 +17,12 @@ from swarmkit_runtime.eval._errors import (
     EvalSetNotFoundError,
     EvalTargetNotFoundError,
 )
-from swarmkit_runtime.eval._loader import list_eval_sets, load_eval_set
+from swarmkit_runtime.eval._loader import (
+    find_eval_set_file,
+    list_eval_sets,
+    load_eval_set,
+    parse_eval_set,
+)
 from swarmkit_runtime.eval._models import (
     CheckResult,
     EvalCase,
@@ -54,8 +59,10 @@ __all__ = [
     "ReportDiff",
     "deterministic_checks",
     "diff_report",
+    "find_eval_set_file",
     "latest_prior_report",
     "list_eval_sets",
     "load_eval_set",
+    "parse_eval_set",
     "run_eval_set",
 ]

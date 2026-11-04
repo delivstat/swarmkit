@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import weakref
 from collections.abc import Callable
@@ -29,6 +30,7 @@ from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.attachments import AttachmentError, resolve_all
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
+from swarmkit_runtime.eval import EvalSetInvalidError, find_eval_set_file, parse_eval_set
 from swarmkit_runtime.persistence import Store
 from swarmkit_runtime.resolver import resolve_workspace
 
@@ -85,6 +87,10 @@ class BusyError(ServiceError):
     status = 429
 
 
+class ConflictError(ServiceError):
+    status = 409
+
+
 class InvalidRequestError(ServiceError):
     """The request was well-formed but its contents cannot be accepted.
 
@@ -94,6 +100,29 @@ class InvalidRequestError(ServiceError):
     """
 
     status = 422
+
+
+_EVAL_SET_ID = re.compile(r"^[a-z][a-z0-9-]*$")
+
+
+class InvalidArtifactError(InvalidRequestError):
+    """An artifact write that did not validate. Carries the ``{code, message}`` the editor shows;
+    the file on disk is what it was before the write."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+    def body(self) -> dict[str, Any]:
+        return {"valid": False, "errors": [{"code": self.code, "message": str(self)}]}
+
+
+def _check_eval_set_id(set_id: str) -> None:
+    # The id names the file, so it is checked before it touches a path.
+    if not _EVAL_SET_ID.match(set_id):
+        raise InvalidArtifactError(
+            "id.invalid", f"eval set id {set_id!r} must be lowercase-kebab (^[a-z][a-z0-9-]*$)"
+        )
 
 
 #: How stale the queue-depth reading behind queue-mode admission may be, in seconds.
@@ -546,6 +575,84 @@ class ArtifactService:
             raise NotFoundError(f"{kind.capitalize()} '{artifact_id}' not found")
         f.unlink()
         return {"deleted": True, "id": artifact_id}, self.reload()
+
+    # ---- eval sets ------------------------------------------------------------
+    #
+    # An eval set is not part of the resolved workspace — nothing the runtime runs reads it — so a
+    # write validates the one file (schema, unique case ids, a target that exists) instead of the
+    # whole workspace, and needs no reload. The same write-validate-restore rule as `put_yaml`.
+    #
+    # Reached from the `/api/evals` routes only: no MCP tool or authoring-swarm path writes here.
+    # An agent that can edit the cases it is measured against can pass any test
+    # (design/details/eval-on-serve.md §5; tests/test_eval_routes.py).
+
+    def eval_set_yaml(self, set_id: str) -> str:
+        f = find_eval_set_file(self._ws, set_id)
+        if f is None:
+            raise NotFoundError(f"Eval set '{set_id}' not found")
+        return f.read_text(encoding="utf-8")
+
+    def put_eval_set(self, set_id: str, yaml_content: str, topologies: Any) -> dict[str, Any]:
+        """Replace (or create) set ``set_id``. Raises :class:`InvalidArtifactError` — the previous
+        file restored — when the YAML is not a valid set, names another id, or targets a topology
+        the workspace does not have."""
+        _check_eval_set_id(set_id)
+        f = find_eval_set_file(self._ws, set_id) or (self._ws / "evals" / f"{set_id}.yaml")
+        return self._write_eval_set(f, yaml_content, topologies, expect_id=set_id)
+
+    def create_eval_set(self, yaml_content: str, topologies: Any) -> dict[str, Any]:
+        """Create a set from its ``metadata.id``; 409 when a set with that id exists."""
+        try:
+            raw = yaml.safe_load(yaml_content)
+        except yaml.YAMLError as exc:
+            raise InvalidArtifactError("yaml.parse", str(exc)) from exc
+        meta = raw.get("metadata") if isinstance(raw, dict) else None
+        set_id = meta.get("id") if isinstance(meta, dict) else None
+        if not isinstance(set_id, str) or not set_id:
+            raise InvalidArtifactError("missing.id", "metadata.id is required")
+        _check_eval_set_id(set_id)
+        if find_eval_set_file(self._ws, set_id) is not None:
+            raise ConflictError(f"Eval set '{set_id}' already exists")
+        f = self._ws / "evals" / f"{set_id}.yaml"
+        return self._write_eval_set(f, yaml_content, topologies, expect_id=set_id)
+
+    def delete_eval_set(self, set_id: str) -> dict[str, Any]:
+        """Remove the file. Its run history stays: each run carries its own snapshot of the set."""
+        f = find_eval_set_file(self._ws, set_id)
+        if f is None:
+            raise NotFoundError(f"Eval set '{set_id}' not found")
+        f.unlink()
+        return {"deleted": True, "id": set_id}
+
+    def _write_eval_set(
+        self, f: Path, yaml_content: str, topologies: Any, *, expect_id: str
+    ) -> dict[str, Any]:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        previous = f.read_text(encoding="utf-8") if f.exists() else None
+        f.write_text(yaml_content, encoding="utf-8")
+        try:
+            eval_set = parse_eval_set(f)
+            if eval_set.metadata.id != expect_id:
+                raise InvalidArtifactError(
+                    "id.mismatch",
+                    f"metadata.id is {eval_set.metadata.id!r}, but this is set {expect_id!r}",
+                )
+            if eval_set.target not in topologies:
+                available = ", ".join(sorted(topologies)) or "none"
+                raise InvalidArtifactError(
+                    "target.unknown",
+                    f"target {eval_set.target!r} is not a topology in this workspace. "
+                    f"Available: {available}",
+                )
+        except (EvalSetInvalidError, InvalidArtifactError) as exc:
+            if previous is None:
+                f.unlink()
+            else:
+                f.write_text(previous, encoding="utf-8")
+            if isinstance(exc, InvalidArtifactError):
+                raise
+            raise InvalidArtifactError("schema", str(exc).replace(f"{f}", f.name)) from exc
+        return {"valid": True, "id": expect_id, "case_count": len(eval_set.cases)}
 
     # ---- read projections over the live runtime -----------------------------
 

@@ -61,6 +61,35 @@ class EvalRunRow:
     def recorded_case_ids(self) -> set[str]:
         return {str(c.get("case_id")) for c in self.cases}
 
+    def summary(self) -> dict[str, Any]:
+        """The run without its cases — one shape for `eval-runs list --json` and `GET /evals/runs`,
+        so a run reads the same whichever front door started it."""
+        return {
+            "id": self.id,
+            "eval_set_id": self.eval_set_id,
+            "target": self.target,
+            "status": self.status,
+            "source": self.source,
+            "passed": self.passed,
+            "total": self.total,
+            "recorded": len(self.cases),
+            "cost_usd": round(self.cost_usd, 6),
+            "error": self.error,
+            "started_at": self.started_at,
+            "heartbeat_at": self.heartbeat_at,
+            "finished_at": self.finished_at,
+            "stop_requested_at": self.stop_requested_at,
+        }
+
+    def detail(self) -> dict[str, Any]:
+        """The summary plus the set as run, the report so far and the diff."""
+        return {
+            **self.summary(),
+            "eval_set": self.eval_set,
+            "report": self.report,
+            "diff": self.diff,
+        }
+
 
 class EvalRunStoreMixin:
     """`eval_runs` reads and writes. Mixed into :class:`Store`, which provides ``_engine``."""

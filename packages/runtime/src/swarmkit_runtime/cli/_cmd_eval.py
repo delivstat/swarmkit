@@ -216,7 +216,7 @@ def eval_runs_list(
     """Recent eval runs, newest first — from the CLI and serve alike."""
     rows = _service(workspace_path, with_runtime=False).list_runs(eval_set, limit=limit)
     if as_json:
-        typer.echo(json.dumps([_summary(r) for r in rows], indent=2))
+        typer.echo(json.dumps([r.summary() for r in rows], indent=2))
         return
     if not rows:
         typer.echo("No eval runs recorded yet. Run one: swarmkit eval <workspace> <eval-set>")
@@ -241,7 +241,7 @@ def eval_runs_show(
         _stderr(f"error: no eval run {eval_run_id!r}.")
         raise typer.Exit(_EXIT_USAGE)
     if as_json:
-        typer.echo(json.dumps({**_summary(row), "report": row.report, "diff": row.diff}, indent=2))
+        typer.echo(json.dumps(row.detail(), indent=2))
         return
     typer.echo(f"eval run {row.id} · {row.eval_set_id} → '{row.target}' · {row.source}")
     typer.echo(
@@ -292,20 +292,3 @@ def eval_runs_stop(
         _stderr(f"error: eval run {eval_run_id!r} is not running.")
         raise typer.Exit(_EXIT_USAGE)
     typer.echo(f"stop requested: {eval_run_id} stops after the case it is on.")
-
-
-def _summary(row: Any) -> dict[str, Any]:
-    return {
-        "id": row.id,
-        "eval_set_id": row.eval_set_id,
-        "target": row.target,
-        "status": row.status,
-        "source": row.source,
-        "passed": row.passed,
-        "total": row.total,
-        "recorded": len(row.cases),
-        "cost_usd": round(row.cost_usd, 6),
-        "error": row.error,
-        "started_at": row.started_at,
-        "finished_at": row.finished_at,
-    }

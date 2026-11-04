@@ -107,10 +107,22 @@ class EvalService:
         any row is written — there is nothing to resume. Once the row exists it always ends in a
         terminal status, even when the eval itself fails.
         """
+        row = await self.begin(ref, source=source, eval_run_id=eval_run_id)
+        return await self.execute(
+            row, on_case=on_case, case_timeout_s=case_timeout_s, should_stop=should_stop
+        )
+
+    async def begin(self, ref: str, *, source: str, eval_run_id: str | None = None) -> EvalRunRow:
+        """Admit a run: load the set, check its target, write the `running` row. Nothing is scored.
+
+        The first half of :meth:`run`, for a caller that answers before the cases run — serve's
+        ``POST /evals/{id}/run`` returns 202 with this row, then hands it to :meth:`execute` in a
+        task. Raises before any row exists when the set or its target is wrong.
+        """
         eval_set = self.get_set(ref)
         self._check_target(eval_set)
         run_id = eval_run_id or str(uuid.uuid4())
-        row = await asyncio.to_thread(
+        row: EvalRunRow = await asyncio.to_thread(
             self._store.create_eval_run,
             run_id,
             eval_set_id=eval_set.metadata.id,
@@ -119,7 +131,7 @@ class EvalService:
             eval_set=eval_set.model_dump(mode="json"),
             total=len(eval_set.cases),
         )
-        return await self._execute(row, eval_set, on_case, case_timeout_s, should_stop)
+        return row
 
     async def resume(
         self,
@@ -134,6 +146,14 @@ class EvalService:
 
         Refused for a run in any other state, and for one whose target topology is gone.
         """
+        claimed = await self.begin_resume(eval_run_id)
+        return await self.execute(
+            claimed, on_case=on_case, case_timeout_s=case_timeout_s, should_stop=should_stop
+        )
+
+    async def begin_resume(self, eval_run_id: str) -> EvalRunRow:
+        """Admit a resume: check the run can be resumed and claim it, back to `running`. The first
+        half of :meth:`resume`, as :meth:`begin` is of :meth:`run`."""
         row = await asyncio.to_thread(self._store.get_eval_run, eval_run_id)
         if row is None:
             raise EvalRunNotFoundError(f"No eval run {eval_run_id!r}.")
@@ -148,9 +168,9 @@ class EvalService:
             raise EvalRunConflictError(
                 f"Eval run {eval_run_id!r} was resumed or changed by another caller."
             )
-        claimed = await asyncio.to_thread(self._store.get_eval_run, eval_run_id)
+        claimed: EvalRunRow | None = await asyncio.to_thread(self._store.get_eval_run, eval_run_id)
         assert claimed is not None
-        return await self._execute(claimed, eval_set, on_case, case_timeout_s, should_stop)
+        return claimed
 
     def request_stop(self, eval_run_id: str) -> bool:
         """Ask a running eval to stop after its current case. False if it isn't running."""
@@ -184,8 +204,6 @@ class EvalService:
             finished_at=row.finished_at or "",
         )
 
-    # ---- internals ------------------------------------------------------------
-
     def _check_target(self, eval_set: EvalSet) -> None:
         workspace = getattr(self._runtime, "workspace", None)
         topologies = getattr(workspace, "topologies", None)
@@ -196,14 +214,18 @@ class EvalService:
                 f"is not in this workspace. Available: {available}"
             )
 
-    async def _execute(
+    async def execute(
         self,
         row: EvalRunRow,
-        eval_set: EvalSet,
-        on_case: OnCase | None,
-        case_timeout_s: float | None,
-        should_stop: ShouldStop | None,
+        *,
+        on_case: OnCase | None = None,
+        case_timeout_s: float | None = None,
+        should_stop: ShouldStop | None = None,
     ) -> EvalRunRow:
+        """Score an admitted row's remaining cases, against the set as snapshotted on the row, and
+        finish it. The second half of :meth:`run` and :meth:`resume`; always ends the row in a
+        terminal status, except on cancellation, which marks it `interrupted` and re-raises."""
+        eval_set = EvalSet.model_validate(row.eval_set)
         run_id = row.id
         stop_seen = False
 
@@ -276,6 +298,8 @@ class EvalService:
             self._store.finish_eval_run, run_id, status, report=report_dict, diff=diff
         )
         return await self._reread(run_id)
+
+    # ---- internals ------------------------------------------------------------
 
     def _diff(self, row: EvalRunRow, report: EvalReport) -> dict[str, Any] | None:
         """The diff against the newest run of the set that finished before this one started.

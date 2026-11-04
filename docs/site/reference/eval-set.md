@@ -111,3 +111,44 @@ swarmkit eval-runs resume ./workspace <eval-run-id>          # continue a stoppe
 - **Resume** runs only the cases that have no result yet, on the same run, against the set as it was run. Editing the file afterwards doesn't change what a resume runs. Only an `interrupted` or `stopped` run can be resumed, and only while its target topology still exists. Nothing resumes automatically.
 - **Exit codes:** `eval` and `eval-runs resume` exit 0 when every case passes. They exit 1 when a case fails, or when the run stopped or errored. They exit 2 for an unknown set, run or target.
 - `--case-timeout SECONDS` fails a case that runs too long, and the eval carries on.
+
+## On serve
+
+`swarmkit serve` runs the same evals through the same service, so a run started over HTTP shows up in `swarmkit eval-runs list`, and each front door's `--compare` (or diff) sees the other's runs.
+
+**Sets** are an artifact kind under `/api/*`. Reads are the `read` tier and writes `admin`:
+
+| Method + path | What it does |
+|---|---|
+| `GET /api/evals` | every valid set: id, name, description, target, case count, last run (status, pass rate, dates) |
+| `GET /api/evals/{id}` | one set, parsed |
+| `GET /api/evals/{id}/yaml` | its YAML, as written (found even when it no longer validates, so it can be fixed) |
+| `POST /api/evals` | create from `{"yaml": ...}`; the file is `evals/<metadata.id>.yaml`; 409 if the id exists |
+| `PUT /api/evals/{id}` | replace (or create) from `{"yaml": ...}` |
+| `DELETE /api/evals/{id}` | remove the file; its run history stays |
+
+A write is checked against the schema, and its `metadata.id` must match the URL. The `target` must be a topology in the workspace, and the id must be lowercase-kebab. A write that fails any check answers 422 with `{"valid": false, "errors": [{"code", "message"}]}`, and the previous file stays as it was. The codes are `schema`, `target.unknown`, `id.mismatch`, `id.invalid`, `missing.id` and `yaml.parse`.
+
+No agent-facing tool writes eval sets. An agent that could edit the cases it's measured against could pass any test, so the authoring swarm's `write_file` tool refuses `evals/`, the same way `topologies:modify` is reserved for people.
+
+**Runs:**
+
+| Method + path | Tier | What it does |
+|---|---|---|
+| `POST /evals/{id}/run` | run | start: 202 with `{eval_run_id, status: "running", eval_set_id}` |
+| `GET /evals/runs?set=&limit=` | read | recent runs, newest first, without their cases |
+| `GET /evals/runs/{run_id}` | read | the run: the set as run, cases so far, report, diff, cost |
+| `POST /evals/runs/{run_id}/stop` | run | stop after the current case, in whichever process runs it (409 if it isn't running) |
+| `POST /evals/runs/{run_id}/resume` | run | continue an `interrupted` or `stopped` run: 202, then poll |
+
+- **Capacity.** An eval takes one slot of the serve's concurrency limit (`server.max_concurrent`) for its whole run, and is refused with 429 when no slot is free. Cases run one at a time inside that slot, each bounded by `server.timeout_seconds`. A case that runs over fails with `timeout`, and the eval carries on.
+- **Refusals.**
+  - An unknown set or run is 404.
+  - A set that doesn't validate, or whose target is gone, is 422 on `run`, and no run is recorded.
+  - A finished run, or one whose target is gone, is 409 on `resume`.
+  - The API tier (`serve --role api`) answers 409 to `run` and `resume`, because it executes no work.
+- **Restarts.** At startup, serve marks eval runs whose heartbeat is five minutes stale `interrupted`, beside the job sweep. A run with a fresh heartbeat belongs to another live instance sharing the store, and is left alone. A serve that shuts down cleanly marks its running evals `interrupted` itself, before it closes the runtime.
+- **A known gap.** A Ctrl-C in a terminal signals the harness subprocess too. The harness reports `exit -2`, and that's scored as the in-flight case's answer before serve shuts down ([#1111](https://github.com/delivstat/swarmkit/issues/1111)). Signal the serve process alone to stop it cleanly.
+
+`just demo-eval-serve` runs the whole flow on a fake harness: edit, run, interrupt, restart, resume, regress and diff.
+

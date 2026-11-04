@@ -204,7 +204,7 @@ Four PRs, in order. Each is reviewable against a merged baseline.
    - the sweep runs on CLI start.
 5. Docs: `eval-harness.md` gets a pointer to slice 3, plus the CLI reference, llms.txt and its regeneration.
 
-**PR 3: serve routes** (runtime minor bump)
+**PR 3: serve routes** (runtime minor bump) — shipped in 1.268.0, see [As built: PR 3](#as-built-pr-3)
 1. Add the `eval-set` kind to `ArtifactService`, with schema validation and the target check, and the `/api/evals` CRUD routes.
 2. Add `server/_routes_evals.py`: run, list, get, stop and resume, the semaphore slot, the task registry, 409 on the API tier, and the startup sweep beside `_sweep_stale_jobs`.
 3. Add the test that no agent-facing tool writes eval sets.
@@ -234,6 +234,19 @@ PR 2 follows §2–§4, apart from the points below. Each one is a change from t
   - It exits 2 for an unknown set, run or target. Before, only a failing case gave 1.
 - **Cost counts the cases' runs only.** A judge or rubric verdict (`DecisionSkillResult`) carries no usage today, so those calls aren't in `cost_usd` yet.
 - **Not built yet:** the topology-change check on resume (first open question). Resume refuses a run whose target topology is gone, but doesn't yet compare content hashes.
+
+## As built: PR 3
+
+PR 3 follows §5, apart from the points below.
+
+- **`EvalService` splits admission from execution.** `begin` / `begin_resume` load and check the set, then write or claim the row. `execute` scores the cases. `run` and `resume` are the two halves back to back, as before. The route calls the first half inline, so a refusal is a status code and not a failed row, and then returns 202 and hands the row to `execute` in a task.
+- **The slot is taken before the row is written.** Admission checks the semaphore and acquires it with no await in between, so two requests can't both see it free. The row is written only after that, so a 429 never leaves a `running` row. A refusal after the slot is taken, such as an unknown set, gives the slot back.
+- **Shutdown cancels evals before it closes the runtime.** Left to the loop's teardown, the eval would be cancelled only after the runtime it uses had been closed. The lifespan cancels the eval tasks first, and each marks its row `interrupted`.
+- **Eval-set writes validate the one file, not the workspace.** Nothing the runtime runs reads an eval set, so a write needs no workspace validation and no runtime reload. It checks the schema and unique case ids (the loader's check), that `metadata.id` matches the URL, and that `target` is a live topology. It restores the previous file on any failure, and answers 422 with a `{code, message}` the editor can show. Topology writes still answer 200 with `valid: false`. Eval sets use 422 as §5 says, and the other kinds weren't changed here.
+- **A set id from a URL must be lowercase-kebab.** `load_eval_set` also takes a file path, which is right for the CLI and wrong for a request. A non-kebab id is refused (404 on reads and runs, 422 on writes) before it reaches the loader.
+- **One row shape.** `EvalRunRow.summary()` and `.detail()` are what both `eval-runs list --json` and the routes return, so the CLI and HTTP shapes can't drift apart.
+- **No agent write path, tested two ways.** The authoring `write_file` tool refuses `evals/`. A source scan also checks that only `server/_routes_evals.py` calls the eval-set writers. Neither MCP front door exposes an artifact write.
+- **Found while demoing: [#1111](https://github.com/delivstat/swarmkit/issues/1111).** A terminal Ctrl-C signals the harness too. Its `exit -2` is returned as node output and scored as the in-flight case's answer, a moment before serve shuts down. The fix belongs in the harness node, beside #1109, not in the eval layer. The demo signals serve alone.
 
 ## Test plan
 
