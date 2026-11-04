@@ -111,3 +111,38 @@ serve_access = Table(
     Column("status", Integer),
     Column("created_at", Text, nullable=False),
 )
+
+# One row per eval run (design/details/eval-on-serve.md §3). An eval case is measurement, not a run
+# someone asked for, so its cases get no job rows; this row is the eval's own durable record — what
+# was run (the set as it stood when the run started), each case's result as it lands, what it cost,
+# and enough liveness to tell a run in flight from one whose process died.
+eval_runs = Table(
+    "eval_runs",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("eval_set_id", Text, nullable=False, index=True),
+    Column("target", Text, nullable=False),
+    #: running | succeeded | failed | stopped | interrupted | error
+    Column("status", Text, nullable=False),
+    #: which front door started it — "cli" | "serve"
+    Column("source", Text, nullable=False),
+    #: the eval set as run, JSON. A resume, a review and a diff refer to this, never to the file,
+    #: which may have been edited since.
+    Column("eval_set", Text, nullable=False),
+    #: EvalReport.to_dict() JSON — the cases recorded so far, in the order they ran
+    Column("report", Text),
+    #: ReportDiff JSON against the previous finished run of the same set; null when there was none
+    Column("diff", Text),
+    Column("passed", Integer, default=0),
+    Column("total", Integer, default=0),
+    #: summed from each case's run usage — the eval's cost, kept off job usage on purpose
+    Column("cost_usd", Float, default=0.0),
+    Column("error", Text),
+    Column("started_at", Text, nullable=False),
+    #: moved forward while the run is alive; a row whose heartbeat is stale has no owner
+    Column("heartbeat_at", Text, nullable=False),
+    Column("finished_at", Text),
+    #: a stop was asked for. A column, like jobs.stop_requested_at, so a stop reaches a run in any
+    #: process sharing the store; the run honours it between cases.
+    Column("stop_requested_at", Text),
+)

@@ -33,6 +33,7 @@ _TABLES: dict[str, tuple[str, ...]] = {
         "pipeline_artifacts",
         "governed_memory",
         "governed_memory_change_log",
+        "eval_runs",
     ),
     "audit.sqlite": ("audit_events",),
     "fleet.sqlite": ("fleet_memberships", "enrollment_tokens"),

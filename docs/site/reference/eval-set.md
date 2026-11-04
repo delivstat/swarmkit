@@ -89,4 +89,25 @@ Since runtime 1.266.0, a set with an unknown key, no cases, a non-kebab id, an e
 
 ## Reports
 
-Each run prints a per-case PASS/FAIL with the failing checks, and a pass rate. It stores a JSON report under `.swarmkit/eval-results/`, and `--output PATH` writes another copy. `--compare` diffs the run against the previous one, listing cases that regressed, were fixed or are new.
+Each run prints a per-case PASS/FAIL with the failing checks, a pass rate and the run's id. The run is recorded in the workspace's runtime store (SQLite or Postgres, as `storage:` says). `--output PATH` also writes the JSON report to a file. `--compare` diffs the run against the previous finished run of the same set, listing cases that regressed, were fixed or are new. When the store has no earlier run, it falls back to the newest report file under `.swarmkit/eval-results/`, where runtimes before 1.267.0 wrote reports.
+
+## Eval runs
+
+```bash
+swarmkit eval-runs list ./workspace [--set greeting-evals]   # newest first, CLI and serve alike
+swarmkit eval-runs show ./workspace <eval-run-id>            # every case, failing checks, diff, cost
+swarmkit eval-runs stop ./workspace <eval-run-id>            # stop after the current case
+swarmkit eval-runs resume ./workspace <eval-run-id>          # continue a stopped or interrupted run
+```
+
+- **What a run records:**
+  - the set as it stood when the run started;
+  - each case's result, written as soon as the case is scored;
+  - the cost, summed from each case's run. Judge and rubric calls aren't counted yet;
+  - the diff against the previous finished run.
+
+  Case runs get no job rows: an eval is measurement, so it doesn't appear in job history or job usage.
+- **A process that dies mid-eval** leaves its run `running`. A running eval moves a heartbeat every 30 seconds. Once that heartbeat is five minutes old, the next `swarmkit eval` or `eval-runs` command marks the run `interrupted`. Ctrl-C marks it `interrupted` at once.
+- **Resume** runs only the cases that have no result yet, on the same run, against the set as it was run. Editing the file afterwards doesn't change what a resume runs. Only an `interrupted` or `stopped` run can be resumed, and only while its target topology still exists. Nothing resumes automatically.
+- **Exit codes:** `eval` and `eval-runs resume` exit 0 when every case passes. They exit 1 when a case fails, or when the run stopped or errored. They exit 2 for an unknown set, run or target.
+- `--case-timeout SECONDS` fails a case that runs too long, and the eval carries on.

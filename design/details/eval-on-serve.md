@@ -2,14 +2,14 @@
 title: Eval on serve — eval sets as schema'd artifacts, run, recovered and reviewed over HTTP
 description: An eval-set JSON Schema; one EvalService behind `swarmkit eval` and new serve routes; an eval run holds one capacity slot, its cases stay measurement runs, it is swept or resumed after a restart like a job, and reports live in the store; the portal lists, reviews, edits and runs eval sets.
 tags: [eval, serve, service-layer, storage, schema, ui]
-status: draft
+status: in-progress
 ---
 
 # Eval on serve
 
 **Scope:** `packages/schema` (eval-set schema), `packages/runtime` (eval, server, persistence, CLI), `packages/ui` (Evals page)
 **Design reference:** [[eval-harness]] (M15 slices 1 + 2), CLAUDE.md invariant 9, `docs/notes/service-layer-discipline.md`, `docs/notes/schema-change-discipline.md`
-**Status:** draft. First half of #1105, and the baseline for capturing runs as cases (#1105 part 2) and for gate labels (#1106).
+**Status:** in progress. PR 1 (the schema, 1.266.0) and PR 2 (the service, the store and recovery, 1.267.0) are implemented; PR 3 (serve routes) and PR 4 (the portal) are next. First half of #1105, and the baseline for capturing runs as cases (#1105 part 2) and for gate labels (#1106).
 
 ## Goal
 
@@ -213,6 +213,27 @@ Four PRs, in order. Each is reviewable against a merged baseline.
 **PR 4: portal Evals page** (`swarmkit-webui` minor bump, `[ui]` floor)
 1. `app/evals/` with list, review, edit, run and follow, and report.
 2. vitest coverage, and screenshots of every view and action, from the repeatable capture script.
+
+## As built: PR 2
+
+PR 2 follows §2–§4, apart from the points below. Each one is a change from the text above, with the reason.
+
+- **The heartbeat ticks on a timer, not per case.**
+  - A running eval moves `heartbeat_at` every 30 seconds while a case is in flight. The sweep takes a `running` row whose heartbeat is older than five minutes (`HEARTBEAT_INTERVAL_S`, `STALE_AFTER_S` in `eval/_service.py`).
+  - A per-case heartbeat bounded by the serve's `timeout_seconds` wouldn't work from the CLI. A CLI run has no such timeout, and the CLI doesn't know the timeout of a serve sharing its store, so its startup sweep could close a live serve eval.
+  - A timer makes "stale" mean the same thing whoever is sweeping and however long a case takes.
+- **`stop_requested_at` is a column**, as it is on `jobs`. A stop has to reach an eval running in another process that shares the store. The run checks the column before each case.
+- **Cancellation is recorded at once.** A run cancelled mid-case, by Ctrl-C or a serve shutting down, marks its own row `interrupted` before it unwinds. Only a SIGKILL or a power cut is left to the sweep.
+- **No retention pruning yet.**
+  - `storage` in `workspace.schema.json` is strict, so `storage.evals.retention_days` is a workspace-schema change. It belongs in its own PR, not one about the eval service.
+  - A row is one per eval run, not one per case, so growth is small. Pruning and the setting follow together.
+- **The CLI commands are a group, `swarmkit eval-runs list | show | stop | resume`.** `swarmkit eval <workspace> <set>` takes positional arguments, so it can't also hold subcommands.
+- **A store that won't open falls back to the workspace's local SQLite store, and says so.** It's the same principle as `swarmkit run`: an unreachable database costs the record's location, never the eval. CI gates on the exit code.
+- **Exit codes.**
+  - `eval` exits 1 for any run that doesn't end `succeeded`. That covers failed, stopped and errored runs.
+  - It exits 2 for an unknown set, run or target. Before, only a failing case gave 1.
+- **Cost counts the cases' runs only.** A judge or rubric verdict (`DecisionSkillResult`) carries no usage today, so those calls aren't in `cost_usd` yet.
+- **Not built yet:** the topology-change check on resume (first open question). Resume refuses a run whose target topology is gone, but doesn't yet compare content hashes.
 
 ## Test plan
 

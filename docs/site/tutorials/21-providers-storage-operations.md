@@ -131,12 +131,13 @@ swarmkit eval ./workspace greeting-evals --compare      # exit 1 if any case fai
   [PASS] greets-and-not-empty
   [FAIL] addresses-the-audience
          ✗ regex: (?i)engineer|team
-1/2 passed (50%) · report: .swarmkit/eval-results/greeting-evals-<timestamp>.json
+1/2 passed (50%) · failed · eval run: <id>
 ```
 
 (That is the mock provider answering "mock response" — the failing case is the point: a check that
 cannot fail is not a check.) Deterministic checks, rubric judges and trajectory checks all live in the
-same file; results are stored, so `--compare` names regressions and fixes.
+same file. Each run is a row in the workspace's store, so `--compare` names regressions and fixes, and
+`swarmkit eval-runs list` shows the history.
 
 ### 5. Read the record
 

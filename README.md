@@ -448,7 +448,7 @@ eval: triage-evals → topology 'triage' (2 cases)
   [PASS] names-the-service
   [FAIL] judged-for-usefulness
          ✗ rubric: no next step offered (confidence 0.42)
-1/2 passed (50%) · report: .swarmkit/eval-results/triage-evals-20260923T164814Z.json
+1/2 passed (50%) · failed · eval run: 3f2c9a1e-…
 compare: pass rate 100% → 50% · regressed: judged-for-usefulness
 ```
 
@@ -461,8 +461,10 @@ Three kinds of check, mixed freely in one case:
 | **Judged** | `rubric` (inline) or `judge` (a decision-skill), with `min_confidence` | one model call |
 
 The exit code is the point: put it in CI and a regression fails the build rather than reaching a user.
-Reports land in `.swarmkit/eval-results/`, so `--compare` reads the last one and tells you what broke
-and what got fixed — the two questions a pass rate alone cannot answer.
+Every run is recorded in the workspace's store, so `--compare` reads the last one and tells you what
+broke and what got fixed — the two questions a pass rate alone cannot answer. `swarmkit eval-runs`
+lists and shows them, and an eval killed part-way through is resumed from the cases it already scored
+(`swarmkit eval-runs resume`) rather than started again.
 
 ### MCP permission tiers (M8 — shipped)
 
@@ -629,7 +631,7 @@ See it end to end in the **[SDLC walkthrough](https://delivstat.github.io/swarmk
 99. **Federated runs and traces** — the panel lists runs across instances and fetches a run's per-agent trace from the instance that owns it (`GET /instances/{id}/runs/{run_id}/trace`), so one run reads the same in the fleet as in its own portal
 100. **Harness gates from the panel** — each instance's relay / input-request gates are listed and resolved from the fleet panel; poll-mode (Mode B) instances say so rather than pretending
 101. **Gap mining across the fleet** — capability gaps aggregated by occurrence across instances, with propose → approve → distribute as the human-gated loop
-102. **Eval harness** — `swarmkit eval <workspace> <eval-set>` scores a topology (deterministic checks + rubric judges + trajectory checks), stores results, and flips the exit code so it gates CI
+102. **Eval harness** — `swarmkit eval <workspace> <eval-set>` scores a topology (deterministic checks + rubric judges + trajectory checks), records each run in the store (resumable after a crash), and flips the exit code so it gates CI
 103. **A2A server** (`server.a2a.enabled`) — an Agent Card at `/.well-known/agent-card.json` with one skill per topology, and the A2A task API at `POST /a2a` as a transport onto the same jobs, gates and audit; a run parked on a human gate is `input-required` that the calling agent cannot resolve ([design](./design/details/a2a-interop.md))
 104. **Another agent as a skill** (`implementation.type: agent`) — a topology in this workspace as a child run, or a remote A2A agent through its card; same permission seam, same audit; `on_unanswerable: agent | relay | abort` says who answers its questions, and a human gate on the far side is never the agent's to resolve
 
@@ -716,7 +718,7 @@ The pack orders its sections by trust — the generated reference first, design 
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.266.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.267.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 

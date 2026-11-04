@@ -11,8 +11,11 @@ from swarmkit_runtime.eval._checks import deterministic_checks
 from swarmkit_runtime.eval._compare import ReportDiff, diff_report, latest_prior_report
 from swarmkit_runtime.eval._errors import (
     EvalError,
+    EvalRunConflictError,
+    EvalRunNotFoundError,
     EvalSetInvalidError,
     EvalSetNotFoundError,
+    EvalTargetNotFoundError,
 )
 from swarmkit_runtime.eval._loader import list_eval_sets, load_eval_set
 from swarmkit_runtime.eval._models import (
@@ -24,16 +27,29 @@ from swarmkit_runtime.eval._models import (
     ExpectSpec,
 )
 from swarmkit_runtime.eval._runner import run_eval_set
+from swarmkit_runtime.eval._service import (
+    HEARTBEAT_INTERVAL_S,
+    STALE_AFTER_S,
+    EvalService,
+    EvalSetSummary,
+)
 
 __all__ = [
+    "HEARTBEAT_INTERVAL_S",
+    "STALE_AFTER_S",
     "CheckResult",
     "EvalCase",
     "EvalCaseResult",
     "EvalError",
     "EvalReport",
+    "EvalRunConflictError",
+    "EvalRunNotFoundError",
+    "EvalService",
     "EvalSet",
     "EvalSetInvalidError",
     "EvalSetNotFoundError",
+    "EvalSetSummary",
+    "EvalTargetNotFoundError",
     "ExpectSpec",
     "ReportDiff",
     "deterministic_checks",
