@@ -2,7 +2,7 @@
 title: Eval on serve — eval sets as schema'd artifacts, run, recovered and reviewed over HTTP
 description: An eval-set JSON Schema; one EvalService behind `swarmkit eval` and new serve routes; an eval run holds one capacity slot, its cases stay measurement runs, it is swept or resumed after a restart like a job, and reports live in the store; the portal lists, reviews, edits and runs eval sets.
 tags: [eval, serve, service-layer, storage, schema, ui]
-status: in-progress
+status: implemented
 ---
 
 # Eval on serve
