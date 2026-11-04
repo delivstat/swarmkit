@@ -35,6 +35,7 @@ SchemaName = Literal[
     "funnel",
     "stage-graph",
     "contract",
+    "eval-set",
 ]
 
 #: Fleet-enrollment wire schemas (design details/control-plane/19-fleet-enrollment-protocol.md).

@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: EvalSet
+metadata: {id: greeting}
+target: hello
+case:
+  - {id: a, input: hi}
+cases:
+  - {id: a, input: hi}

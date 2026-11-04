@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: EvalSet
+metadata: {id: greeting}
+target: hello
+cases:
+  - id: a
+    input: hi
+    expect: {rubric: Friendly., min_confidence: 1.5}

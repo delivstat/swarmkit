@@ -1,14 +1,15 @@
 """Eval-set input models + result value objects.
 
-The eval-set is schema-shaped data loaded from YAML, so it's a pydantic model
-(runtime-side for slice 1; promotion to a schema artifact kind is a follow-up — see
-design/details/eval-harness.md). Results are internal frozen dataclasses, matching
-the RunResult / DecisionSkillResult style.
+An eval set is validated against ``eval-set.schema.json`` first (``_loader``), then narrowed to
+these models, which give the runner plain types and defaults. They mirror the schema's fields
+one for one — ``test_eval_set_schema.py`` keeps the two in step. Results are internal frozen
+dataclasses, matching the RunResult / DecisionSkillResult style.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,22 +39,24 @@ class EvalCase(BaseModel):
 
 
 class EvalSetMeta(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     id: str
+    name: str = ""
     description: str = ""
 
 
 class EvalSet(BaseModel):
     """An eval-set artifact: a topology target + the cases to score it on."""
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     apiVersion: str = "swarmkit/v1"
     kind: str = "EvalSet"
     metadata: EvalSetMeta
-    target: str  # topology name to run each case against
+    target: str  # topology name to run each case against; `name@version` pins one version
     cases: list[EvalCase]
+    provenance: dict[str, Any] | None = None
 
 
 # ---- results (internal value objects) ----

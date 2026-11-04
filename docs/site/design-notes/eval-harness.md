@@ -48,11 +48,12 @@ cases:
       min_confidence: 0.6
 ```
 
-For slice 1 the eval-set is a **runtime pydantic model** loaded from
-`workspace/evals/*.yaml` (matched by `metadata.id` or file path) — NOT yet a
-first-class schema artifact kind. Promotion to a `kind: eval-set` in the schema
-package (dual-language codegen + workspace discovery + resolver + `ResolvedWorkspace.
-eval_sets`) is the next slice; the YAML shape is designed to round-trip unchanged.
+Eval sets are loaded from `workspace/evals/*.yaml` (matched by `metadata.id` or file
+path) and validated against **`eval-set.schema.json`** in `packages/schema`, with
+pydantic and TS codegen, so the CLI, serve and the portal accept exactly the same files
+([[eval-set-schema-v1]]). The YAML shape above round-trips unchanged. Running eval sets
+on serve, reports in the store and the portal's Evals page follow in
+`design/details/eval-on-serve.md` (#1105).
 
 ## Output
 

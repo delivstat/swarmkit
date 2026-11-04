@@ -1,0 +1,29 @@
+apiVersion: swarmkit/v1
+kind: EvalSet
+metadata:
+  id: support-triage-evals
+  name: Support triage
+  description: The triage swarm routes each ticket to the right queue and never promises a refund.
+target: support-triage@1.2.0
+cases:
+  - id: billing-goes-to-billing
+    input: I was charged twice for my subscription this month.
+    expect:
+      contains: [billing]
+      not_contains: [refund approved]
+      used_skills: [classify-ticket]
+      min_confidence: 0.7
+      judge: triage-quality
+  - id: outage-is-urgent
+    input: Nothing loads and the status page is down.
+    expect:
+      regex: "(?i)urgent|p1"
+      not_empty: true
+      rubric: The reply treats this as an outage and escalates it.
+  - id: exact-routing-label
+    input: "route: shipping"
+    expect:
+      equals: shipping
+provenance:
+  authored_by: human
+  version: 1.0.0

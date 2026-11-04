@@ -1,0 +1,11 @@
+# A case with an empty expect block is a smoke test: it passes when the run completes.
+apiVersion: swarmkit/v1
+kind: EvalSet
+metadata:
+  id: completes
+  description: ""
+target: hello
+cases:
+  - id: completes
+    input: hello
+    expect: {}
