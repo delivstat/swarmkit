@@ -397,6 +397,11 @@ demo-knowledge-pack:
 demo-command-packs:
     @uv run python examples/command-packs/demo.py
 
+# An eval interrupted with Ctrl-C part-way through, then resumed: only the cases without a result
+# run again, on the same eval run. No key, no network — the harness is a fake on PATH.
+demo-eval-resume:
+    @uv run python examples/eval-resume/demo.py
+
 # A token that expires mid-session is refreshed at the point of use, so every entry point —
 # run, chat, serve, mcp-serve — gets a live credential without asking for one.
 demo-oauth-refresh:

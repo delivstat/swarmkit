@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy import Engine, create_engine, delete, event, func, insert, select, update
 from sqlalchemy.engine import RowMapping, make_url
 
+from swarmkit_runtime.persistence._eval_runs import EvalRunStoreMixin
 from swarmkit_runtime.persistence._tables import (
     conversations,
     jobs,
@@ -235,7 +236,7 @@ class UsageRow:
     provider: str = ""  # the ModelProvider id that served the call
 
 
-class Store:
+class Store(EvalRunStoreMixin):
     """SQLAlchemy-backed persistence over any supported dialect (SQLite / Postgres).
 
     Thread-safe via the engine's connection pool. Construct from a SQLAlchemy URL, or use the

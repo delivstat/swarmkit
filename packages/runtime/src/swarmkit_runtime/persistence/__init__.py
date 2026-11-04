@@ -4,6 +4,11 @@
 service now, so it cannot disagree with the rest of the process about where data lives.
 """
 
+from swarmkit_runtime.persistence._eval_runs import (
+    FINISHED_EVAL_STATUSES,
+    RESUMABLE_EVAL_STATUSES,
+    EvalRunRow,
+)
 from swarmkit_runtime.persistence._factory import create_store
 from swarmkit_runtime.persistence._service import (
     StorageConfigError,
@@ -16,6 +21,9 @@ from swarmkit_runtime.persistence._store import SqliteStore, Store, UsageRow
 from swarmkit_runtime.persistence._usage_recording import record_run_usage, usage_fields
 
 __all__ = [
+    "FINISHED_EVAL_STATUSES",
+    "RESUMABLE_EVAL_STATUSES",
+    "EvalRunRow",
     "SqliteStore",
     "StorageConfigError",
     "StorageService",

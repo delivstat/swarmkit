@@ -43,6 +43,13 @@ BREAKING_CHANGES: tuple[BreakingChange, ...] = (
         "id are now refused, where they were ignored before. The error names the field.",
         "https://github.com/delivstat/swarmkit/blob/main/design/details/eval-set-schema-v1.md",
     ),
+    BreakingChange(
+        "1.267.0",
+        "`swarmkit eval` records each run in the runtime store and no longer writes a report file "
+        "under `.swarmkit/eval-results/` — read runs with `swarmkit eval-runs`, or pass `--output` "
+        "for a file. It now exits 1 for a stopped or errored run as well as a failing case.",
+        "https://github.com/delivstat/swarmkit/blob/main/design/details/eval-on-serve.md",
+    ),
 )
 
 

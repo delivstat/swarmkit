@@ -21,6 +21,7 @@ providers_app = typer.Typer(help="Declarative model providers — list, show, an
 trust_app = typer.Typer(help="Trust accrual — apply repeated-approval capabilities to allowlists.")
 memory_app = typer.Typer(help="Governed memory — search, inspect history, resolve contradictions.")
 storage_app = typer.Typer(help="Storage — show where data lives, migrate sqlite to postgres.")
+eval_runs_app = typer.Typer(help="Eval runs — list, show, stop and resume runs of `swarmkit eval`.")
 artifacts_app = typer.Typer(help="Artifacts — list and fetch run outputs by correlation id.")
 skill_app = typer.Typer(
     help="Skills — find, add, import, check and remove (the catalogue + SKILL.md)."
@@ -31,6 +32,7 @@ app.add_typer(author_app, name="author")
 app.add_typer(auth_app, name="auth")
 app.add_typer(fleet_app, name="fleet")
 app.add_typer(storage_app, name="storage")
+app.add_typer(eval_runs_app, name="eval-runs")
 app.add_typer(adapters_app, name="adapters")
 app.add_typer(providers_app, name="providers")
 app.add_typer(trust_app, name="trust")

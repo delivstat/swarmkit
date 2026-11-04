@@ -22,6 +22,7 @@ from . import (  # noqa: F401
     _cmd_authoring,
     _cmd_chat,
     _cmd_checks,
+    _cmd_eval,
     _cmd_fleet,
     _cmd_memory,
     _cmd_misc,

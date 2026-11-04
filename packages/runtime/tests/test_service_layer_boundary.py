@@ -67,3 +67,33 @@ def test_the_allowlist_still_describes_real_files() -> None:
     """An allowlist entry for a file that moved is an exemption nobody is checking."""
     missing = [rel for rel in _ALLOWED if not (_SRC / rel).is_file()]
     assert not missing, f"allowlisted files that no longer exist: {missing}"
+
+
+#: Modules that may call `run_eval_set`, and why. Every front door runs an eval through
+#: `EvalService`, which owns the eval run's durable row, its heartbeat and its recovery. Calling
+#: the runner directly would run an eval nothing records, sweeps or can resume (eval-on-serve.md
+#: §2).
+_EVAL_ALLOWED: dict[str, str] = {
+    "eval/_service.py": "EvalService — the one place an eval is run",
+    "eval/_runner.py": "defines run_eval_set()",
+}
+_EVAL_CALL = re.compile(r"\brun_eval_set\s*\(")
+
+
+def test_no_interface_runs_an_eval_without_the_eval_service() -> None:
+    offenders = [
+        f"{path.relative_to(_SRC).as_posix()}:{num}: {line.strip()}"
+        for path in sorted(_SRC.rglob("*.py"))
+        if path.relative_to(_SRC).as_posix() not in _EVAL_ALLOWED
+        for num, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if _EVAL_CALL.search(line)
+    ]
+    assert not offenders, (
+        "these run an eval without EvalService, so the run gets no durable row and can't be swept "
+        "or resumed. Go through EvalService.run / resume:\n" + "\n".join(offenders)
+    )
+
+
+def test_the_eval_allowlist_still_describes_real_files() -> None:
+    missing = [rel for rel in _EVAL_ALLOWED if not (_SRC / rel).is_file()]
+    assert not missing, f"allowlisted files that no longer exist: {missing}"

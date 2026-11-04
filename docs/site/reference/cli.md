@@ -3,7 +3,7 @@
 ## Every command
 
 <!-- BEGIN GENERATED: commands -->
-72 commands, from the CLI itself (`swarmkit <command> --help` for the options).
+76 commands, from the CLI itself (`swarmkit <command> --help` for the options).
 
 | Command | What it does |
 |---|---|
@@ -30,6 +30,10 @@
 | `swarmkit docs-reader` | Launch the Document Reader MCP Server (stdio). |
 | `swarmkit edit` | Edit an existing workspace through conversation (M7 Skill Authoring Swarm). |
 | `swarmkit eval` | Run an eval-set and score the topology (design §M15). |
+| `swarmkit eval-runs list` | Recent eval runs, newest first — from the CLI and serve alike. |
+| `swarmkit eval-runs resume` | Continue an interrupted or stopped eval run — only the cases that have no result yet. |
+| `swarmkit eval-runs show` | One eval run: status, every recorded case with its failing checks, the diff and the cost. |
+| `swarmkit eval-runs stop` | Ask a running eval — in any process sharing this store — to stop after its current case. |
 | `swarmkit fleet enroll-token` | Mint a one-time enrollment token for a fleet to register with this instance. |
 | `swarmkit fleet memberships` | List the fleets registered with this instance (no secrets). Shows each membership's scope, |
 | `swarmkit gaps` | List recorded skill gaps. |

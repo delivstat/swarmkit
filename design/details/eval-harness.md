@@ -58,8 +58,11 @@ on serve, reports in the store and the portal's Evals page follow in
 ## Output
 
 A per-case report (which checks passed, the output, any error) + overall pass rate,
-printed to the console and stored at `.swarmkit/eval-results/<id>-<ts>.json` for
-later regression comparison (the comparison view is a follow-up; the data lands now).
+printed to the console. Slices 1–2 stored it at `.swarmkit/eval-results/<id>-<ts>.json`.
+Since 1.267.0, every run is a row in the runtime store, run through `EvalService`.
+Cases are recorded as they land, a run is resumable after a crash, and the CLI and serve
+share one history ([[eval-on-serve]] PR 2). `--compare` still falls back to the newest
+legacy file when the store has no earlier run of the set.
 
 ## Reuse / seams
 

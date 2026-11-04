@@ -76,6 +76,38 @@ class EvalCaseResult:
     checks: list[CheckResult] = field(default_factory=list)
     output: str = ""
     error: str | None = None
+    #: what the case's run cost, from its usage. Judge and rubric calls are not included: a
+    #: decision-skill verdict carries no usage today.
+    cost_usd: float = 0.0
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "case_id": self.case_id,
+            "passed": self.passed,
+            "error": self.error,
+            "output": self.output,
+            "cost_usd": round(self.cost_usd, 6),
+            "checks": [
+                {"name": ck.name, "passed": ck.passed, "detail": ck.detail} for ck in self.checks
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvalCaseResult:
+        """Rebuild a recorded case — the inverse of :meth:`to_dict`, for a resumed run."""
+        checks = data.get("checks") or []
+        return cls(
+            case_id=str(data.get("case_id", "")),
+            passed=bool(data.get("passed")),
+            checks=[
+                CheckResult(str(c.get("name", "")), bool(c.get("passed")), str(c.get("detail", "")))
+                for c in checks
+                if isinstance(c, dict)
+            ],
+            output=str(data.get("output") or ""),
+            error=data.get("error"),
+            cost_usd=float(data.get("cost_usd") or 0.0),
+        )
 
 
 @dataclass(frozen=True)
@@ -99,6 +131,10 @@ class EvalReport:
         return self.total - self.passed
 
     @property
+    def cost_usd(self) -> float:
+        return sum(c.cost_usd for c in self.cases)
+
+    @property
     def pass_rate(self) -> float:
         return self.passed / self.total if self.total else 0.0
 
@@ -112,17 +148,6 @@ class EvalReport:
             "pass_rate": round(self.pass_rate, 4),
             "started_at": self.started_at,
             "finished_at": self.finished_at,
-            "cases": [
-                {
-                    "case_id": c.case_id,
-                    "passed": c.passed,
-                    "error": c.error,
-                    "output": c.output,
-                    "checks": [
-                        {"name": ck.name, "passed": ck.passed, "detail": ck.detail}
-                        for ck in c.checks
-                    ],
-                }
-                for c in self.cases
-            ],
+            "cost_usd": round(self.cost_usd, 6),
+            "cases": [c.to_dict() for c in self.cases],
         }
