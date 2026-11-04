@@ -20,7 +20,8 @@ from swarmkit_runtime.eval._errors import EvalSetInvalidError, EvalSetNotFoundEr
 from swarmkit_runtime.eval._models import EvalSet
 
 
-def _parse(path: Path) -> EvalSet:
+def parse_eval_set(path: Path) -> EvalSet:
+    """Parse and validate one eval-set file. Raises ``EvalSetInvalidError``."""
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
@@ -53,16 +54,37 @@ def evals_dir(workspace_root: Path) -> Path:
 
 def list_eval_sets(workspace_root: Path) -> list[EvalSet]:
     """Every valid eval-set under ``<workspace>/evals/`` (skips invalid files)."""
-    d = evals_dir(workspace_root)
-    if not d.is_dir():
-        return []
     out: list[EvalSet] = []
-    for f in sorted([*d.glob("*.yaml"), *d.glob("*.yml")]):
+    for f in _files(workspace_root):
         try:
-            out.append(_parse(f))
+            out.append(parse_eval_set(f))
         except EvalSetInvalidError:
             continue
     return out
+
+
+def _files(workspace_root: Path) -> list[Path]:
+    d = evals_dir(workspace_root)
+    return sorted([*d.glob("*.yaml"), *d.glob("*.yml")]) if d.is_dir() else []
+
+
+def find_eval_set_file(workspace_root: Path, set_id: str) -> Path | None:
+    """The file under ``<workspace>/evals/`` holding set ``set_id``: the one whose stem is the id,
+    else the first whose ``metadata.id`` is. Read leniently — a file that fails validation is still
+    found, so an editor can replace a broken set rather than be told it does not exist."""
+    files = _files(workspace_root)
+    for f in files:
+        if f.stem == set_id:
+            return f
+    for f in files:
+        try:
+            raw = yaml.safe_load(f.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        meta = raw.get("metadata") if isinstance(raw, dict) else None
+        if isinstance(meta, dict) and meta.get("id") == set_id:
+            return f
+    return None
 
 
 def load_eval_set(workspace_root: Path, ref: str) -> EvalSet:
@@ -70,20 +92,11 @@ def load_eval_set(workspace_root: Path, ref: str) -> EvalSet:
     under ``<workspace>/evals/``."""
     as_path = Path(ref)
     if as_path.is_file():
-        return _parse(as_path)
+        return parse_eval_set(as_path)
 
-    d = evals_dir(workspace_root)
-    if d.is_dir():
-        for f in sorted([*d.glob("*.yaml"), *d.glob("*.yml")]):
-            if f.stem == ref:
-                return _parse(f)
-        for f in sorted([*d.glob("*.yaml"), *d.glob("*.yml")]):
-            try:
-                es = _parse(f)
-            except EvalSetInvalidError:
-                continue
-            if es.metadata.id == ref:
-                return es
+    found = find_eval_set_file(workspace_root, ref)
+    if found is not None:
+        return parse_eval_set(found)
 
     available = [es.metadata.id for es in list_eval_sets(workspace_root)]
     hint = f" Available: {', '.join(available)}" if available else " None found under evals/."

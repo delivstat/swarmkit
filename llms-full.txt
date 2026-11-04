@@ -86,10 +86,11 @@ This file is also published on the docs site at <https://delivstat.github.io/swa
 
 **Two tiers.** This `llms.txt` is the compact, link-first map. Its companion **[`llms-full.txt`](https://delivstat.github.io/swarmkit/llms-full.txt)** inlines the *full text* of the playbook, all 11 artifact references, and the core design notes into one file — fetch it once and you have the entire corpus, no link-following. Use `llms.txt` to navigate; use `llms-full.txt` when you want everything in context at once.
 
-**Status:** runtime v1.267.0 (1.0.0 was 2026-04-26); `swarmkit-schema`, `swarmkit-webui` and `swarmkit-control-plane` version independently. Phases 1–5 of the implementation plan shipped: the runtime, CLI and `swarmkit serve`; harness executors (M19); the topology canvas (M20); the fleet control plane. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. What SwarmKit is, in one line each: reusable `Funnel` gates (`validate → judge → review → approve`; only humans approve; a gate **defers** the run and `POST /jobs/{id}/resume` continues it), multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit; skills as the one capability primitive (`mcp_tool`, `llm_prompt`, `composed`, `command`, `agent`) with `requires:` ordering enforced at the permission seam; 12 declarative model providers over four wire-format families; MCP with Docker sandboxing, permission tiers and per-tool `effects`; harness executors as declarative `adapter.yaml`; memory on by default (governed + workspace); one storage service (SQLite or Postgres) behind every store; OpenTelemetry, intent-drift detection, audit redaction, circuit breakers; a self-hosted fleet control plane; the `swarmkit-skills` catalogue reachable from `swarmkit skill` and the portal. **12 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, eval-set, role-registry, trigger, executor-adapter, model-provider + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace. Recent changes are listed by version in the next section; the [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) has every release.
+**Status:** runtime v1.268.0 (1.0.0 was 2026-04-26); `swarmkit-schema`, `swarmkit-webui` and `swarmkit-control-plane` version independently. Phases 1–5 of the implementation plan shipped: the runtime, CLI and `swarmkit serve`; harness executors (M19); the topology canvas (M20); the fleet control plane. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. What SwarmKit is, in one line each: reusable `Funnel` gates (`validate → judge → review → approve`; only humans approve; a gate **defers** the run and `POST /jobs/{id}/resume` continues it), multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit; skills as the one capability primitive (`mcp_tool`, `llm_prompt`, `composed`, `command`, `agent`) with `requires:` ordering enforced at the permission seam; 12 declarative model providers over four wire-format families; MCP with Docker sandboxing, permission tiers and per-tool `effects`; harness executors as declarative `adapter.yaml`; memory on by default (governed + workspace); one storage service (SQLite or Postgres) behind every store; OpenTelemetry, intent-drift detection, audit redaction, circuit breakers; a self-hosted fleet control plane; the `swarmkit-skills` catalogue reachable from `swarmkit skill` and the portal. **12 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, eval-set, role-registry, trigger, executor-adapter, model-provider + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace. Recent changes are listed by version in the next section; the [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) has every release.
 
 ## Recent changes (newest first, by runtime version)
 
+- **1.268.0** — **feat(serve):** eval sets and eval runs on `swarmkit serve`, through the same `EvalService` as the CLI. Sets: `GET /api/evals` (each with its last run's status and pass rate), `GET /api/evals/{id}`, `GET /api/evals/{id}/yaml`, `POST /api/evals`, `PUT /api/evals/{id}`, `DELETE /api/evals/{id}` — a write is validated against `eval-set.schema.json`, its `target` must be a topology in the workspace, a non-kebab id is refused, and a failed write is 422 with the previous file kept; reads are the `read` tier and writes `admin`. Deleting a set keeps its run history. Runs: `POST /evals/{id}/run` (202 + `eval_run_id`), `GET /evals/runs[?set=]`, `GET /evals/runs/{id}` (the set as run, cases so far, report, diff, cost), `POST /evals/runs/{id}/stop`, `POST /evals/runs/{id}/resume`. An eval takes one slot of the serve's concurrency limit for its whole run (429 when none is free), cases run one at a time inside it, each bounded by `server.timeout_seconds`. The API tier (`serve --role api`) answers 409. Serve sweeps eval runs with a stale heartbeat at startup, and a serve shutting down marks its running evals `interrupted` before it closes the runtime. No agent-facing tool writes eval sets: the authoring `write_file` tool refuses `evals/`. Known: a terminal Ctrl-C also kills a harness subprocess, whose `exit -2` is scored as the in-flight case's answer (#1111). Third of four PRs for eval on serve (#1105).
 - **1.267.0** — **feat(runtime):** every `swarmkit eval` run is recorded in the runtime store (`eval_runs`, SQLite or Postgres), through one `EvalService` that the CLI uses now and serve's eval routes will use next. The row holds the set as run, each case's result as soon as it is scored, the summed cost and the diff against the previous finished run, so `--compare` works across instances. A running eval moves a heartbeat every 30 s, and the next `swarmkit eval*` command marks a run whose heartbeat is 5 minutes stale `interrupted`. Ctrl-C marks it at once. New `swarmkit eval-runs list | show | stop | resume`: resume runs only the cases that have no result, on the same row, against the set as it was run. `--case-timeout` fails one slow case and carries on. Reports are no longer written under `.swarmkit/eval-results/` (`--compare` still reads the newest legacy file when the store has none, and `--output` still writes one where asked). `eval` now exits 1 for a stopped or errored run, as well as a failing case. `storage migrate` copies `eval_runs`. Second of four PRs for eval on serve (#1105).
 - **1.266.0 (schema 1.52.0)** — **feat(schema):** eval sets are a schema'd artifact, `eval-set.schema.json`, with pydantic + TS codegen, so the CLI, serve and the portal accept the same files. The runtime validates every set against it before running, and an error names the field. **Breaking (narrowing):** an unknown key, an empty `cases` list, a non-kebab id, an empty input or a duplicate case id is now refused, where it was ignored. Existing well-formed sets are unchanged. First of four PRs for eval on serve (#1105).
 - **1.265.0 (schema 1.51.0, webui 0.29.0)** — **feat(executors):** a bundled **GitHub Copilot CLI** adapter, `ref: copilot` — verified against Copilot CLI 1.0.103 with BYOK and the governed MCP gateway. Headless (`-p --output-format json`), built-in GitHub MCP server disabled, provider secrets stripped from the agent's shell; usage from its `--usage-output-file` exit report (`spec.report`). Auth: `subscription` (a `copilot login`, or `COPILOT_GITHUB_TOKEN`) or `api_key` = bring-your-own endpoint (`COPILOT_PROVIDER_API_KEY` + `provider_base_url`). A denied tool does not end a Copilot session, so the grant hides tools via `--available-tools` and `max_turns` is the backstop; gateway tools are spelled `swarmkit-<server>__<tool>`. Two harness-node fixes that every harness gets: a run is **priced by `executor.config.model`**, not the adapter id (which no price table has — every harness without vendor cost recorded $0.00, #1096); and a terminal result with no answer text takes the **last assistant message** instead of returning "completed". `just demo-copilot-harness`. Fixes #1091, #1096.
@@ -2163,6 +2164,46 @@ swarmkit eval-runs resume ./workspace <eval-run-id>          # continue a stoppe
 - **Exit codes:** `eval` and `eval-runs resume` exit 0 when every case passes. They exit 1 when a case fails, or when the run stopped or errored. They exit 2 for an unknown set, run or target.
 - `--case-timeout SECONDS` fails a case that runs too long, and the eval carries on.
 
+## On serve
+
+`swarmkit serve` runs the same evals through the same service, so a run started over HTTP shows up in `swarmkit eval-runs list`, and each front door's `--compare` (or diff) sees the other's runs.
+
+**Sets** are an artifact kind under `/api/*`. Reads are the `read` tier and writes `admin`:
+
+| Method + path | What it does |
+|---|---|
+| `GET /api/evals` | every valid set: id, name, description, target, case count, last run (status, pass rate, dates) |
+| `GET /api/evals/{id}` | one set, parsed |
+| `GET /api/evals/{id}/yaml` | its YAML, as written (found even when it no longer validates, so it can be fixed) |
+| `POST /api/evals` | create from `{"yaml": ...}`; the file is `evals/<metadata.id>.yaml`; 409 if the id exists |
+| `PUT /api/evals/{id}` | replace (or create) from `{"yaml": ...}` |
+| `DELETE /api/evals/{id}` | remove the file; its run history stays |
+
+A write is checked against the schema, and its `metadata.id` must match the URL. The `target` must be a topology in the workspace, and the id must be lowercase-kebab. A write that fails any check answers 422 with `{"valid": false, "errors": [{"code", "message"}]}`, and the previous file stays as it was. The codes are `schema`, `target.unknown`, `id.mismatch`, `id.invalid`, `missing.id` and `yaml.parse`.
+
+No agent-facing tool writes eval sets. An agent that could edit the cases it's measured against could pass any test, so the authoring swarm's `write_file` tool refuses `evals/`, the same way `topologies:modify` is reserved for people.
+
+**Runs:**
+
+| Method + path | Tier | What it does |
+|---|---|---|
+| `POST /evals/{id}/run` | run | start: 202 with `{eval_run_id, status: "running", eval_set_id}` |
+| `GET /evals/runs?set=&limit=` | read | recent runs, newest first, without their cases |
+| `GET /evals/runs/{run_id}` | read | the run: the set as run, cases so far, report, diff, cost |
+| `POST /evals/runs/{run_id}/stop` | run | stop after the current case, in whichever process runs it (409 if it isn't running) |
+| `POST /evals/runs/{run_id}/resume` | run | continue an `interrupted` or `stopped` run: 202, then poll |
+
+- **Capacity.** An eval takes one slot of the serve's concurrency limit (`server.max_concurrent`) for its whole run, and is refused with 429 when no slot is free. Cases run one at a time inside that slot, each bounded by `server.timeout_seconds`. A case that runs over fails with `timeout`, and the eval carries on.
+- **Refusals.**
+  - An unknown set or run is 404.
+  - A set that doesn't validate, or whose target is gone, is 422 on `run`, and no run is recorded.
+  - A finished run, or one whose target is gone, is 409 on `resume`.
+  - The API tier (`serve --role api`) answers 409 to `run` and `resume`, because it executes no work.
+- **Restarts.** At startup, serve marks eval runs whose heartbeat is five minutes stale `interrupted`, beside the job sweep. A run with a fresh heartbeat belongs to another live instance sharing the store, and is left alone. A serve that shuts down cleanly marks its running evals `interrupted` itself, before it closes the runtime.
+- **A known gap.** A Ctrl-C in a terminal signals the harness subprocess too. The harness reports `exit -2`, and that's scored as the in-flight case's answer before serve shuts down ([#1111](https://github.com/delivstat/swarmkit/issues/1111)). Signal the serve process alone to stop it cleanly.
+
+`just demo-eval-serve` runs the whole flow on a fake harness: edit, run, interrupt, restart, resume, regress and diff.
+
 ══════════════════════════════════════════════════════════════════════════════
 ## Source: docs/site/reference/role-registry.md
 ## Published: https://delivstat.github.io/swarmkit/reference/role-registry/
@@ -3352,7 +3393,7 @@ docker run -v ./workspace:/workspace \
 
 # HTTP API
 
-Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 108 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
+Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 119 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
 
 Paths are relative to the server root. `{...}` segments are path parameters.
 
@@ -3430,6 +3471,11 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 | `GET` | `/capabilities` | What this instance can do — the control plane reads this at enroll/refresh. |
 | `GET` | `/comprehension` | Comprehension-debt signals from the audit log — same data as `swarmkit comprehension`. |
 | `GET` | `/contracts` | The contracts in this workspace, by id. |
+| `GET` | `/evals/runs` | Recent eval runs, newest first; `?set=` filters to one set. |
+| `GET` | `/evals/runs/{run_id}` | Status, the set as run, the cases so far, the report, the diff and the cost. |
+| `POST` | `/evals/runs/{run_id}/resume` | Continue an interrupted or stopped run from the cases it has not scored. |
+| `POST` | `/evals/runs/{run_id}/stop` | Stop after the current case — in this process or any other sharing the store. |
+| `POST` | `/evals/{set_id}/run` | Start a run of a set: 202 with `eval_run_id`; poll `GET /evals/runs/{id}`. |
 | `GET` | `/funnels` | The funnels in this workspace, by id. |
 | `GET` | `/gaps` | The skill gap log — what `swarmkit gaps` prints: every tool an agent reached for and |
 | `GET` | `/health` | Liveness: the instance is up and its workspace loaded. |
@@ -3490,6 +3536,12 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 | `GET` | `/api/archetypes/{archetype_id}/yaml` | An archetype's YAML as written on disk. |
 | `PUT` | `/api/contracts/{contract_id}` | Replace a contract's YAML; validated before it is written. |
 | `GET` | `/api/contracts/{contract_id}/yaml` | A contract's YAML as written on disk. |
+| `GET` | `/api/evals` | Every valid eval set, each with its last run's status and pass rate. |
+| `POST` | `/api/evals` | Create a set from YAML; its file is `evals/<metadata.id>.yaml`. |
+| `GET` | `/api/evals/{set_id}` | One set, parsed. |
+| `PUT` | `/api/evals/{set_id}` | Replace (or create) a set. 422 — the previous file kept — when it does not validate. |
+| `DELETE` | `/api/evals/{set_id}` | Remove a set's file. Its run history stays. |
+| `GET` | `/api/evals/{set_id}/yaml` | The set's YAML, as written — found even when it no longer validates, so it can be |
 | `PUT` | `/api/funnels/{funnel_id}` | Replace a funnel's YAML; validated before it is written. |
 | `GET` | `/api/funnels/{funnel_id}/yaml` | A funnel's YAML as written on disk. |
 | `POST` | `/api/mcp/{server_id}/invoke` | Invoke an MCP tool on the named server, with the owner's credential resolved by the |

@@ -402,6 +402,10 @@ demo-command-packs:
 demo-eval-resume:
     @uv run python examples/eval-resume/demo.py
 
+# Eval sets edited, run, interrupted, resumed and diffed over serve's HTTP API (eval-on-serve.md).
+demo-eval-serve:
+    @uv run python examples/eval-serve/demo.py
+
 # A token that expires mid-session is refreshed at the point of use, so every entry point —
 # run, chat, serve, mcp-serve — gets a live credential without asking for one.
 demo-oauth-refresh:
