@@ -47,6 +47,13 @@ import type {
 	WorkspaceConfig,
 } from "./types";
 
+import type {
+	EvalRunDetail,
+	EvalRunSummary,
+	EvalSet,
+	EvalSetListItem,
+	EvalSetWriteResult,
+} from "./evals";
 import { getAccessToken, handleUnauthorized } from "./token-store";
 
 // Relative by default: when the portal is served by `swarmkit serve` itself, API calls resolve
@@ -93,6 +100,53 @@ async function send<T>(
 		on401(res.status);
 		const text = await res.text();
 		throw new Error(`${res.status} ${res.statusText}: ${text}`);
+	}
+	return res.json() as Promise<T>;
+}
+
+/**
+ * An eval-set write. A 422 is an answer, not a failure: the body names what did not validate (and
+ * serve kept the previous file), so it comes back as `{valid: false, errors}` for the editor to put
+ * on its fields rather than as a thrown string.
+ */
+async function writeEvalSet(
+	method: "POST" | "PUT",
+	path: string,
+	yaml: string,
+): Promise<EvalSetWriteResult> {
+	const res = await fetch(`${BASE}${path}`, {
+		method,
+		headers: authHeaders({ "Content-Type": "application/json" }),
+		body: JSON.stringify({ yaml }),
+	});
+	if (res.ok || res.status === 422) {
+		return (await res.json()) as EvalSetWriteResult;
+	}
+	on401(res.status);
+	throw new Error(await refusal(res));
+}
+
+/** A refused eval request, as one readable line: serve's `detail`, prefixed with the status. */
+async function refusal(res: Response): Promise<string> {
+	const text = await res.text();
+	try {
+		const body = JSON.parse(text) as { detail?: unknown };
+		if (typeof body.detail === "string") return `${res.status}: ${body.detail}`;
+	} catch {
+		// not JSON — fall through to the raw text
+	}
+	return `${res.status} ${res.statusText}: ${text}`;
+}
+
+/** Start, stop or resume an eval run. 404/409/422/429 each carry a reason worth showing as-is. */
+async function evalAction<T>(path: string): Promise<T> {
+	const res = await fetch(`${BASE}${path}`, {
+		method: "POST",
+		headers: authHeaders({ "Content-Type": "application/json" }),
+	});
+	if (!res.ok) {
+		on401(res.status);
+		throw new Error(await refusal(res));
 	}
 	return res.json() as Promise<T>;
 }
@@ -412,6 +466,42 @@ export const api = {
 	 * note a failed reload leaves the PREVIOUS runtime serving, so `valid: false` means the change
 	 * on disk is not live rather than that a broken config is. */
 	reloadWorkspace: () => post<ValidateResponse>("/api/reload"),
+
+	// Eval sets and eval runs (design/details/eval-on-serve.md). The same EvalService and store
+	// `swarmkit eval` uses, so a run started here lists on the CLI and the reverse.
+	evalSets: () => get<EvalSetListItem[]>("/api/evals"),
+	evalSet: (id: string) => get<EvalSet>(`/api/evals/${encodeURIComponent(id)}`),
+	evalSetYaml: (id: string) =>
+		get<{ yaml: string }>(`/api/evals/${encodeURIComponent(id)}/yaml`),
+	saveEvalSet: (id: string, yaml: string) =>
+		writeEvalSet("PUT", `/api/evals/${encodeURIComponent(id)}`, yaml),
+	createEvalSet: (yaml: string) => writeEvalSet("POST", "/api/evals", yaml),
+	deleteEvalSet: (id: string) =>
+		del<{ deleted: boolean; id: string }>(
+			`/api/evals/${encodeURIComponent(id)}`,
+		),
+	evalRuns: (setId?: string, limit = 20) => {
+		const q = new URLSearchParams({ limit: String(limit) });
+		if (setId) q.set("set", setId);
+		return get<EvalRunSummary[]>(`/evals/runs?${q}`);
+	},
+	evalRun: (id: string) =>
+		get<EvalRunDetail>(`/evals/runs/${encodeURIComponent(id)}`),
+	/** 202 with the new run's id; the cases are scored in the background — poll `evalRun`. */
+	runEvalSet: (id: string) =>
+		evalAction<{ eval_run_id: string; status: string; eval_set_id: string }>(
+			`/evals/${encodeURIComponent(id)}/run`,
+		),
+	/** Stops after the case in flight finishes; the run stays resumable. */
+	stopEvalRun: (id: string) =>
+		evalAction<{ eval_run_id: string; stop_requested: boolean }>(
+			`/evals/runs/${encodeURIComponent(id)}/stop`,
+		),
+	/** Continues on the same row from the cases with no result, against the set as first run. */
+	resumeEvalRun: (id: string) =>
+		evalAction<{ eval_run_id: string; status: string; eval_set_id: string }>(
+			`/evals/runs/${encodeURIComponent(id)}/resume`,
+		),
 
 	// Governed memory (design/details/governed-memory.md) — the same store `swarmkit memory` uses.
 	// The effective `memory` block — on/off, reader/writer settings, which bindings are the

@@ -10,6 +10,9 @@ const STYLES: Record<string, { color: string; pulse?: boolean }> = {
 	queued: { color: "text-warning" },
 	failed: { color: "text-destructive" },
 	error: { color: "text-destructive" },
+	// Eval runs (and jobs) that ended early but keep what they did — resumable, not failures.
+	stopped: { color: "text-warning" },
+	interrupted: { color: "text-warning" },
 	// A trigger's state. It was rendered as "completed"/"failed", which reads as a run outcome.
 	enabled: { color: "text-success" },
 	disabled: { color: "text-muted-foreground" },

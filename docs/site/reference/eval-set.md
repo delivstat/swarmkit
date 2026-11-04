@@ -152,3 +152,12 @@ No agent-facing tool writes eval sets. An agent that could edit the cases it's m
 
 `just demo-eval-serve` runs the whole flow on a fake harness: edit, run, interrupt, restart, resume, regress and diff.
 
+## In the portal
+
+The portal's **Evals** page (swarmkit-webui 0.30.0+) reads the same routes:
+
+- **The list** shows every set with its target, case count, and its last run's status, pass rate and date, plus recent runs. A run whose set has since been deleted stays listed, marked "deleted set".
+- **A set** (`/evals/?set=<id>`) shows each case's input and expectations against its last five runs. A case that passed before and fails now is marked "regressed".
+- **Edit** saves through `PUT /api/evals/{id}`, in a form generated from `eval-set.schema.json` or as YAML. A 422 is shown on the field it names, and the file on disk is unchanged.
+- **Run** starts a run and opens it (`/evals/?run=<id>`). Cases appear as they're scored. "Stop after this case" and "Resume" call the stop and resume routes. The report shows each case's checks and output, the cost, and the diff against the previous finished run.
+
