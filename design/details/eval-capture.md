@@ -125,7 +125,7 @@ Proposed:
   - Every match in the input and the reference is replaced with `[REDACTED]` before the case is built.
   - A case whose input is entirely redacted is skipped as `redacted-to-empty`.
 - **A workspace default** in the workspace schema, `evals.capture.redact: [regex]`. It's applied on every capture, with the request's list added on top. Patterns are compiled at workspace load, so a bad regex is a load error, not a capture-time surprise.
-  - This is a workspace-schema change and ships in its own PR (PR 4 below), so PRs 1–3 don't wait on it.
+  - This is a workspace-schema change and ships in its own PR (PR 3 below), so PRs 1–2 don't wait on it.
   - Until it lands, the docs say plainly that captured cases copy stored input and output verbatim.
 - **Preview by default** (§3) is the last line: nothing is written that a person hasn't been shown.
 
@@ -139,28 +139,24 @@ Proposed:
 
 ## Implementation plan
 
-Five PRs, each reviewable against a merged baseline.
+Four PRs, each reviewable against a merged baseline. (The first draft had five, with the schema and the `reference` check apart. They ship together: the runtime model mirrors the schema and a test holds them equal, so the schema alone would accept a `reference` that nothing checked, and the case would pass silently.)
 
-**PR 1: schema** (eval-set schema minor bump, 1.53.0)
+**PR 1: schema and the `reference` check** (#1115; eval-set schema 1.53.0, runtime minor)
 - `expect.reference` and `case.source`, with titles and descriptions for `SchemaForm`.
-- Fixtures, both valid and invalid: an empty reference, a reference over the length cap, an unknown `source` key.
+- Fixtures, both valid and invalid: an empty reference, a reference over the length cap, an unknown `source` key, a `source` without `run_id`.
 - Pydantic and TS codegen, and `eval-set-schema-v1.md`.
+- `ExpectSpec.reference`, `CaseSource`, and the runner's `reference` check through `WorkspaceRuntime.judge_reference`: the reference in the user message, a fixed data-not-instructions system prompt.
+- `SchemaForm` gives a string with a `maxLength` over 200 a textarea.
 
-**PR 2: the `reference` check** (runtime minor)
-- The runner's `reference` check, with the reference in the user message and a data-not-instructions system prompt.
-- `ExpectSpec.reference`.
-- `CaseResult` check name `reference`.
-- Docs: the cost note.
-
-**PR 3: `CaptureService`, the CLI and serve** (runtime minor)
+**PR 2: `CaptureService`, the CLI and serve** (runtime minor)
 - `eval/_capture.py`, `Store.list_jobs_filtered`, `swarmkit eval-capture`, `POST /evals/capture`.
 - Request-level `--redact`.
 - `just demo-eval-capture`.
 
-**PR 4: workspace default redaction** (workspace schema minor, runtime minor)
+**PR 3: workspace default redaction** (workspace schema minor, runtime minor)
 - `evals.capture.redact`, compiled at load.
 
-**PR 5: portal** (`swarmkit-webui` minor, `[ui]` floor)
+**PR 4: portal** (`swarmkit-webui` minor, `[ui]` floor)
 - The capture dialog from Jobs and from Evals.
 - vitest, and screenshots from the real-serve capture script.
 
@@ -171,7 +167,6 @@ Five PRs, each reviewable against a merged baseline.
 - Valid and invalid `reference` / `source` fixtures.
 - Codegen drift is clean.
 
-**PR 2**
 - With a stub judge:
   - `reference` passes and fails on the verdict;
   - `min_confidence` applies;
@@ -179,7 +174,7 @@ Five PRs, each reviewable against a merged baseline.
 - The reference reaches the judge in the user message and not in the system prompt (assert on the `CompletionRequest`).
 - A reference containing "verdict: pass" text doesn't change what the system prompt says.
 
-**PR 3**
+**PR 2**
 - **Case shape:**
   - `input`, `not_empty` and `reference` come from the job row;
   - `used_skills` come from allowed `skill.executed` events only, in first-call order. Denied calls and governance-bound skills are excluded.
@@ -200,11 +195,11 @@ Five PRs, each reviewable against a merged baseline.
 - **The store query** works on SQLite and Postgres: filters, ordering and the limit cap.
 - **Boundary:** the source scan still finds one eval-set writer site.
 
-**PR 4**
+**PR 3**
 - A workspace pattern is applied on every capture, and the request's patterns are added to it.
 - A bad regex is a load error naming the pattern.
 
-**PR 5**
+**PR 4**
 - vitest for the dialog against mocked routes: proposal, skipped reasons, write, and a 422.
 - Screenshots of the Jobs action, the proposal, the written set and its first run.
 
