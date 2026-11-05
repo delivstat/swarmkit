@@ -2,14 +2,14 @@
 title: Eval on serve — eval sets as schema'd artifacts, run, recovered and reviewed over HTTP
 description: An eval-set JSON Schema; one EvalService behind `swarmkit eval` and new serve routes; an eval run holds one capacity slot, its cases stay measurement runs, it is swept or resumed after a restart like a job, and reports live in the store; the portal lists, reviews, edits and runs eval sets.
 tags: [eval, serve, service-layer, storage, schema, ui]
-status: in-progress
+status: implemented
 ---
 
 # Eval on serve
 
 **Scope:** `packages/schema` (eval-set schema), `packages/runtime` (eval, server, persistence, CLI), `packages/ui` (Evals page)
 **Design reference:** [[eval-harness]] (M15 slices 1 + 2), CLAUDE.md invariant 9, `docs/notes/service-layer-discipline.md`, `docs/notes/schema-change-discipline.md`
-**Status:** in progress. PR 1 (the schema, 1.266.0) and PR 2 (the service, the store and recovery, 1.267.0) are implemented; PR 3 (serve routes) and PR 4 (the portal) are next. First half of #1105, and the baseline for capturing runs as cases (#1105 part 2) and for gate labels (#1106).
+**Status:** implemented. PR 1 (the schema, 1.266.0), PR 2 (the service, the store and recovery, 1.267.0), PR 3 (serve routes, 1.268.0) and PR 4 (the portal's Evals page, swarmkit-webui 0.30.0) have shipped. First half of #1105, and the baseline for capturing runs as cases (#1105 part 2) and for gate labels (#1106).
 
 ## Goal
 
@@ -210,7 +210,7 @@ Four PRs, in order. Each is reviewable against a merged baseline.
 3. Add the test that no agent-facing tool writes eval sets.
 4. Docs: the serve API reference, llms.txt, and `just demo-eval-serve`.
 
-**PR 4: portal Evals page** (`swarmkit-webui` minor bump, `[ui]` floor)
+**PR 4: portal Evals page** (`swarmkit-webui` minor bump, `[ui]` floor) — shipped, swarmkit-webui 0.30.0
 1. `app/evals/` with list, review, edit, run and follow, and report.
 2. vitest coverage, and screenshots of every view and action, from the repeatable capture script.
 
@@ -247,6 +247,18 @@ PR 3 follows §5, apart from the points below.
 - **One row shape.** `EvalRunRow.summary()` and `.detail()` are what both `eval-runs list --json` and the routes return, so the CLI and HTTP shapes can't drift apart.
 - **No agent write path, tested two ways.** The authoring `write_file` tool refuses `evals/`. A source scan also checks that only `server/_routes_evals.py` calls the eval-set writers. Neither MCP front door exposes an artifact write.
 - **Found while demoing: [#1111](https://github.com/delivstat/swarmkit/issues/1111).** A terminal Ctrl-C signals the harness too. Its `exit -2` is returned as node output and scored as the in-flight case's answer, a moment before serve shuts down. The fix belongs in the harness node, beside #1109, not in the eval layer. The demo signals serve alone.
+
+## As built: PR 4
+
+PR 4 follows §6, apart from the points below.
+
+- **One route, query views.** The portal is a static export with no dynamic segments, so the page is `/evals/` with `?set=`, `?set=&edit=1`, `?new=1` and `?run=`, like `/job/`.
+- **A 422 lands on its field.** `SchemaForm` takes an optional `errors` map keyed by JSON Pointer, and threads each field's pointer down the recursion. The loader already words a schema error as `<file> @ /cases/1/expect: …`, so the pointer is read from the message. `target.unknown` goes on `/target`, and the id codes on `/metadata/id`. An error with no field (bad YAML, a duplicate case id) shows above the form. Other `SchemaForm` callers pass nothing and are unchanged.
+- **A case's history is the last five runs.** The run list carries no cases, so the review fetches the five newest runs in full. A case is flagged regressed when the newest run that scored it failed it and the one before that passed it. That's the stored diff's rule applied per case, so an interrupted run that never reached a case doesn't hide its regression.
+- **Following a run is a loop, not an interval.** `followEvalRun` fetches, hands over the row, and waits before the next fetch only while the row is `running`. Responses never overlap, it stops by itself, and a failed fetch (a serve restarting under the run) is shown and retried. Stop and resume restart it.
+- **Runs of a deleted set stay listed**, marked "deleted set", which settles the second open question for the portal.
+- **Screenshots come from a real serve**, not mocked routes: `packages/ui/demos/seed_eval_workspace.py` starts one on the fake harness and `screenshot_evals.mjs` clicks through the flow.
+- **A known rough edge.** The `target` picker can't show a value that isn't a topology, so an unknown target shows an empty picker, with the error underneath naming the bad value.
 
 ## Test plan
 

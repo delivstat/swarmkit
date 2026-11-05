@@ -47,7 +47,7 @@ status: active
 | 4 | M13 | Topology Composer | ✅ | Three-view editor (Structure/Relationships/Network), YAML editing, create new, CRUD API |
 | 4 | M14 | Cost optimization | ✅ | Dual model (tool/synthesis split), accurate token tracking, configurable store backend |
 | 4 | M11 | Launch prep | 🟡 | `uv tool install swarmkit-runtime` → working swarm in <15 min |
-| 5 | M15 | Eval harness | ✅ | `swarmkit eval` scores a topology + flips exit code; eval sets are a schema'd artifact; runs recorded in the store and resumable; run, stopped, resumed and edited over serve (eval-on-serve PRs 1–3; portal page next) |
+| 5 | M15 | Eval harness | ✅ | `swarmkit eval` scores a topology + flips exit code; eval sets are a schema'd artifact; runs recorded in the store and resumable; run, stopped, resumed and edited over serve and in the portal's Evals page (eval-on-serve PRs 1–4) |
 | 5 | M16 | Fleet aggregation | ✅ | `packages/control-plane` + panel UI: federated per-run trace, fleet run graph, cross-instance views |
 | 5 | M17 | Self-improvement cockpit | 🟡 | Fleet trace/eval views + harness-gate cockpit ✅; automated gap-mining → propose → distribute remaining |
 | 5 | M18 | Workflow archetypes + interop | 🔶 | Sequential/Parallel/Loop archetypes; **A2A server (1.221.0) and `agent` skill (1.222.0: local child run + remote A2A client, `on_unanswerable`) shipped**; `pack:workspace` (1.223.0), portal (1.224.0), harness gateway (1.225.0); fleet card listing next (`a2a-interop.md`); Agent Spec importer (`agent-spec-import.md`) proposed |
