@@ -27,7 +27,19 @@ class ExpectSpec(BaseModel):
     used_skills: list[str] = Field(default_factory=list)  # skill ids that must be invoked
     judge: str | None = None  # a decision-skill id to score the output (LLM rubric)
     rubric: str | None = None  # an inline rubric string judged by the LLM (no skill needed)
-    min_confidence: float = 0.5  # judge/rubric must pass with at least this confidence
+    #: a known-good answer the judge model compares the output to; passed as data, not instructions
+    reference: str | None = None
+    min_confidence: float = 0.5  # judge/rubric/reference must pass with at least this confidence
+
+
+class CaseSource(BaseModel):
+    """Where a captured case came from. Informational: the runner never reads it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    topology_version: str | None = None
+    captured_at: str | None = None
 
 
 class EvalCase(BaseModel):
@@ -36,6 +48,7 @@ class EvalCase(BaseModel):
     id: str
     input: str
     expect: ExpectSpec = Field(default_factory=ExpectSpec)
+    source: CaseSource | None = None
 
 
 class EvalSetMeta(BaseModel):

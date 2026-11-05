@@ -26,6 +26,7 @@ class _FakeRuntime:
         self._confidence = confidence
         self._skills = skills or []
         self.raise_on_run = False
+        self.references: list[tuple[str, str, str]] = []
 
     async def run(self, topology_name: str, user_input: str) -> object:
         if self.raise_on_run:
@@ -48,6 +49,17 @@ class _FakeRuntime:
     ) -> DecisionSkillResult:
         return DecisionSkillResult(
             skill_id="inline-rubric",
+            verdict=self._verdict,  # type: ignore[arg-type]
+            confidence=self._confidence,
+            reasoning="fake",
+        )
+
+    async def judge_reference(
+        self, *, reference: str, content: str, case_input: str = "", trigger: str = "eval"
+    ) -> DecisionSkillResult:
+        self.references.append((reference, content, case_input))
+        return DecisionSkillResult(
+            skill_id="reference",
             verdict=self._verdict,  # type: ignore[arg-type]
             confidence=self._confidence,
             reasoning="fake",
@@ -132,3 +144,25 @@ async def test_report_to_dict_shape() -> None:
     # nested structure via the typed report (to_dict returns dict[str, object])
     assert report.cases[0].case_id == "ok"
     assert report.cases[0].checks[0].name == "contains"
+
+
+@pytest.mark.asyncio
+async def test_reference_check_passes_and_fails_on_the_verdict() -> None:
+    ref = ExpectSpec(reference="Routed to billing.", min_confidence=0.7)
+    es = _set(EvalCase(id="r", input="charged twice", expect=ref))
+    rt = _FakeRuntime("billing it is", verdict="pass", confidence=0.9)
+    report = await run_eval_set(rt, es)
+    assert report.passed == 1
+    assert [c.name for c in report.cases[0].checks] == ["reference"]
+    # the judge sees the reference, the new output and the case input
+    assert rt.references == [("Routed to billing.", "billing it is", "charged twice")]
+    assert (await run_eval_set(_FakeRuntime("x", verdict="fail", confidence=0.9), es)).passed == 0
+    # min_confidence applies like judge and rubric
+    assert (await run_eval_set(_FakeRuntime("x", verdict="pass", confidence=0.6), es)).passed == 0
+
+
+@pytest.mark.asyncio
+async def test_a_case_without_a_reference_makes_no_reference_call() -> None:
+    rt = _FakeRuntime("hi")
+    await run_eval_set(rt, _set(EvalCase(id="a", input="x", expect=ExpectSpec(not_empty=True))))
+    assert rt.references == []

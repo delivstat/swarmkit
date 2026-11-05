@@ -45,13 +45,22 @@ export interface EvalExpect {
 	used_skills?: string[];
 	judge?: string;
 	rubric?: string;
+	reference?: string;
 	min_confidence?: number;
+}
+
+/** The recorded run a captured case came from. */
+export interface EvalCaseSource {
+	run_id: string;
+	topology_version?: string;
+	captured_at?: string;
 }
 
 export interface EvalCase {
 	id: string;
 	input: string;
 	expect?: EvalExpect;
+	source?: EvalCaseSource;
 }
 
 export interface EvalSet {
@@ -269,6 +278,7 @@ export function expectLines(expect: EvalExpect | undefined): string[] {
 		expect.min_confidence !== undefined ? ` (≥ ${expect.min_confidence})` : "";
 	if (expect.judge) out.push(`judged by ${expect.judge}${conf}`);
 	if (expect.rubric) out.push(`rubric: ${expect.rubric}${conf}`);
+	if (expect.reference) out.push(`matches the reference answer${conf}`);
 	return out;
 }
 
