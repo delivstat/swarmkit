@@ -2,14 +2,14 @@
 title: Eval capture — recorded runs become regression cases, on the CLI and on serve
 description: One CaptureService reads finished job rows and their audit events from the store and proposes an eval set — the input, the skills the run used, and the recorded output as a reference the new output is judged against. A preview by default, written through ArtifactService, from `swarmkit eval-capture` and `POST /evals/capture` alike.
 tags: [eval, serve, service-layer, storage, schema]
-status: proposed
+status: accepted
 ---
 
 # Eval capture
 
 **Scope:** `packages/schema` (one additive `expect` key), `packages/runtime` (eval, persistence, server, CLI), `packages/ui` (a capture dialog, last)
 **Design reference:** [[eval-on-serve]] (the baseline: `EvalService`, `eval_runs`, `/api/evals`, the Evals page), [[eval-harness]], CLAUDE.md invariant 9, `docs/notes/service-layer-discipline.md`, `docs/notes/schema-change-discipline.md`
-**Status:** proposed. Second half of #1105. #1106 (labels from gate decisions) builds on the service this adds.
+**Status:** accepted (design review on #1114, 2026-11-05; the open questions resolved as proposed, see Decisions). Second half of #1105. #1106 (labels from gate decisions) builds on the service this adds.
 
 ## Goal
 
@@ -86,7 +86,8 @@ def propose(self, jobs, *, into: str | None) -> CaptureProposal
 - **`propose`** builds the cases and returns a `CaptureProposal`, without writing anything:
   - `eval_set`: the merged `EvalSet`;
   - `added`: the case ids;
-  - `skipped`: `[{run_id, reason}]`, where reasons are `attachments`, `empty-output`, `not-completed`, `duplicate`, `wrong-target` and `redacted-to-empty`;
+  - `skipped`: `[{run_id, reason}]`, where reasons are `attachments`, `empty-output`, `output-too-long`, `not-completed`, `duplicate`, `wrong-target` and `redacted-to-empty`;
+  - `flagged`: `[{run_id, reason}]`, for runs that were taken but not as a full regression case. The one reason today is `smoke-only`: a failed run named explicitly (see Decisions);
   - `yaml`: the file as it would be written.
 - **Writing** goes through `ArtifactService.put_eval_set` / `create_eval_set`, the same validated write as a portal edit: schema, unique ids, target is live, restore on failure. Capture adds no second writer under `evals/`, and the source-scan test in `test_eval_routes.py` keeps it that way.
 
@@ -112,7 +113,7 @@ The command is `eval-capture`, beside `eval-runs`, because `swarmkit eval` takes
 
 Preview is the default on both doors. The cases are going into git and into review, and a person should see exactly what will be written: inputs and outputs are copied out of the store verbatim, and the store isn't redacted (§4).
 
-The HTTP tier is the one route whose tier depends on the body. `_required_action` maps by path and method, so the route checks `admin` itself when `write` is true, and a test covers both. The alternative, two routes (`/evals/capture/preview` and `/evals/capture`), is simpler to tier, and it's what the implementation will do if the in-handler check turns out awkward.
+The HTTP tier is the one route whose tier depends on the body. `_required_action` maps by path and method, so the route is mapped to `read` and checks `admin` itself when `write` is true, and a test covers both. (Two routes, `/evals/capture/preview` and `/evals/capture`, would be simpler to tier; the implementation falls back to that only if the in-handler check turns out awkward.)
 
 ### 4. Redaction
 
@@ -217,8 +218,11 @@ Five PRs, each reviewable against a merged baseline.
 5. Change the fake harness so one answer differs, then run again. The diff names the case as regressed.
 6. `swarmkit eval-capture --run <id>` on the CLI against the same store gives the same YAML.
 
-## Open questions
+## Decisions
 
-- **Should capture take a failed run as a case?** A failed run can't be a regression baseline ("keep doing this"). Proposed: under filters, never; named explicitly, it's taken with `not_empty` dropped and no reference, so it only re-runs the input. That's a smoke case, and it's flagged in the skipped list. Alternatively it could be refused outright.
-- **Reference length.** Long outputs (a harness's 56 KB artifact) make expensive, noisy judges. Proposed: cap at 20,000 characters, and skip a longer output as `output-too-long`, rather than truncating and judging against half an answer.
-- **Should `used_skills` be optional per capture?** A topology that legitimately varies which skills it calls would fail on `used_skills`, not on its answer. Proposed: on by default, with `--no-used-skills` to drop it. The reviewer sees it in the preview either way.
+Resolved in review on #1114, as proposed:
+
+- **Failed runs.** Under filters, a failed run is never taken (`not-completed`). Named explicitly with `--run`, it's taken as a smoke case: the input only, with `not_empty` dropped and no `reference`, so it only re-runs the input. It's listed under `flagged` as `smoke-only`, so the preview says plainly that it isn't a regression baseline.
+- **Reference length.** A recorded output over 20,000 characters (the schema's `reference` cap) is skipped as `output-too-long`. It's never truncated, because judging against half an answer is worse than no case.
+- **`used_skills`.** On by default. `--no-used-skills` on the CLI and `used_skills: false` on HTTP drop it, for a topology that legitimately varies which skills it calls. The reviewer sees it in the preview either way.
+- **Route tier.** One route, `POST /evals/capture`, mapped to `read`; the handler requires `admin` when `write` is true (§3).
