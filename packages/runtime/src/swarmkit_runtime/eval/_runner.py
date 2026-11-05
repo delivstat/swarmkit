@@ -40,6 +40,10 @@ class _RuntimeLike(Protocol):
         self, *, rubric: str, content: str, trigger: str = "eval"
     ) -> DecisionSkillResult: ...
 
+    async def judge_reference(
+        self, *, reference: str, content: str, case_input: str = "", trigger: str = "eval"
+    ) -> DecisionSkillResult: ...
+
 
 def _now() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat()
@@ -92,6 +96,11 @@ async def _score_case(
         if case.expect.rubric:
             verdict = await runtime.judge_rubric(rubric=case.expect.rubric, content=output)
             checks.append(_judge_check("rubric", verdict, case.expect))
+        if case.expect.reference:
+            verdict = await runtime.judge_reference(
+                reference=case.expect.reference, content=output, case_input=case.input
+            )
+            checks.append(_judge_check("reference", verdict, case.expect))
     except TimeoutError:
         error = f"timeout: the case did not finish within {timeout_s:g}s"
     except Exception as exc:

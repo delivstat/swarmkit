@@ -402,6 +402,11 @@ demo-command-packs:
 demo-eval-resume:
     @uv run python examples/eval-resume/demo.py
 
+# The `reference` check: a known-good answer judged as data, not instructions (eval-capture.md).
+# The judge is a real model, so this needs one provider key; it makes three short judge calls.
+demo-eval-reference:
+    @uv run python examples/eval-reference/demo.py
+
 # Eval sets edited, run, interrupted, resumed and diffed over serve's HTTP API (eval-on-serve.md).
 demo-eval-serve:
     @uv run python examples/eval-serve/demo.py

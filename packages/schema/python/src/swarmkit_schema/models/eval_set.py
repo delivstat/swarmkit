@@ -11,7 +11,7 @@ from datetime import date
 from enum import Enum, StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
 
 class Identifier(RootModel[str]):
@@ -46,13 +46,38 @@ class Metadata(BaseModel):
     )
 
 
+class CapturedFrom(BaseModel):
+    """
+    The recorded run this case was captured from by `swarmkit eval-capture` or `POST /evals/capture`. Informational: the runner never reads it, and capture uses `run_id` to skip a run it has already captured. See design/details/eval-capture.md.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    run_id: str = Field(
+        ...,
+        description="The id of the job the case was captured from.",
+        min_length=1,
+        title="Run id",
+    )
+    topology_version: str | None = Field(
+        None,
+        description="The version of the target topology that produced the recorded output.",
+        title="Topology version",
+    )
+    captured_at: AwareDatetime | None = Field(
+        None, description="When the case was captured (ISO 8601).", title="Captured at"
+    )
+
+
 class Substring(RootModel[str]):
     root: str = Field(..., min_length=1, title="Substring")
 
 
 class Expectations(BaseModel):
     """
-    Checks on the run's output. The case passes when every check set here passes. Deterministic checks cost nothing; `judge` and `rubric` each make one model call.
+    Checks on the run's output. The case passes when every check set here passes. Deterministic checks cost nothing; `judge`, `rubric` and `reference` each make one model call.
     """
 
     model_config = ConfigDict(
@@ -102,9 +127,16 @@ class Expectations(BaseModel):
         min_length=1,
         title="Rubric",
     )
+    reference: str | None = Field(
+        None,
+        description="A known-good answer, usually a recorded output captured from a past run. The workspace's judge model decides whether the new output gives the same answer (wording may differ). The reference is passed to the judge as data, never as instructions. Passes like `judge`.",
+        max_length=20000,
+        min_length=1,
+        title="Reference answer",
+    )
     min_confidence: float | None = Field(
         0.5,
-        description="The confidence `judge` and `rubric` must reach to pass.",
+        description="The confidence `judge`, `rubric` and `reference` must reach to pass.",
         ge=0.0,
         le=1.0,
         title="Minimum confidence",
@@ -149,6 +181,7 @@ class Case(BaseModel):
         title="Input",
     )
     expect: Expectations | None = None
+    source: CapturedFrom | None = None
 
 
 class SwarmKitEvalSet(BaseModel):
