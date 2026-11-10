@@ -180,7 +180,7 @@ judge:
   threshold: 0.8                               # below this → a retry, not a rejection
   max_retries: 2                               # then escalate to a human, never drop
 review:
-  archetype: architect-reviewer                # optional heavyweight harness reviewer (Step 7)
+  archetype: architect-reviewer                # optional heavyweight harness reviewer (Step 7); not run yet, #1117
   read_scope: [app:oms, app:web, app:mobile]
   route_back_at: high                          # findings >= this cause a retry; lower ones attach
 approve:                                        # required — the only exit

@@ -171,7 +171,7 @@ class Judge(BaseModel):
 
 class Review(BaseModel):
     """
-    Layer 3 (optional; heavyweight gates only): an investigative harness reviewer. Findings at or above `route_back_at` retry; the rest attach to the human task.
+    Layer 3 (optional; heavyweight gates only): an investigative harness reviewer. Findings at or above `route_back_at` retry; the rest attach to the human task. NOT RUN YET: the runtime accepts and validates this layer but does not execute it, so the funnel runs without it; `swarmkit validate` reports it and a run logs a warning (#1117).
     """
 
     model_config = ConfigDict(
@@ -266,7 +266,7 @@ class SwarmKitFunnel(BaseModel):
     )
     review: Review | None = Field(
         None,
-        description="Layer 3 (optional; heavyweight gates only): an investigative harness reviewer. Findings at or above `route_back_at` retry; the rest attach to the human task.",
+        description="Layer 3 (optional; heavyweight gates only): an investigative harness reviewer. Findings at or above `route_back_at` retry; the rest attach to the human task. NOT RUN YET: the runtime accepts and validates this layer but does not execute it, so the funnel runs without it; `swarmkit validate` reports it and a run logs a warning (#1117).",
     )
     approve: ApprovalPolicy = Field(
         ...,

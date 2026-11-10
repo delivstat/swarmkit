@@ -961,6 +961,21 @@ def _wrap_with_funnel_gate(
         # No `review` entry, deliberately: `run_agent_funnel_gate` builds no reviewer at all, on
         # either binding. That omission is this check's own acceptance test — a declared `review:`
         # reports as unreachable on day one, with nothing reconstructed.
+    if "review" in spec:
+        # Said where the run happens, not only in `swarmkit validate`'s reachability report: a
+        # funnel declared validate → judge → review → approve runs validate → judge → approve,
+        # and before this nothing in the run said so (#1117). A warning rather than a refusal,
+        # because a refusal would stop every workspace that declares one, and the rest of the
+        # funnel is still worth running.
+        _logger.warning(
+            "funnel %r on agent %r declares a `review:` layer, and this runtime does not run it "
+            "yet: the funnel runs %s without it (#1117). Findings a reviewer would have routed "
+            "back are not produced.",
+            funnel.id,
+            agent.id,
+            " → ".join(layer for layer in ("validate", "judge", "approve") if layer in spec)
+            or "approve",
+        )
     # A real human gate needs a queue to open onto and a registry to count quorum against. Absent
     # either, the layer stays advisory, exactly as it behaved before. Resolved once here, not per
     # invocation.
