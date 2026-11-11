@@ -77,6 +77,13 @@ describe("fieldKind", () => {
 		expect(fieldKind({ type: "string" }, "persona")).toBe("text");
 		expect(fieldKind({ type: "string" }, "system_prompt")).toBe("text");
 		expect(fieldKind({ type: "string" }, "description")).toBe("text");
+		// a long cap makes any string prose (an eval case's `reference`); a short one does not
+		expect(fieldKind({ type: "string", maxLength: 20000 }, "reference")).toBe(
+			"text",
+		);
+		expect(fieldKind({ type: "string", maxLength: 64 }, "reference")).toBe(
+			"string",
+		);
 		// short/id-like names stay single-line
 		expect(fieldKind({ type: "string" }, "name")).toBe("string");
 		expect(fieldKind({ type: "string" }, "id")).toBe("string");

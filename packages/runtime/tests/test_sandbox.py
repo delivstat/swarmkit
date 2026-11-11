@@ -90,3 +90,58 @@ async def test_non_git_dir_raises(tmp_path: Path) -> None:
     with pytest.raises(SandboxError, match="not a git repository"):
         async with worktree_sandbox(tmp_path):
             pass
+
+
+def _apply_on_clean_checkout(
+    repo: Path, diff: str, dest: Path
+) -> subprocess.CompletedProcess[bytes]:
+    subprocess.run(
+        ["git", "worktree", "add", "-q", "--detach", str(dest), "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    return subprocess.run(
+        ["git", "apply", "-"], cwd=dest, input=diff.encode(), capture_output=True, check=False
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_diff_with_binary_files_applies_on_a_clean_checkout(tmp_path: Path) -> None:
+    """#1116: a binary file was a content-less stub, and `git apply` refused the whole patch, so
+    the text files beside it were lost too. The diff is the node's output artifact: it has to
+    reproduce the sandbox's changes."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    template = b"PK\x03\x04\x00\xff\x00\x01binary-template\x00\xfe"
+    (repo / "template.xlsx").write_bytes(template)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "tpl"], cwd=repo, check=True, capture_output=True)
+
+    changed = template + b"\x00edited\xff"
+    async with worktree_sandbox(repo) as handle:
+        (handle.root / "copy.xlsx").write_bytes(template)  # a new binary file
+        (handle.root / "template.xlsx").write_bytes(changed)  # a modified one
+        (handle.root / "a.txt").write_text("hi\n")  # and text beside them
+        diff = await collect_diff(handle)
+
+    assert "Binary files" not in diff
+    assert "GIT binary patch" in diff
+    applied = _apply_on_clean_checkout(repo, diff, tmp_path / "check")
+    assert applied.returncode == 0, applied.stderr.decode()
+    check = tmp_path / "check"
+    assert (check / "a.txt").read_text() == "hi\n"
+    assert (check / "copy.xlsx").read_bytes() == template
+    assert (check / "template.xlsx").read_bytes() == changed
+
+
+@pytest.mark.asyncio
+async def test_a_text_only_diff_is_unchanged_by_binary_mode(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    async with worktree_sandbox(repo) as handle:
+        (handle.root / "seed.txt").write_text("base\nmore\n")
+        diff = await collect_diff(handle)
+    assert "+more" in diff and "GIT binary patch" not in diff

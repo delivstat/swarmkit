@@ -54,11 +54,12 @@ provenance:                         # optional
 | `cases[].id` | yes | Lowercase kebab, **unique within the set**. Reports and `--compare` are keyed by case id, so keep a case's id when you edit it. |
 | `cases[].input` | yes | What the topology is run on: the same text a caller sends to `POST /run`. Must not be empty. |
 | `cases[].expect` | no | The checks. Empty or absent makes the case a smoke test that passes when the run completes. |
+| `cases[].source` | no | The recorded run a case was captured from: `run_id` (required), `topology_version`, `captured_at`. Informational: the runner never reads it. |
 | `provenance` | no | The shared artifact provenance block. |
 
 ## Checks (`expect`)
 
-Deterministic checks are free. `judge` and `rubric` each make one model call.
+Deterministic checks are free. `judge`, `rubric` and `reference` each make one model call.
 
 | Check | Passes when |
 |---|---|
@@ -70,7 +71,26 @@ Deterministic checks are free. `judge` and `rubric` each make one model call.
 | `used_skills: [..]` | the run invoked every listed skill, read from its events |
 | `judge: <skill-id>` | the decision skill returns `pass` at `min_confidence` or above |
 | `rubric: ".."` | the workspace's judge model scores the output `pass` against this rubric at `min_confidence` or above |
-| `min_confidence` | the threshold for `judge` and `rubric`, from 0 to 1. The default is 0.5 |
+| `reference: ".."` | the workspace's judge model decides the output gives the same answer as this known-good one (wording may differ) at `min_confidence` or above. Up to 20,000 characters |
+| `min_confidence` | the threshold for `judge`, `rubric` and `reference`, from 0 to 1. The default is 0.5 |
+
+**`reference` versus `rubric`.** A rubric is instructions to the judge, so it goes in the judge's system prompt: write it yourself. A reference is an answer, usually a recorded output from a past run, so it's passed to the judge in the user message, fenced and labelled as data, and the judge is told to ignore any instruction inside it. Put a recorded output in `reference`, never in `rubric`.
+
+A captured case looks like this:
+
+```yaml
+  - id: run-3f9a2c1e
+    input: I was charged twice for my subscription this month.
+    expect:
+      not_empty: true
+      used_skills: [classify-ticket]
+      reference: Routed to billing. A duplicate charge is refunded by the billing team within 5 days.
+      min_confidence: 0.7
+    source:
+      run_id: 3f9a2c1e-7b1d-4c55-9a0e-1f2d3c4b5a69
+      topology_version: 1.2.0
+      captured_at: "2026-11-05T09:30:00Z"
+```
 
 ## Validation
 
