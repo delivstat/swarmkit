@@ -75,14 +75,41 @@
           "title": "Input",
           "description": "What the target topology is run on — the same text a caller would send to `POST /run`."
         },
-        "expect": { "$ref": "#/$defs/expect" }
+        "expect": { "$ref": "#/$defs/expect" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id"],
+      "title": "Captured from",
+      "description": "The recorded run this case was captured from by `swarmkit eval-capture` or `POST /evals/capture`. Informational: the runner never reads it, and capture uses `run_id` to skip a run it has already captured. See design/details/eval-capture.md.",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "title": "Run id",
+          "description": "The id of the job the case was captured from."
+        },
+        "topology_version": {
+          "type": "string",
+          "title": "Topology version",
+          "description": "The version of the target topology that produced the recorded output."
+        },
+        "captured_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Captured at",
+          "description": "When the case was captured (ISO 8601)."
+        }
       }
     },
     "expect": {
       "type": "object",
       "additionalProperties": false,
       "title": "Expectations",
-      "description": "Checks on the run's output. The case passes when every check set here passes. Deterministic checks cost nothing; `judge` and `rubric` each make one model call.",
+      "description": "Checks on the run's output. The case passes when every check set here passes. Deterministic checks cost nothing; `judge`, `rubric` and `reference` each make one model call.",
       "properties": {
         "contains": {
           "type": "array",
@@ -131,13 +158,20 @@
           "title": "Rubric",
           "description": "An inline rubric the workspace's judge model scores the output against — no skill needed. Passes like `judge`."
         },
+        "reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000,
+          "title": "Reference answer",
+          "description": "A known-good answer, usually a recorded output captured from a past run. The workspace's judge model decides whether the new output gives the same answer (wording may differ). The reference is passed to the judge as data, never as instructions. Passes like `judge`."
+        },
         "min_confidence": {
           "type": "number",
           "minimum": 0,
           "maximum": 1,
           "default": 0.5,
           "title": "Minimum confidence",
-          "description": "The confidence `judge` and `rubric` must reach to pass."
+          "description": "The confidence `judge`, `rubric` and `reference` must reach to pass."
         }
       }
     },

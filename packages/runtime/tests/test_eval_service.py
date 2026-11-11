@@ -65,6 +65,11 @@ class _Runtime:
     ) -> DecisionSkillResult:
         return DecisionSkillResult(skill_id="r", verdict="pass", confidence=1.0, reasoning="")
 
+    async def judge_reference(
+        self, *, reference: str, content: str, case_input: str = "", trigger: str = "eval"
+    ) -> DecisionSkillResult:
+        return DecisionSkillResult(skill_id="r", verdict="pass", confidence=1.0, reasoning="")
+
 
 def _ws(tmp_path: Path, body: str = _SET) -> Path:
     (tmp_path / "evals").mkdir(exist_ok=True)

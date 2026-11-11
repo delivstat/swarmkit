@@ -40,12 +40,14 @@ export interface Case {
     /**
      * What the target topology is run on — the same text a caller would send to `POST /run`.
      */
-    input: string;
+    input:   string;
+    source?: CapturedFrom;
 }
 
 /**
  * Checks on the run's output. The case passes when every check set here passes.
- * Deterministic checks cost nothing; `judge` and `rubric` each make one model call.
+ * Deterministic checks cost nothing; `judge`, `rubric` and `reference` each make one model
+ * call.
  */
 export interface Expectations {
     /**
@@ -63,7 +65,7 @@ export interface Expectations {
      */
     judge?: string;
     /**
-     * The confidence `judge` and `rubric` must reach to pass.
+     * The confidence `judge`, `rubric` and `reference` must reach to pass.
      */
     min_confidence?: number;
     /**
@@ -74,6 +76,12 @@ export interface Expectations {
      * The output must contain something other than whitespace.
      */
     not_empty?: boolean;
+    /**
+     * A known-good answer, usually a recorded output captured from a past run. The workspace's
+     * judge model decides whether the new output gives the same answer (wording may differ).
+     * The reference is passed to the judge as data, never as instructions. Passes like `judge`.
+     */
+    reference?: string;
     /**
      * A Python regular expression the output must match somewhere (`re.search`).
      */
@@ -87,6 +95,26 @@ export interface Expectations {
      * Skills the run must have invoked, read from its events.
      */
     used_skills?: string[];
+}
+
+/**
+ * The recorded run this case was captured from by `swarmkit eval-capture` or `POST
+ * /evals/capture`. Informational: the runner never reads it, and capture uses `run_id` to
+ * skip a run it has already captured. See design/details/eval-capture.md.
+ */
+export interface CapturedFrom {
+    /**
+     * When the case was captured (ISO 8601).
+     */
+    captured_at?: Date;
+    /**
+     * The id of the job the case was captured from.
+     */
+    run_id: string;
+    /**
+     * The version of the target topology that produced the recorded output.
+     */
+    topology_version?: string;
 }
 
 export type Kind = "EvalSet";
