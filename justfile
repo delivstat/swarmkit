@@ -407,6 +407,11 @@ demo-eval-resume:
 demo-eval-reference:
     @uv run python examples/eval-reference/demo.py
 
+# A harness agent receives its archetype's prompt.system: natively on Claude Code, ahead of the
+# statement on every other adapter (#1098). Fake harness, no key.
+demo-harness-system-prompt:
+    @uv run python examples/harness-system-prompt/demo.py
+
 # Eval sets edited, run, interrupted, resumed and diffed over serve's HTTP API (eval-on-serve.md).
 demo-eval-serve:
     @uv run python examples/eval-serve/demo.py
