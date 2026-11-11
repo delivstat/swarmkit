@@ -3124,7 +3124,7 @@ dev = [{ name = "pytest-xdist", specifier = ">=3.8.0" }]
 
 [[package]]
 name = "swarmkit-schema"
-version = "1.53.0"
+version = "1.53.1"
 source = { editable = "packages/schema/python" }
 dependencies = [
     { name = "jsonschema" },

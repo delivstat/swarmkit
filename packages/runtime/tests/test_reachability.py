@@ -116,6 +116,36 @@ def test_a_declared_review_layer_is_reported(tmp_path: Path) -> None:
     assert "designer:spec-review:review" in _unreachable_keys(_report(root))
 
 
+def test_the_report_says_why_a_review_layer_is_unreached(tmp_path: Path) -> None:
+    """#1117: "nothing wired it" reads as a workspace mistake; the gap is the runtime's."""
+    root = _workspace(tmp_path, {"review": {"archetype": "reviewer", "route_back_at": "high"}})
+    (line,) = [u.line() for u in _report(root).unreachable if u.declaration.key.endswith(":review")]
+    assert "does not run yet (#1117)" in line
+
+
+def test_compiling_a_funnel_with_a_review_layer_warns_that_it_will_not_run(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """#1117: the run itself said nothing — validate → judge → review → approve silently ran
+    validate → judge → approve. Compiling the gated agent now says so, naming what does run."""
+    root = _workspace(tmp_path, {"review": {"archetype": "reviewer", "route_back_at": "high"}})
+    with caplog.at_level("WARNING"):
+        _report(root)
+    (msg,) = [r.getMessage() for r in caplog.records if "`review:` layer" in r.getMessage()]
+    assert "'spec-review'" in msg and "'designer'" in msg
+    assert "runs approve without it" in msg
+    assert "#1117" in msg
+
+
+def test_a_funnel_without_a_review_layer_does_not_warn(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    root = _workspace(tmp_path, {})
+    with caplog.at_level("WARNING"):
+        _report(root)
+    assert not [r for r in caplog.records if "`review:` layer" in r.getMessage()]
+
+
 def test_a_wired_judge_is_not_reported(tmp_path: Path) -> None:
     """The negative that keeps the report usable: a layer that IS built must not be listed."""
     root = _workspace(tmp_path, {"judge": {"skill": "spec-judge", "threshold": 0.8}})

@@ -42,6 +42,12 @@ if TYPE_CHECKING:
 #: it IS wired, by an approver that records and passes, and the ledger records that honestly.
 FUNNEL_LAYERS: tuple[str, ...] = ("validate", "judge", "review", "approve")
 
+#: A layer whose gap is known says why, so the report reads as a fact about the runtime rather
+#: than a puzzle about the workspace. `review` is accepted by the schema and built by no binding.
+_LAYER_DETAIL: dict[str, str] = {
+    "review": "the review layer, which this runtime does not run yet (#1117)",
+}
+
 
 @dataclass(frozen=True)
 class Declaration:
@@ -179,7 +185,7 @@ def declarations_for_topology(workspace: ResolvedWorkspace, topology_id: str) ->
                 kind="funnel_layer",
                 key=f"{agent.id}:{funnel.id}:{layer}",
                 declared_on=f"funnel {funnel.id}",
-                detail=f"the {layer} layer",
+                detail=_LAYER_DETAIL.get(layer, f"the {layer} layer"),
             )
             for layer in FUNNEL_LAYERS
             if layer in spec
