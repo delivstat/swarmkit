@@ -32,6 +32,8 @@ from swarmkit_runtime.executors._declarative import (
     DeclarativeExecutor,
     load_adapter_specs,
     load_workspace_adapter_specs,
+    system_prompt_delivery,
+    with_instructions,
 )
 from swarmkit_runtime.executors._event_map import AdapterInterpreter, build_command
 from swarmkit_runtime.executors._events import (
@@ -120,5 +122,7 @@ __all__ = [
     "load_workspace_adapter_specs",
     "mcp_reachability",
     "parse_adapter_spec",
+    "system_prompt_delivery",
+    "with_instructions",
     "worktree_sandbox",
 ]

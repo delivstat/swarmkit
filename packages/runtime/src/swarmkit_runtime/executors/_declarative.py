@@ -93,6 +93,29 @@ def _merged_tool_grant(task: TaskSpec, spec: Any, config: Mapping[str, Any]) -> 
     return ",".join([configured, *[n for n in names if n not in have]])
 
 
+#: The placeholder an adapter's launch template uses to take the agent's system prompt natively.
+SYSTEM_PROMPT_PLACEHOLDER = "{task.system_prompt}"
+
+
+def system_prompt_delivery(spec: Any) -> str:
+    """How an adapter receives the agent's ``prompt.system``: ``"native"`` when its launch template
+    uses ``{task.system_prompt}`` (Claude Code's ``--append-system-prompt``), else ``"statement"``,
+    meaning the runtime puts it ahead of the task statement. There is no third answer: a harness
+    that silently dropped it ran without instructions its author believed it had (#1098)."""
+    launch = getattr(spec, "launch", None)
+    if launch is None:
+        return "statement"
+    templates = list(getattr(launch, "command", ()) or ())
+    for opt in getattr(launch, "optional_args", ()) or ():
+        templates.extend(getattr(opt, "args", ()) or ())
+    return "native" if any(SYSTEM_PROMPT_PLACEHOLDER in str(t) for t in templates) else "statement"
+
+
+def with_instructions(system_prompt: str, statement: str) -> str:
+    """The first message for an adapter with no system-prompt flag: instructions, then the task."""
+    return f"## Instructions\n\n{system_prompt.strip()}\n\n## Task\n\n{statement}"
+
+
 def _ctx(
     task: TaskSpec,
     sandbox: SandboxHandle,
@@ -107,6 +130,8 @@ def _ctx(
         ctx["task.base_ref"] = task.base_ref
     if task.mcp_config:
         ctx["task.mcp_config"] = task.mcp_config
+    if task.system_prompt:
+        ctx["task.system_prompt"] = task.system_prompt
     if budget.max_turns is not None:
         ctx["budget.max_turns"] = str(budget.max_turns)
     if budget.max_cost_usd is not None:
@@ -329,6 +354,16 @@ class DeclarativeExecutor(Executor):
         # input answer if one was supplied, else the declared permission-nudge; plus the resume
         # token + joined granted capabilities in the substitution context (all declared).
         run_task = task
+        if (
+            not resuming
+            and task.system_prompt
+            and system_prompt_delivery(self._spec) == "statement"
+        ):
+            # The adapter has no flag for it, so the instructions lead the first message. Not on a
+            # resume: the session already holds them, and the resumed message is the answer.
+            run_task = replace(
+                task, statement=with_instructions(task.system_prompt, task.statement)
+            )
         if resuming and answer:
             run_task = replace(task, statement=answer)
         elif resuming and self._spec.resume_prompt:

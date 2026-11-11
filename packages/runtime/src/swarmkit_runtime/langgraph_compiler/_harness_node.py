@@ -53,6 +53,7 @@ from swarmkit_runtime.executors import (
     is_launch_approved,
     load_adapter_specs,
     load_workspace_adapter_specs,
+    system_prompt_delivery,
     worktree_sandbox,
 )
 from swarmkit_runtime.governance import AuditEvent
@@ -235,11 +236,16 @@ def _task_spec(agent: ResolvedAgent, state: SwarmState, workspace_root: Path | N
     ) + tuple(
         f"{AGENT_SERVER_ID}{GATEWAY_NAME_SEP}{skill.id}" for skill in _granted_agent_skills(agent)
     )
+    # The archetype's (or the agent's own) `prompt.system`. It was never read here, so a harness
+    # agent ran without the instructions its author wrote — tutorial 17's "You implement exactly
+    # the change described" included — and nothing said so (#1098).
+    system_prompt = str((getattr(agent, "prompt", None) or {}).get("system") or "").strip()
     return TaskSpec(
         statement=statement,
         context_files=context_files,
         mcp_tools=mcp_tools,
         base_ref="HEAD",
+        system_prompt=system_prompt,
     )
 
 
@@ -725,7 +731,15 @@ async def _execute(  # noqa: PLR0912, PLR0915
                     {"kind": kind, "files": list(delivered)},
                 )
 
-            await _record(governance, "executor.started", agent_id, {"kind": kind})
+            started: dict[str, Any] = {"kind": kind}
+            if task.system_prompt:
+                # How, not what: the prompt's text is the author's, and its length is enough to
+                # show it was delivered.
+                started["system_prompt"] = {
+                    "delivery": system_prompt_delivery(adapter_spec),
+                    "chars": len(task.system_prompt),
+                }
+            await _record(governance, "executor.started", agent_id, started)
 
             park_resume = (
                 relay.on_unanswerable == "relay"
