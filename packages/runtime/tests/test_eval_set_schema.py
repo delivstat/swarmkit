@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from swarmkit_runtime.eval import EvalSetInvalidError, load_eval_set
-from swarmkit_runtime.eval._models import EvalCase, EvalSet, EvalSetMeta, ExpectSpec
+from swarmkit_runtime.eval._models import CaseSource, EvalCase, EvalSet, EvalSetMeta, ExpectSpec
 from swarmkit_schema import get_schema
 
 _REPO = Path(__file__).resolve().parents[3]
@@ -90,8 +90,9 @@ def test_name_and_provenance_survive_the_load(tmp_path: Path) -> None:
         (EvalSetMeta, ("$defs", "metadata")),
         (EvalCase, ("$defs", "case")),
         (ExpectSpec, ("$defs", "expect")),
+        (CaseSource, ("$defs", "source")),
     ],
-    ids=["set", "metadata", "case", "expect"],
+    ids=["set", "metadata", "case", "expect", "source"],
 )
 def test_the_runtime_model_mirrors_the_schema(model: type, schema_path: tuple[str, ...]) -> None:
     """A field added to one and not the other is either refused by the schema or dropped by the
@@ -100,3 +101,14 @@ def test_the_runtime_model_mirrors_the_schema(model: type, schema_path: tuple[st
     for key in schema_path:
         node = node[key]
     assert set(model.model_fields) == set(node["properties"])  # type: ignore[attr-defined]
+
+
+def test_a_captured_case_keeps_its_reference_and_source(tmp_path: Path) -> None:
+    fixture = _FIXTURES / "eval-set" / "valid-captured.yaml"
+    es = load_eval_set(fixture.parent, str(fixture))
+    case = es.cases[0]
+    assert case.expect.reference is not None and case.expect.reference.startswith("Routed")
+    assert case.source is not None
+    assert case.source.run_id.startswith("3f9a2c1e")
+    assert case.source.topology_version == "1.2.0"
+    assert case.source.captured_at == "2026-11-05T09:30:00Z"

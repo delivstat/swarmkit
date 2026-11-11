@@ -182,6 +182,12 @@ export function isLongText(name: string): boolean {
 	);
 }
 
+/** A string the schema lets run past a line or two (a `maxLength` over 200, like an eval case's
+ * `reference`) is prose whatever it is called. */
+function isLongByCap(schema: JsonSchema): boolean {
+	return typeof schema.maxLength === "number" && schema.maxLength > 200;
+}
+
 /** Classify a (resolved) schema node into a render kind. `name` lets us pick a textarea for known
  * long-text fields. Unknown shapes (oneOf/anyOf/etc.) fall back to a raw-JSON editor. */
 export function fieldKind(schema: JsonSchema, name = ""): FieldKind {
@@ -199,7 +205,8 @@ export function fieldKind(schema: JsonSchema, name = ""): FieldKind {
 	if (mapValueSchema(schema)) return "map";
 	if (type === "object" || schema.properties || Array.isArray(schema.allOf))
 		return "object";
-	if (type === "string") return isLongText(name) ? "text" : "string";
+	if (type === "string")
+		return isLongText(name) || isLongByCap(schema) ? "text" : "string";
 	return "json";
 }
 

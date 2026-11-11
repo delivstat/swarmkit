@@ -66,6 +66,10 @@ The field reference is the schema itself. Every field has a `title` and a `descr
   - **Unique case ids.** `uniqueItems` compares whole items, not one field, so the loader checks this. Reports and run-to-run comparisons are keyed by case id, so a duplicate would merge two cases' history.
   - **The target exists.** That's a reference into the workspace, checked when the set is run and, from PR 3, when serve writes one.
 - **Reference hints.** `x-swarmkit-ref: topology` is on `target`, and `x-swarmkit-ref: skill` is on `judge` and on the items of `used_skills`. The portal renders these as pickers over the workspace.
+- **`expect.reference` and `case.source`** (schema 1.53.0, for [[eval-capture]]).
+  - `reference` is a known-good answer the judge model compares the output against. It's a separate key, not a recorded output placed in `rubric`, because `judge_rubric` puts the rubric in the system prompt, where a model-written output could act as instructions. `judge_reference` passes the reference, the input and the output in the user message, fenced, under a fixed system prompt.
+  - `reference` is capped at 20,000 characters. A longer recorded output makes an expensive, noisy judge, and capture skips it rather than truncating it.
+  - `source` records which run a case was captured from: `run_id` is required, `topology_version` and `captured_at` are optional. It's strict like the rest. The runner ignores it; capture reads `run_id` to skip runs it already captured.
 - **The runtime keeps its own model.** `eval/_models.py` gives the runner plain types and defaults, where the generated model has root types and optional fields. The loader validates against the schema first and then narrows to the runtime model. `test_eval_set_schema.py` asserts that the two have the same fields at every level, so neither can drift from the other without a test failure.
 
 ## Test plan

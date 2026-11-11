@@ -204,6 +204,9 @@ describe("labels", () => {
 			}),
 		).toEqual(['contains "done"', "not empty", "rubric: is polite (≥ 0.7)"]);
 		expect(expectLines(undefined)).toEqual([]);
+		expect(
+			expectLines({ reference: "Routed to billing.", min_confidence: 0.7 }),
+		).toEqual(["matches the reference answer (≥ 0.7)"]);
 	});
 	it("starts a new set on a real topology when there is one", () => {
 		expect(newEvalSetYaml("change")).toContain("target: change");

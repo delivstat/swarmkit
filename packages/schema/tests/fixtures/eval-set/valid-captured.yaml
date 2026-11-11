@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: EvalSet
+metadata:
+  id: captured
+  description: Cases captured from recorded runs.
+target: support-triage
+cases:
+  - id: run-3f9a2c1e
+    input: I was charged twice for my subscription this month.
+    expect:
+      not_empty: true
+      used_skills: [classify-ticket]
+      reference: Routed to billing. A duplicate charge is refunded by the billing team within 5 days.
+      min_confidence: 0.7
+    source:
+      run_id: 3f9a2c1e-7b1d-4c55-9a0e-1f2d3c4b5a69
+      topology_version: 1.2.0
+      captured_at: "2026-11-05T09:30:00Z"
+  - id: run-0b7e44d2
+    input: Nothing loads.
+    source: {run_id: 0b7e44d2-2a6c-4f1e-8c3d-9e8f7a6b5c4d}

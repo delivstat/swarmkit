@@ -276,6 +276,29 @@ describe("the edit form", () => {
 		expect(out).toContain("cases");
 		expect(out).toContain("do case-two");
 	});
+	it("edits a captured case's reference in a textarea and shows its source", () => {
+		const captured = {
+			...SET,
+			cases: [
+				{
+					id: "run-3f9a2c1e",
+					input: "charged twice",
+					expect: { reference: "Routed to billing.", min_confidence: 0.7 },
+					source: { run_id: "3f9a2c1e", topology_version: "1.2.0" },
+				},
+			],
+		};
+		const out = html(
+			<SchemaForm
+				schema={schema}
+				value={captured as unknown as Record<string, unknown>}
+				onChange={() => {}}
+			/>,
+		);
+		expect(out).toMatch(/<textarea[^>]*>Routed to billing\.<\/textarea>/);
+		expect(out).toContain('value="3f9a2c1e"');
+		expect(out).toContain('value="1.2.0"');
+	});
 	it("puts a 422 on the field it names, and nowhere else", () => {
 		const { byField } = fieldErrors([
 			{

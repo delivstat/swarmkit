@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: EvalSet
+metadata: {id: greeting}
+target: hello
+cases:
+  - id: a
+    input: hi
+    source: {run_id: r1, trace: t.jsonl}
