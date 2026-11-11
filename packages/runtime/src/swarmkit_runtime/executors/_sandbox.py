@@ -121,6 +121,9 @@ def deliver_context_files(handle: SandboxHandle, files: Mapping[str, str]) -> tu
 async def collect_diff(handle: SandboxHandle, exclude: Sequence[str] = ()) -> str:
     """Return the harness's changes as a unified diff against the sandbox's base ref.
 
+    The diff applies: ``git apply`` on a clean checkout of the base ref reproduces the sandbox's
+    changes, binary files included.
+
     Uses ``git add --intent-to-add`` so newly created (untracked) files appear as additions without
     staging their content — the produced diff is the node's output artifact (§6.1). This never
     commits, merges, or pushes: integration is a downstream node's decision, gated as usual.
@@ -132,7 +135,10 @@ async def collect_diff(handle: SandboxHandle, exclude: Sequence[str] = ()) -> st
     """
     root = handle.root
     await _git("add", "--intent-to-add", "--all", cwd=root)
-    args = ["diff"]
+    # `--binary`: without it a binary file is a "Binary files … differ" stub with no content, and
+    # `git apply` refuses the whole patch over it, so one copied `.xlsx` lost every text file
+    # beside it (#1116). The binary block is base85, plain ASCII, so the decode in `_git` keeps it.
+    args = ["diff", "--binary"]
     if exclude:
         # Pathspec form, so the exclusion is git's own and cannot mangle the diff body.
         args += ["--", ".", *(f":(exclude){path}" for path in exclude)]
