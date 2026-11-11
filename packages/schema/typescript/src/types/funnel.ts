@@ -30,7 +30,9 @@ export interface SwarmKitFunnel {
     provenance: Provenance;
     /**
      * Layer 3 (optional; heavyweight gates only): an investigative harness reviewer. Findings
-     * at or above `route_back_at` retry; the rest attach to the human task.
+     * at or above `route_back_at` retry; the rest attach to the human task. NOT RUN YET: the
+     * runtime accepts and validates this layer but does not execute it, so the funnel runs
+     * without it; `swarmkit validate` reports it and a run logs a warning (#1117).
      */
     review?: Review;
     /**
@@ -148,7 +150,9 @@ export type AuthoredBy = "human" | "authored_by_swarm" | "derived_from_template"
 
 /**
  * Layer 3 (optional; heavyweight gates only): an investigative harness reviewer. Findings
- * at or above `route_back_at` retry; the rest attach to the human task.
+ * at or above `route_back_at` retry; the rest attach to the human task. NOT RUN YET: the
+ * runtime accepts and validates this layer but does not execute it, so the funnel runs
+ * without it; `swarmkit validate` reports it and a run logs a warning (#1117).
  */
 export interface Review {
     /**

@@ -123,8 +123,9 @@ four-layer `consolidated-design-approval` funnel:
 - `funnels/consolidated-design-approval.yaml` — `validate` → `judge` (`artifact-judge`) →
   **`review`** (the `architect-reviewer` **harness**, read-only, layer 3 investigative review)
   → multi-party `approve` (oms-lead + web-lead + mobile-lead + infosec-lead). A harness finding at
-  or above `route_back_at: high` routes back to a revision before any human is paged; lower
-  findings attach and travel to the approvers.
+  or above `route_back_at: high` is meant to route back to a revision before any human is paged,
+  with lower findings travelling to the approvers. **The runtime doesn't run `review:` yet
+  (#1117)**, so today this funnel runs validate → judge → approve, and a run logs a warning.
 - `roles/sdlc-roles.yaml` — now completes the app-lead set with **`mobile-lead`** (carol), so all
   four required parties resolve to distinct human identities.
 
@@ -228,7 +229,8 @@ topologies read across all three apps (the shared surface) and carry only cross-
 investigative **`security-consultant` harness review** (compliance / SAST / DAST — data residency,
 authz, injection) whose **HIGH-severity finding routes back** before release (`route_back_at: high`)
 → the `infosec-lead` signs off (the human approval is the only exit). Same four-layer funnel
-machinery as slice 6, with the security reviewer as layer 3.
+machinery as slice 6, with the security reviewer as layer 3. As with slice 6, the `review` layer is
+declared but not run yet (#1117).
 
 **The controller-driven defect loop.** The `sdlc-sit-pt` stage-graph wires
 `build → sit → pt → security-review` with the cross-stage defect cycle (`defect.raised → build`,

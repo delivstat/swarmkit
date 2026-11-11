@@ -22,8 +22,10 @@ Present layers always run in the fixed order `validate → judge → review → 
 |---|---|---|
 | `validate` | deterministic, no LLM | Structured-output validation against a JSON Schema (`schema`, `autocorrect`) with field-specific auto-correction. A shape auto-correction cannot repair is a retry — the judge never sees malformed input, which kills shape hallucination up front. Two sibling keys apply to a gated node that produces a **diff** (a harness): `slice_budget: {max_files, max_diff_lines}` makes an over-budget change a validate failure ("split it"), and `cited_change: true` requires the artifact to be a change-rationale (`summary` + `citations: [{claim, path, lines}]`) whose citations name code the diff actually touched. Both are the checks `swarmkit slice-check` and `swarmkit cited-change` run standalone. |
 | `judge` | LLM-as-judge decision skill | Scores the artifact against a rubric. A score below `threshold` drives a bounded retry carrying the critique back to the drafter. |
-| `review` | harness reviewer (optional, heavyweight) | An investigative reviewer returns findings. Findings at or above `route_back_at` severity (`low` \| `medium` \| `high` (default) \| `critical`) retry; the rest attach to the human task and travel onward. |
+| `review` | harness reviewer (optional, heavyweight) | An investigative reviewer returns findings. Findings at or above `route_back_at` severity (`low` \| `medium` \| `high` (default) \| `critical`) retry; the rest attach to the human task and travel onward. **Not run yet** (#1117): see below the table. |
 | `approve` | multi-party human approval (**required**) | The binding human layer: per-role tasks, quorum, `min_distinct_approvers`, `exclude_author`. The only exit from the funnel to `done`. |
+
+**Not run yet (#1117):** the runtime accepts and validates `review:` but doesn't execute it, so the funnel runs without that layer. `swarmkit validate` reports it as reached by nothing, and a run logs a warning.
 
 ## The fixed control flow
 
