@@ -17,8 +17,10 @@ Design reference: ``design/details/topology-loader.md``.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from jsonschema import ValidationError
 from pydantic import ValidationError as PydanticValidationError
@@ -37,7 +39,7 @@ from swarmkit_runtime.memory._defaults import (
     bundled_memory_skills,
     memory_config,
 )
-from swarmkit_runtime.skills import build_skill_registry
+from swarmkit_runtime.skills import ResolvedSkill, build_skill_registry, impl_get
 from swarmkit_runtime.skills._runtime_floor import unmet_floors
 from swarmkit_runtime.workspace import (
     ArtifactKind,
@@ -416,6 +418,34 @@ def _apply_memory_defaults(
     return out, cfg
 
 
+def _with_mcp_effects(
+    skills: Mapping[str, ResolvedSkill], servers: Iterable[Any]
+) -> dict[str, ResolvedSkill]:
+    """Stamp each ``mcp_tool`` skill with the effect its server declares for its tool.
+
+    Only the declared map: at load time there is no connection, so no ``readOnlyHint`` to ask. A
+    tool the map is silent on stays ``None`` — unknown, which no bulk grant reads as ``read``.
+    """
+    declared: dict[str, dict[str, str]] = {}
+    for server in servers:
+        effects = getattr(server, "effects", None) or {}
+        declared[str(server.id)] = {
+            str(tool): str(getattr(effect, "value", effect)) for tool, effect in effects.items()
+        }
+    out: dict[str, ResolvedSkill] = {}
+    for skill_id, skill in skills.items():
+        impl = skill.raw.implementation
+        if impl_get(impl, "type") == "mcp_tool":
+            effect = declared.get(str(impl_get(impl, "server")), {}).get(
+                str(impl_get(impl, "tool"))
+            )
+            if effect is not None:
+                out[skill_id] = replace(skill, mcp_effect=effect)
+                continue
+        out[skill_id] = skill
+    return out
+
+
 def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     """Load a SwarmKit workspace and produce a fully-resolved, typed tree.
 
@@ -458,9 +488,11 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     # builder, `requires:` validation and the archetype merge from needing to know packs exist.
     ws_artifact = next((a for a in artifacts if a.kind == "workspace"), None)
     if ws_artifact is not None:
-        packs = parse_command_packs(
-            SwarmKitWorkspace.model_validate(dict(ws_artifact.raw)).command_packs
-        )
+        ws_model = SwarmKitWorkspace.model_validate(dict(ws_artifact.raw))
+        # Each mcp_tool skill learns its tool's declared effect, so `pack:<server>` can grant the
+        # server's reads the way `pack:<command-pack>` grants a pack's (#1123).
+        skills = _with_mcp_effects(skills, ws_model.mcp_servers or [])
+        packs = parse_command_packs(ws_model.command_packs)
         pack_skills, pack_errors = synthesize_pack_skills(
             packs, skills, workspace_path=ws_artifact.path
         )

@@ -48,6 +48,11 @@ class ResolvedSkill:
     #: for every hand-authored skill. Carried so a `pack:` grant can expand to the pack's read
     #: commands without the resolver needing the pack configs threaded into it.
     pack_origin: tuple[str, str, str] | None = None
+    #: For an ``mcp_tool`` skill: what its server's ``effects`` map declares for its tool —
+    #: ``"read"`` or ``"write"`` — or ``None`` when the map is silent. Carried for the same reason
+    #: as ``pack_origin``: so ``pack:<server>`` can grant the server's reads without the resolver
+    #: needing the server configs threaded into it. Undeclared is never read (#1123).
+    mcp_effect: str | None = None
 
 
 def build_skill_registry(
