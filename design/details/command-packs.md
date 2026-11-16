@@ -227,9 +227,15 @@ bulk form exists for. A write command never does.
 > means exactly what it says on the line, every time it is read. The rejected version is recorded
 > because "it fails loudly" sounded like the safer answer and was the more complicated one.
 
-`server:<id>` deliberately makes no equivalent promise. An MCP tool has no declared effect to filter
+`server:<id>` deliberately makes no equivalent promise. An MCP tool had no declared effect to filter
 on — that is [#825](https://github.com/delivstat/swarmkit/issues/825) — so a server grant carries
 everything targeting that server. The asymmetry is honest; pretending otherwise would be worse.
+
+> **Amended in 1.269.4 (#1123).** MCP servers have had a declared `effects` map since 1.199.0, so
+> the filter now exists. `pack:<server-id>` grants the skills whose tool the map declares `read`,
+> under the same rule as a command pack: a write tool, or one the map is silent on, is never
+> carried. `server:<id>` keeps its meaning, everything on the server, writes included, so `pack:`
+> is the bulk grant to reach for on either kind.
 
 ### 4. Grants take packs *and* servers, not just skills
 

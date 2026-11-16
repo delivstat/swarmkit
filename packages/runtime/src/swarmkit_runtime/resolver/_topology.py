@@ -643,7 +643,7 @@ def _merge_and_resolve_skills(
     return tuple(resolved), errors
 
 
-def _expand_bulk_grant(
+def _expand_bulk_grant(  # noqa: PLR0911 — one return per grant form
     entry: str,
     skills: Mapping[str, ResolvedSkill],
     agent_id: str,
@@ -658,9 +658,14 @@ def _expand_bulk_grant(
     silently widen what an agent already holds — the failure mode of every bulk grant. Adding a
     *read* command does flow through, which is the ergonomics the bulk form exists for.
 
-    ``server:<id>`` grants every skill targeting that MCP server. It resolves against the declared
-    skills rather than the server's live tool list, because the tool list requires a connection and
-    a grant that changes when a server restarts is not a grant.
+    **`pack:<server>` is the same grant for an MCP server** (#1123): the ``mcp_tool`` skills whose
+    tool the server's ``effects`` map declares ``read``. A write tool, or one the map is silent on,
+    is never carried. When a command pack and a server share the id, the grant is both sets of
+    reads.
+
+    ``server:<id>`` grants every skill targeting that MCP server, **writes included**. It resolves
+    against the declared skills rather than the server's live tool list, because the tool list
+    requires a connection and a grant that changes when a server restarts is not a grant.
     """
     kind, _, target = entry.partition(":")
     if not target:
@@ -678,11 +683,20 @@ def _expand_bulk_grant(
 
     if kind == "pack":
         matches = [s for s in skills.values() if s.pack_origin and s.pack_origin[0] == target]
+        # An MCP server's skills, for the same grant with the same rule: reads only (#1123). The
+        # catalogue documents `pack:<bundle>` this way, and before this it did not resolve at all,
+        # so the only bulk form for a server was `server:` — the one that carries its writes.
+        if target != "workspace":
+            mcp_grant = _pack_grant_on_server(
+                entry, target, matches, skills, agent_id, parent_path, index, artifact_path
+            )
+            if mcp_grant is not None:
+                return mcp_grant
         if not matches:
             return [], [
                 _unknown_bulk(
                     entry,
-                    "command pack",
+                    "command pack or MCP server",
                     target,
                     skills,
                     agent_id,
@@ -716,6 +730,74 @@ def _expand_bulk_grant(
     return sorted(matches, key=lambda s: s.id), []
 
 
+def _pack_grant_on_server(
+    entry: str,
+    target: str,
+    pack_matches: Sequence[ResolvedSkill],
+    skills: Mapping[str, ResolvedSkill],
+    agent_id: str,
+    parent_path: Sequence[str | int],
+    index: int,
+    artifact_path: Path,
+) -> tuple[list[ResolvedSkill], list[ResolutionError]] | None:
+    """``pack:<id>`` when ``<id>`` is an MCP server: its read skills, and a same-named pack's.
+
+    ``None`` when no MCP skill targets ``<id>``, so the caller falls through to the command-pack
+    path unchanged. Reads only, the rule command packs follow (#1123): a write tool, or one the
+    server's ``effects`` map is silent on, is never carried — adding one to a server cannot widen
+    a grant an agent already holds.
+    """
+    on_server = [
+        s
+        for s in skills.values()
+        if impl_get(s.raw.implementation, "type") == "mcp_tool"
+        and str(impl_get(s.raw.implementation, "server")) == target
+    ]
+    if not on_server:
+        return None
+    reads = [s for s in pack_matches if s.pack_origin and s.pack_origin[2] == "read"]
+    reads += [s for s in on_server if s.mcp_effect == "read"]
+    if not reads:
+        return [], [
+            _no_declared_reads(
+                entry, target, on_server, agent_id, parent_path, index, artifact_path
+            )
+        ]
+    return sorted({s.id: s for s in reads}.values(), key=lambda s: s.id), []
+
+
+def _no_declared_reads(
+    entry: str,
+    target: str,
+    on_server: Sequence[ResolvedSkill],
+    agent_id: str,
+    parent_path: Sequence[str | int],
+    index: int,
+    artifact_path: Path,
+) -> ResolutionError:
+    """``pack:<server>`` on a server none of whose skills is declared read.
+
+    An error, not an empty grant: an agent granted nothing looks like one whose model chose not to
+    use its tools. Undeclared tools are the usual cause — the server's ``effects`` map is silent,
+    and unknown is never read.
+    """
+    tools = sorted(str(impl_get(s.raw.implementation, "tool")) for s in on_server)
+    return ResolutionError(
+        code="agent.unknown-bulk-grant",
+        message=(
+            f"Agent {agent_id!r} grants {entry!r}: MCP server {target!r} has "
+            f"{len(on_server)} skill(s), but none whose tool its `effects` map declares read, so "
+            f"the grant would be empty. A `pack:` grant carries reads only."
+        ),
+        artifact_path=artifact_path,
+        yaml_pointer=_pointer_with(parent_path, "skills", index),
+        suggestion=(
+            f"Declare the reads in mcp_servers[{target}].effects ({', '.join(tools)}), or name "
+            f"the skills individually. `server:{target}` grants all of them, writes included."
+        ),
+    )
+
+
 def _unknown_bulk(
     entry: str,
     label: str,
@@ -732,7 +814,14 @@ def _unknown_bulk(
     and the difference only shows up as a confusing run transcript much later.
     """
     if entry.startswith("pack:"):
-        known = sorted({s.pack_origin[0] for s in skills.values() if s.pack_origin})
+        known = sorted(
+            {s.pack_origin[0] for s in skills.values() if s.pack_origin}
+            | {
+                str(impl_get(s.raw.implementation, "server"))
+                for s in skills.values()
+                if impl_get(s.raw.implementation, "type") == "mcp_tool"
+            }
+        )
     else:
         known = sorted(
             {
