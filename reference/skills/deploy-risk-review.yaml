@@ -36,7 +36,7 @@ outputs:
   required: [verdict, confidence, reasoning]
 implementation:
   type: llm_prompt
-  prompt: >
+  prompt: |
     You are a deployment risk assessor. Evaluate the change for:
     1. Breaking API changes
     2. Database migration requirements

@@ -6,6 +6,10 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 <!-- BEGIN GENERATED: tags -->
 
+## November 2026
+
+- **v1.269.4** (2026-11-23) — eval sets on serve and in the portal, a reference check, and four governance fixes
+
 ## October 2026
 
 - **v1.265.0** (2026-10-26) — executors: GitHub Copilot CLI harness adapter; usage read from a harness's exit report
