@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 runner = CliRunner()
 
 
-def _archetype(root: Path, arch_id: str, allowed: str | None = None) -> Path:
+def _archetype(root: Path, arch_id: str, allowed: str | list[str] | None = None) -> Path:
     # swarmkit trust apply now routes writes through ArtifactService (#979), which
     # validates the write against the full workspace and rolls back on failure.
     # That means an archetype without a parent workspace.yaml rejects the apply —
@@ -124,3 +124,21 @@ def test_clear_lifts_block(tmp_path: Path) -> None:
 def test_clear_unknown_pair_errors(tmp_path: Path) -> None:
     result = runner.invoke(app, ["trust", "clear", "nope", "nope", str(tmp_path)])
     assert result.exit_code == 1
+
+
+def test_apply_keeps_a_list_allowlist_a_list(tmp_path: Path) -> None:
+    """#1099: a list allowlist was read as its repr and written back as one corrupted string."""
+    _archetype(tmp_path, "coding-worker", allowed=["Read", "Bash(git *)"])
+    _propose(tmp_path, "coding-worker", "Edit")
+    result = runner.invoke(app, ["trust", "apply", "coding-worker", "Edit", str(tmp_path)])
+    assert result.exit_code == 0, result.stdout
+    doc = yaml.safe_load((tmp_path / "archetypes" / "coding-worker.yaml").read_text())
+    assert doc["executor"]["config"]["allowed_tools"] == ["Read", "Bash(git *)", "Edit"]
+
+
+def test_apply_on_a_list_is_idempotent(tmp_path: Path) -> None:
+    _archetype(tmp_path, "coding-worker", allowed=["Read", "Edit"])
+    _propose(tmp_path, "coding-worker", "Edit")
+    runner.invoke(app, ["trust", "apply", "coding-worker", "Edit", str(tmp_path)])
+    doc = yaml.safe_load((tmp_path / "archetypes" / "coding-worker.yaml").read_text())
+    assert doc["executor"]["config"]["allowed_tools"] == ["Read", "Edit"]
