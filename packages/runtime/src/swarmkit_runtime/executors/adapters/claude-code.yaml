@@ -22,6 +22,10 @@ spec:
       # surface for relay; unset (the default) means all tools, so relay never engages.
       - when: config.allowed_tools
         args: [--allowedTools, "{config.allowed_tools}"]
+      # The agent's `prompt.system` (#1098). Appended, not replacing: Claude Code's own system
+      # prompt is what makes it a coding agent, and the archetype's instructions add to it.
+      - when: task.system_prompt
+        args: [--append-system-prompt, "{task.system_prompt}"]
       # The governed MCP gateway: SwarmKit generates this config (pointing the harness at an
       # in-process gateway that routes every MCP call through governance + audit) and sets
       # task.mcp_config when the agent has granted MCP tools. Absent ⇒ the harness gets no MCP.
