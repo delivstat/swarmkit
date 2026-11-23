@@ -418,6 +418,36 @@ def _apply_memory_defaults(
     return out, cfg
 
 
+def capture_redact_patterns(raw_workspace: Mapping[str, Any]) -> list[str]:
+    """``evals.capture.redact`` from a workspace mapping: the patterns every capture applies."""
+    evals = raw_workspace.get("evals") if isinstance(raw_workspace, Mapping) else None
+    capture = evals.get("capture") if isinstance(evals, Mapping) else None
+    patterns = capture.get("redact") if isinstance(capture, Mapping) else None
+    return [str(p) for p in patterns or []]
+
+
+def _capture_redact_errors(raw_workspace: Mapping[str, Any], path: Path) -> list[ResolutionError]:
+    """Compile ``evals.capture.redact`` at load. A pattern that does not compile is a load error
+    naming it, not a surprise the first time someone captures a run (eval-capture.md §4)."""
+    import re  # noqa: PLC0415
+
+    out: list[ResolutionError] = []
+    for index, pattern in enumerate(capture_redact_patterns(raw_workspace)):
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            out.append(
+                ResolutionError(
+                    code="evals.redact-invalid",
+                    message=f"evals.capture.redact pattern `{pattern}` does not compile: {exc}",
+                    artifact_path=path,
+                    yaml_pointer=f"/evals/capture/redact/{index}",
+                    suggestion="Fix the expression, or quote it so YAML keeps it as written.",
+                )
+            )
+    return out
+
+
 def _with_mcp_effects(
     skills: Mapping[str, ResolvedSkill], servers: Iterable[Any]
 ) -> dict[str, ResolvedSkill]:
@@ -489,6 +519,7 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     ws_artifact = next((a for a in artifacts if a.kind == "workspace"), None)
     if ws_artifact is not None:
         ws_model = SwarmKitWorkspace.model_validate(dict(ws_artifact.raw))
+        errors.extend(_capture_redact_errors(dict(ws_artifact.raw), ws_artifact.path))
         # Each mcp_tool skill learns its tool's declared effect, so `pack:<server>` can grant the
         # server's reads the way `pack:<command-pack>` grants a pack's (#1123).
         skills = _with_mcp_effects(skills, ws_model.mcp_servers or [])

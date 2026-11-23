@@ -24,6 +24,10 @@ export interface SwarmKitWorkspace {
     context_compression?: ContextCompression;
     credentials?:         { [key: string]: CredentialValue };
     /**
+     * Workspace-wide eval settings (design/details/eval-capture.md).
+     */
+    evals?: Evals;
+    /**
      * Push what happened to an application. The durable read is `GET /events`; these sinks save
      * it polling.
      */
@@ -275,6 +279,33 @@ export type IdentityEnum = "global" | "per-user";
  * credential-service.md.
  */
 export type Source = "env" | "file" | "oauth" | "hashicorp-vault" | "aws-secrets-manager" | "gcp-secret-manager" | "azure-key-vault" | "plugin";
+
+/**
+ * Workspace-wide eval settings (design/details/eval-capture.md).
+ */
+export interface Evals {
+    /**
+     * How recorded runs are captured as eval cases by `swarmkit eval-capture` and `POST
+     * /evals/capture`.
+     */
+    capture?: Capture;
+}
+
+/**
+ * How recorded runs are captured as eval cases by `swarmkit eval-capture` and `POST
+ * /evals/capture`.
+ */
+export interface Capture {
+    /**
+     * Python regular expressions replaced with [REDACTED] in every captured case's input and
+     * reference, before a capture is shown or written. A request's own patterns are added to
+     * these, never replace them. Compiled when the workspace loads, so a pattern that does not
+     * compile is a load error naming it. Inputs and outputs are stored as given, and the audit
+     * redaction policy does not cover them, so this is what keeps an identifier out of an eval
+     * set committed to git.
+     */
+    redact?: string[];
+}
 
 export interface EventElement {
     /**

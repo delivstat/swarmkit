@@ -1,0 +1,10 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: evals-capture
+  name: Evals capture defaults
+evals:
+  capture:
+    redact:
+      - 'DC-\d+'
+      - '[\w.+-]+@[\w-]+\.[\w.]+'

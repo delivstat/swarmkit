@@ -189,11 +189,15 @@ class CaptureService:
         audit: Any,
         workspace_root: Path,
         topologies: Mapping[str, Any],
+        *,
+        default_redact: Sequence[str] = (),
     ) -> None:
         self._store = store
         self._audit = audit
         self._ws = workspace_root
         self._topologies = topologies
+        #: the workspace's `evals.capture.redact`: applied on every capture, before a request's own
+        self._default_redact = list(default_redact)
 
     # ---- selection -----------------------------------------------------------------------------
 
@@ -257,7 +261,8 @@ class CaptureService:
             raise CaptureError(
                 "set.id", f"{into!r} is not a set id: lowercase-kebab, starting with a letter"
             )
-        patterns = _compile(redact)
+        # The workspace's patterns always apply; a request's are added, never instead (§4).
+        patterns = _compile([*self._default_redact, *redact])
         existing_file = find_eval_set_file(self._ws, into)
         if existing_file is not None:
             try:
