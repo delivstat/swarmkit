@@ -346,10 +346,10 @@ cp <swarmkit>/reference/skills/{get-schema,list-reference-skills,query-swarmkit-
 mcp_servers:
   - id: swarmkit-knowledge
     transport: stdio
-    command: ["swarmkit", "knowledge-server"]
+    command: ["swarmkit", "docs-server"]
 ```
 
-`swarmkit knowledge-server` (Level 10) serves the design notes, schemas and reference skills, and
+`swarmkit docs-server` (Level 10) serves the design notes, schemas and reference skills, and
 reads and writes workspace files for the swarm. **Today it runs from a SwarmKit source checkout** —
 it locates the corpus by walking up to the repository — so the swarm mode is for people working
 with the repo; a `pip install swarmkit-runtime` alone gets the single-agent commands above. That

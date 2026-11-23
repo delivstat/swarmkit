@@ -11,7 +11,7 @@ score a topology before shipping it, and how to hand the whole thing to an LLM.
 - `swarmkit system` — versions, properties, environment, with secrets masked by declaration
 - The eval harness: `swarmkit eval` gating CI on a topology's behaviour
 - Artifacts and comprehension debt from the record: `artifacts`, `comprehension`
-- `swarmkit knowledge-pack` — the corpus, paste-ready
+- `swarmkit docs-pack` — the corpus, paste-ready
 
 ## The idea
 
@@ -152,8 +152,8 @@ swarmkit trace <run-id> ./workspace
 ### 6. Hand it to an LLM
 
 ```bash
-swarmkit knowledge-pack --lean -o swarmkit-pack.md    # ~190k tokens: overview, generated references, schemas, design doc, guides
-swarmkit knowledge-pack -o swarmkit-full.md           # ~610k: plus every design note, the tutorials, historical ones last under a banner
+swarmkit docs-pack --lean -o swarmkit-pack.md    # ~190k tokens: overview, generated references, schemas, design doc, guides
+swarmkit docs-pack -o swarmkit-full.md           # ~610k: plus every design note, the tutorials, historical ones last under a banner
 ```
 
 ## Run it
@@ -162,7 +162,7 @@ swarmkit knowledge-pack -o swarmkit-full.md           # ~610k: plus every design
 just demo-providers        # declarative providers resolved through their chains
 bash examples/storage-service/demo.sh   # the one storage service; status, migrate --dry-run, a misconfiguration refused
 just demo-comprehension    # comprehension-debt signals on a recorded run
-just demo-knowledge-pack   # the pack, and what it contains
+just demo-docs-pack   # the pack, and what it contains
 ```
 
 ## What happened

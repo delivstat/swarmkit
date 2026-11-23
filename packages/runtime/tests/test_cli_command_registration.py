@@ -27,7 +27,10 @@ EXPECTED = [
     "edit",
     "eval",
     "gaps",
+    "docs-pack",
+    "docs-server",
     "init",
+    # hidden aliases of docs-pack / docs-server since 1.273.0 (#1134)
     "knowledge-pack",
     "knowledge-server",
     "logs",

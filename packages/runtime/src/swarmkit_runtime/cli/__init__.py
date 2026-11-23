@@ -35,7 +35,7 @@ from . import (  # noqa: F401
     _cmd_trust,
     _cmd_upgrade,
 )
-from ._app import app
+from ._app import app, deprecated_alias
 from ._cmd_serve import _auth_requires_secure
 from ._common import _EXIT_USAGE, _stderr
 from ._knowledge import build_pack, find_repo_root
@@ -43,8 +43,8 @@ from ._knowledge import build_pack, find_repo_root
 __all__ = ["_auth_requires_secure", "app"]
 
 
-@app.command(name="knowledge-pack")
-def knowledge_pack(
+@app.command(name="docs-pack")
+def docs_pack(
     workspace: Annotated[
         Path | None,
         typer.Argument(
@@ -82,14 +82,14 @@ def knowledge_pack(
     repo_root = find_repo_root()
     if repo_root is None:
         _stderr(
-            "swarmkit knowledge-pack: could not locate the SwarmKit repo on disk. "
+            "swarmkit docs-pack: could not locate the SwarmKit repo on disk. "
             "This command currently requires a source checkout (the corpus is not "
             "yet bundled as package data — see design/details/knowledge-pack-cli.md)."
         )
         raise typer.Exit(_EXIT_USAGE)
 
     if workspace is not None and not workspace.exists():
-        _stderr(f"swarmkit knowledge-pack: workspace path not found: {workspace}")
+        _stderr(f"swarmkit docs-pack: workspace path not found: {workspace}")
         raise typer.Exit(_EXIT_USAGE)
 
     pack = build_pack(
@@ -103,6 +103,10 @@ def knowledge_pack(
         output.write_text(pack, encoding="utf-8")
         return
     typer.echo(pack, nl=False)
+
+
+# Renamed in 1.273.0 (#1134): `swarmkit knowledge` is for the user's knowledge bases (#1127).
+deprecated_alias("knowledge-pack", "docs-pack", docs_pack)
 
 
 if __name__ == "__main__":

@@ -710,16 +710,16 @@ to fix.
 SwarmKit docs are designed for LLM consumption. The repo ships [`llms.txt`](./llms.txt) at the root (the short, current summary) and [`llms-full.txt`](https://delivstat.github.io/swarmkit/llms-full.txt) (the whole doc site in one file):
 
 ```bash
-swarmkit knowledge-pack --lean -o pack.md   # ~190k tokens: overview, generated CLI/HTTP reference, schemas, design doc, guides
-swarmkit knowledge-pack -o pack.md          # ~610k tokens: the above plus every design note, the roadmap and schema fixtures
-swarmkit knowledge-server                   # live MCP server for Claude Code / Cursor
+swarmkit docs-pack --lean -o pack.md   # ~190k tokens: overview, generated CLI/HTTP reference, schemas, design doc, guides
+swarmkit docs-pack -o pack.md          # ~610k tokens: the above plus every design note, the roadmap and schema fixtures
+swarmkit docs-server                   # live MCP server for Claude Code / Cursor
 ```
 
 The pack orders its sections by trust — the generated reference first, design notes last, and notes about removed features under a separate "historical" banner — so a model that reads only the first half has read only things that exist.
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.272.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.273.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 

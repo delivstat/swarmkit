@@ -1,7 +1,7 @@
 """Knowledge MCP Server — live SwarmKit corpus for any MCP client.
 
 Exposes design docs, schemas, reference skills, and workspace state as
-searchable MCP tools. The live counterpart to ``swarmkit knowledge-pack``.
+searchable MCP tools. The live counterpart to ``swarmkit docs-pack``.
 
 See ``design/details/knowledge-mcp-server.md``.
 """
@@ -55,7 +55,7 @@ def _set_repo_root(path: Path) -> None:
     _repo_root = path.resolve()
 
 
-# ---- corpus discovery (mirrors knowledge-pack) --------------------------
+# ---- corpus discovery (mirrors docs-pack) --------------------------
 
 
 def _discover_design_notes(root: Path) -> list[dict[str, Any]]:
