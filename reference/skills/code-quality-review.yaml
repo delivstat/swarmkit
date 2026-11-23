@@ -38,7 +38,7 @@ outputs:
   required: [verdict, confidence, reasoning]
 implementation:
   type: llm_prompt
-  prompt: >
+  prompt: |
     You are a senior code reviewer. Evaluate the provided code diff for:
     1. Code quality and readability
     2. Potential bugs or logic errors

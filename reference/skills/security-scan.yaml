@@ -36,7 +36,7 @@ outputs:
   required: [verdict, confidence, reasoning]
 implementation:
   type: llm_prompt
-  prompt: >
+  prompt: |
     You are a security reviewer. Evaluate the provided code diff for:
     1. Injection vulnerabilities (SQL, command, XSS)
     2. Authentication and authorization issues

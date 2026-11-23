@@ -67,6 +67,22 @@ REPORT_FILE_NAME = ".swarmkit-report.json"
 _REPORT_MAX_BYTES = 8 * 1024 * 1024
 
 
+def allowed_tools_entries(value: Any) -> list[str]:
+    """The entries of an ``allowed_tools`` grant, in either form an author writes it.
+
+    A YAML list (``[Read, Edit, "Bash(git *)"]``, the form tutorial 17 shows) or a comma-separated
+    string (``Read,Edit,Bash(git *)``). The list used to reach the harness as its Python repr,
+    ``"['Read', 'Edit', 'Bash(git *)']"``, which matches no tool name, so a grant meant to narrow
+    the agent denied every tool instead (#1099). Commas are the separator, not spaces: an entry
+    such as ``Bash(git *)`` contains one.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(v).strip() for v in value if v is not None and str(v).strip()]
+    return [part.strip() for part in str(value).split(",") if part.strip()]
+
+
 def _merged_tool_grant(task: TaskSpec, spec: Any, config: Mapping[str, Any]) -> str:
     """The harness's ``allowed_tools`` value: the operator's grant, plus the agent's gateway tools
     translated into this harness's own naming.
@@ -80,7 +96,18 @@ def _merged_tool_grant(task: TaskSpec, spec: Any, config: Mapping[str, Any]) -> 
     grant matched nothing and every real tool fell outside it. Constraining the agent was what
     broke it.
     """
-    configured = str(config.get("allowed_tools") or "").strip()
+    raw = config.get("allowed_tools")
+    if isinstance(raw, (list, tuple)):
+        # A YAML list is comma-joined: every bundled adapter's grant flag (Claude Code's
+        # --allowedTools, Copilot's --available-tools) takes a comma-separated list (#1099).
+        entries = allowed_tools_entries(raw)
+        configured = ",".join(entries)
+        have = set(entries)
+    else:
+        # A string is the operator's own spelling and passes through as written. Claude Code
+        # also accepts spaces, so dedupe against both separators.
+        configured = str(raw or "").strip()
+        have = {part for part in configured.replace(",", " ").split() if part}
     if not configured or not task.mcp_tools:
         return configured
     template = getattr(getattr(spec, "launch", None), "mcp_tool_name", "{tool}") or "{tool}"
@@ -89,7 +116,6 @@ def _merged_tool_grant(task: TaskSpec, spec: Any, config: Mapping[str, Any]) -> 
     gateway = GATEWAY_SERVER_NAME
     names = [template.replace("{tool}", t).replace("{gateway}", gateway) for t in task.mcp_tools]
     # Deduped, order preserved: the operator's entries first, then anything they did not name.
-    have = {part.strip() for part in configured.replace(",", " ").split() if part.strip()}
     return ",".join([configured, *[n for n in names if n not in have]])
 
 
