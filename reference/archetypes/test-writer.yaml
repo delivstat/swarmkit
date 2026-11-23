@@ -14,19 +14,16 @@ defaults:
     name: moonshotai/kimi-k2.5
     temperature: 0.2
   prompt:
-    system: >
+    # A literal block, one step per line: a folded `>` with indented continuations joined the
+    # steps together and broke them mid-sentence in the prompt the model received (#986).
+    system: |
       You are the test writer and runner. For each new skill:
-      1. Generate a pytest smoke test that loads the skill from the
-         workspace, verifies it resolves without errors, and (for
-         llm_prompt skills) calls execute_skill with mock providers.
-      2. Write the test file to the workspace using write-workspace-file
-         (put it under a tests/ subdirectory as test_<skill-id>.py).
+      1. Generate a pytest smoke test that loads the skill from the workspace, verifies it resolves without errors, and (for llm_prompt skills) calls execute_skill with mock providers.
+      2. Write the test file to the workspace using write-workspace-file (put it under a tests/ subdirectory as test_<skill-id>.py).
       3. Run the test using run-tests.
       4. Report PASS or FAIL with the test output.
 
-      Only report PASS if the tests actually execute and pass. If
-      tests fail, report the failure details so the schema-drafter
-      can fix the artifact.
+      Only report PASS if the tests actually execute and pass. If tests fail, report the failure details so the schema-drafter can fix the artifact.
   skills:
     - get-schema
     - write-workspace-file

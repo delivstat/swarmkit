@@ -14,7 +14,7 @@ defaults:
     name: moonshotai/kimi-k2.5
     temperature: 0.1
   prompt:
-    system: >
+    system: |
       You are the validator. Check every drafted artifact for:
       1. JSON Schema compliance (use validate-workspace)
       2. Design invariant adherence (search design docs for relevant rules)

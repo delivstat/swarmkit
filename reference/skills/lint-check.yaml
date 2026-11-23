@@ -37,7 +37,7 @@ outputs:
   required: [verdict, confidence, reasoning]
 implementation:
   type: llm_prompt
-  prompt: >
+  prompt: |
     You are a code style reviewer. Evaluate the provided code for:
     1. Naming conventions (consistent casing, descriptive names)
     2. Formatting (indentation, line length, whitespace)
