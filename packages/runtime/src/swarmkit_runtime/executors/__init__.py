@@ -30,6 +30,7 @@ from swarmkit_runtime.executors._container import container_sandbox
 from swarmkit_runtime.executors._declarative import (
     REPORT_FILE_NAME,
     DeclarativeExecutor,
+    allowed_tools_entries,
     load_adapter_specs,
     load_workspace_adapter_specs,
     system_prompt_delivery,
@@ -108,6 +109,7 @@ __all__ = [
     "SandboxHandle",
     "SandboxSpec",
     "TaskSpec",
+    "allowed_tools_entries",
     "approve_launch",
     "build_command",
     "build_harness_image",
