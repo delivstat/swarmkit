@@ -39,6 +39,7 @@ import { SchemaForm } from "@/components/schema-form";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -596,18 +597,26 @@ function CaptureView({
 						: "Recent runs of a topology"}
 				</CardTitle>
 				<div className="grid gap-3 sm:grid-cols-2">
-					<label className="space-y-1 text-sm">
-						<span className="text-muted-foreground">Into the eval set</span>
+					<div className="space-y-1 text-sm">
+						<Label htmlFor="capture-into" className="text-muted-foreground">
+							Into the eval set
+						</Label>
 						<Input
+							id="capture-into"
 							value={into}
 							onChange={(e) => setInto(e.target.value)}
 							placeholder="triage-regressions"
 							disabled={Boolean(setId)}
 						/>
-					</label>
+					</div>
 					{!fromRuns && (
-						<label className="space-y-1 text-sm">
-							<span className="text-muted-foreground">Topology</span>
+						<div className="space-y-1 text-sm">
+							<Label
+								htmlFor="capture-topology"
+								className="text-muted-foreground"
+							>
+								Topology
+							</Label>
 							<Select
 								value={topology}
 								onValueChange={setTopology}
@@ -624,11 +633,13 @@ function CaptureView({
 									))}
 								</SelectContent>
 							</Select>
-						</label>
+						</div>
 					)}
 					{!fromRuns && (
-						<label className="space-y-1 text-sm">
-							<span className="text-muted-foreground">Completed in</span>
+						<div className="space-y-1 text-sm">
+							<Label htmlFor="capture-since" className="text-muted-foreground">
+								Completed in
+							</Label>
 							<Select value={since} onValueChange={setSince}>
 								<SelectTrigger id="capture-since">
 									<SelectValue />
@@ -641,37 +652,44 @@ function CaptureView({
 									))}
 								</SelectContent>
 							</Select>
-						</label>
+						</div>
 					)}
 					{!fromRuns && (
-						<label className="space-y-1 text-sm">
-							<span className="text-muted-foreground">At most (≤ 200)</span>
+						<div className="space-y-1 text-sm">
+							<Label htmlFor="capture-limit" className="text-muted-foreground">
+								At most (≤ 200)
+							</Label>
 							<Input
+								id="capture-limit"
 								value={limit}
 								onChange={(e) => setLimit(e.target.value)}
 								inputMode="numeric"
 							/>
-						</label>
+						</div>
 					)}
-					<label className="space-y-1 text-sm sm:col-span-2">
-						<span className="text-muted-foreground">
+					<div className="space-y-1 text-sm sm:col-span-2">
+						<Label htmlFor="capture-redact" className="text-muted-foreground">
 							Redact (one regular expression per line, added to the workspace's
 							own)
-						</span>
+						</Label>
 						<Textarea
+							id="capture-redact"
 							value={redact}
 							onChange={(e) => setRedact(e.target.value)}
 							placeholder={"DC-\\d+"}
 							className="min-h-16 font-mono"
 						/>
-					</label>
-					<label className="flex items-center gap-2 text-sm sm:col-span-2">
+					</div>
+					<div className="flex items-center gap-2 text-sm sm:col-span-2">
 						<Checkbox
+							id="capture-used-skills"
 							checked={usedSkills}
 							onCheckedChange={(c) => setUsedSkills(c === true)}
 						/>
-						Require the skills each run used
-					</label>
+						<Label htmlFor="capture-used-skills">
+							Require the skills each run used
+						</Label>
+					</div>
 				</div>
 				<p className="mt-3 text-xs text-muted-foreground">
 					Inputs and answers are copied as they were recorded. Check the preview
