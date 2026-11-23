@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## October 2026
 
+- **v1.265.0** (2026-10-26) — executors: GitHub Copilot CLI harness adapter; usage read from a harness's exit report
 - **v1.263.3** (2026-10-16) — serve: API-tier POST /run off the event loop; store built once per run
 - **v1.263.1** (2026-10-08) — fix(runtime): find_bad_agent_targets accepts bundled authoring ids
 - **v1.263.0** (2026-10-07) — fix(decisions): memory bindings skip the decision-judge path

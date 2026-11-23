@@ -25,6 +25,10 @@ class TaskSpec:
     # Path to a generated harness-native MCP config pointing at the governed gateway (set by the
     # harness node once the gateway is up). Exposed as {task.mcp_config} for an adapter to consume.
     mcp_config: str = ""
+    # The agent's resolved `prompt.system` (archetype default, agent override). Delivered through
+    # the adapter's own flag when its launch template uses {task.system_prompt}, otherwise placed
+    # ahead of the statement on the first launch — never dropped (#1098).
+    system_prompt: str = ""
 
 
 @dataclass(frozen=True)
