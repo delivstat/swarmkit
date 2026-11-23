@@ -194,6 +194,10 @@ def _required_action(method: str, path: str) -> str | None:  # noqa: PLR0911
         return "run"
     if method.upper() == "GET":
         return "read"
+    # A capture preview is a POST only to carry its selection; it reads runs and writes nothing.
+    # Writing the captured set is `POST /api/evals/capture`, which the next rule makes admin.
+    if method.upper() == "POST" and path == "/evals/capture":
+        return "read"
     if path.startswith("/api/"):
         return "admin"
     # Any canary mutation — promote, rollback, or start a new canary (design 26) — is admin.

@@ -6,6 +6,8 @@ Two groups, both thin:
   each set with its last run); writes through :class:`ArtifactService`, which validates the file
   and restores the previous one on failure. Being under ``/api/*``, reads are the ``read`` tier and
   writes ``admin`` (``_helpers._required_action``) — no new scope.
+- ``POST /evals/capture`` (preview, ``read``) and ``POST /api/evals/capture`` (write, ``admin``) —
+  recorded runs proposed and written as cases (design/details/eval-capture.md).
 - ``/evals/...`` — runs. ``POST /evals/{id}/run`` admits the run (unknown set 404, bad target 422,
   API tier 409, no free slot 429), answers 202 with the row, and scores the cases in a task that
   holds **one** slot of ``app.state.job_semaphore`` for the whole eval. Cases run one at a time
@@ -299,6 +301,66 @@ def _register_eval_routes(app: FastAPI, workspace_path: Path, artifacts: Artifac
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
 
         return await _start(request, _admit)
+
+    # ---- capture: recorded runs become cases (design/details/eval-capture.md) -------------------
+    # Two routes, not one route whose tier depends on the body: the tier mapping is by path and
+    # method, and a handler cannot see the caller's scopes. The preview is a read — it changes
+    # nothing — and the write sits under /api/, where every write is already `admin`.
+
+    async def _capture(request: Request, *, write: bool) -> Any:
+        from swarmkit_runtime.eval import CaptureError, CaptureService  # noqa: PLC0415
+        from swarmkit_runtime.eval._capture import parse_since  # noqa: PLC0415
+
+        store = getattr(request.app.state, "store", None)
+        if store is None:
+            raise HTTPException(status_code=503, detail="No store: capture reads recorded runs")
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=422, detail="the body is a JSON object")
+        runtime = _get_runtime(request)
+        service = CaptureService(
+            store, runtime.audit_provider, workspace_path, _topologies(request)
+        )
+        run_ids = [str(r) for r in body.get("run_ids") or []]
+        try:
+            jobs, missing = await asyncio.to_thread(
+                lambda: service.select(
+                    run_ids=run_ids,
+                    topology=body.get("topology"),
+                    since=parse_since(body.get("since")),
+                    until=parse_since(body.get("until")),
+                    status=body.get("status", "completed"),
+                    labels=body.get("labels") or None,
+                    source=body.get("source"),
+                    limit=int(body.get("limit", 50)),
+                )
+            )
+            proposal = await service.propose(
+                jobs,
+                into=str(body.get("into") or ""),
+                explicit=bool(run_ids),
+                redact=[str(p) for p in body.get("redact") or []],
+                used_skills=bool(body.get("used_skills", True)),
+                missing=missing,
+            )
+            if write:
+                await asyncio.to_thread(lambda: service.write(proposal, artifacts))
+        except CaptureError as exc:
+            return JSONResponse(status_code=422, content={"code": exc.code, "detail": str(exc)})
+        except InvalidArtifactError as exc:
+            return _invalid(exc)
+        return proposal.to_dict()
+
+    @app.post("/evals/capture")
+    async def preview_eval_capture(request: Request) -> Any:
+        """What capturing these runs would add to a set — the file, the cases, and why any run was
+        skipped. Writes nothing (the `read` tier)."""
+        return await _capture(request, write=False)
+
+    @app.post("/api/evals/capture")
+    async def write_eval_capture(request: Request) -> Any:
+        """Capture the runs and write the set through the validated eval-set write (`admin`)."""
+        return await _capture(request, write=True)
 
     @app.post("/evals/{set_id}/run", status_code=202)
     async def run_eval(set_id: str, request: Request) -> JSONResponse:

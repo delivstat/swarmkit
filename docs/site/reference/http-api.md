@@ -1,6 +1,6 @@
 # HTTP API
 
-Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 119 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
+Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 121 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
 
 Paths are relative to the server root. `{...}` segments are path parameters.
 
@@ -78,6 +78,7 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 | `GET` | `/capabilities` | What this instance can do — the control plane reads this at enroll/refresh. |
 | `GET` | `/comprehension` | Comprehension-debt signals from the audit log — same data as `swarmkit comprehension`. |
 | `GET` | `/contracts` | The contracts in this workspace, by id. |
+| `POST` | `/evals/capture` | What capturing these runs would add to a set — the file, the cases, and why any run was |
 | `GET` | `/evals/runs` | Recent eval runs, newest first; `?set=` filters to one set. |
 | `GET` | `/evals/runs/{run_id}` | Status, the set as run, the cases so far, the report, the diff and the cost. |
 | `POST` | `/evals/runs/{run_id}/resume` | Continue an interrupted or stopped run from the cases it has not scored. |
@@ -145,6 +146,7 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 | `GET` | `/api/contracts/{contract_id}/yaml` | A contract's YAML as written on disk. |
 | `GET` | `/api/evals` | Every valid eval set, each with its last run's status and pass rate. |
 | `POST` | `/api/evals` | Create a set from YAML; its file is `evals/<metadata.id>.yaml`. |
+| `POST` | `/api/evals/capture` | Capture the runs and write the set through the validated eval-set write (`admin`). |
 | `GET` | `/api/evals/{set_id}` | One set, parsed. |
 | `PUT` | `/api/evals/{set_id}` | Replace (or create) a set. 422 — the previous file kept — when it does not validate. |
 | `DELETE` | `/api/evals/{set_id}` | Remove a set's file. Its run history stays. |

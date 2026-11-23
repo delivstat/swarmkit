@@ -7,6 +7,12 @@ rubric judge (a decision skill). The "test" gate of growth-through-authoring and
 
 from __future__ import annotations
 
+from swarmkit_runtime.eval._capture import (
+    CaptureError,
+    CaptureNote,
+    CaptureProposal,
+    CaptureService,
+)
 from swarmkit_runtime.eval._checks import deterministic_checks
 from swarmkit_runtime.eval._compare import ReportDiff, diff_report, latest_prior_report
 from swarmkit_runtime.eval._errors import (
@@ -42,6 +48,10 @@ from swarmkit_runtime.eval._service import (
 __all__ = [
     "HEARTBEAT_INTERVAL_S",
     "STALE_AFTER_S",
+    "CaptureError",
+    "CaptureNote",
+    "CaptureProposal",
+    "CaptureService",
     "CheckResult",
     "EvalCase",
     "EvalCaseResult",

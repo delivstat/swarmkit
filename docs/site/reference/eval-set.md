@@ -172,6 +172,55 @@ No agent-facing tool writes eval sets. An agent that could edit the cases it's m
 
 `just demo-eval-serve` runs the whole flow on a fake harness: edit, run, interrupt, restart, resume, regress and diff.
 
+## Capture recorded runs as cases
+
+A finished run already holds a regression case: its input, the skills it called, and its answer. `swarmkit eval-capture` (runtime 1.270.0+) turns runs into cases, and serve does the same over HTTP. Both call the same service, read the same store, and produce the same file.
+
+```bash
+# preview: prints the set as it would be written, and why any run was skipped
+swarmkit eval-capture ./workspace --topology triage --since 7d --into triage-regressions
+# write it, with an identifier removed from inputs and references
+swarmkit eval-capture ./workspace --topology triage --since 7d --into triage-regressions \
+    --redact 'DC-\d+' --write
+# or name the runs
+swarmkit eval-capture ./workspace --run <job-id> --run <job-id> --into triage-regressions --write
+```
+
+**Each case** has:
+- `id`: `run-` plus the first 8 hex digits of the job id.
+- `input`: the run's input.
+- `expect.not_empty`.
+- `expect.used_skills`: each skill the run called and was allowed, in first-call order. Decision skills a governance binding ran are not included.
+- `expect.reference`: the recorded answer.
+- `expect.min_confidence: 0.7`.
+- `source`: `run_id`, plus `topology_version` when the job recorded one, and `captured_at`.
+
+**Selection.** Name runs with `--run` (repeatable). Otherwise pass `--topology` with filters: `--since 7d|24h|<date>`, `--status` (default `completed`), `--label k=v`, `--source cli|serve` and `--limit` (at most 200).
+
+**Skipped, with the reason shown:**
+
+| Reason | Why |
+|---|---|
+| `attachments` | the run had attachments, which a case input can't carry |
+| `empty-output` | nothing to compare against |
+| `output-too-long` | the answer is over 20,000 characters. It's never truncated, because judging against half an answer is worse than no case |
+| `not-completed` | under filters, a run that didn't complete |
+| `duplicate` | the same input (whitespace ignored) as another selected run or an existing case, or a run already captured. Of two runs with the same input, the newer one is kept |
+| `wrong-target` | the set exists and targets another topology |
+| `redacted-to-empty` | nothing was left of the input after redaction |
+| `not-found` | a named run that doesn't exist |
+
+**A failed run named with `--run`** becomes a smoke case: the input only, with no reference, listed under `flagged` as `smoke-only`. A failed run can't be a regression baseline.
+
+**Writing.**
+- **Preview is the default.** Add `--write` on the CLI, or call `POST /api/evals/capture` on serve, which needs `admin`. `POST /evals/capture` is the preview, at the `read` tier.
+- **The write is the same validated write as a portal edit.** A new set is created with the runs' topology as its target, and runs of several topologies can't start one set. An existing set gets its new cases appended, and its existing cases are kept.
+- **Capturing the same runs again writes nothing.** `--no-used-skills` (or `used_skills: false` over HTTP) drops the skill requirement, for a topology that legitimately varies which skills it calls.
+
+**Redaction.** Inputs and outputs are copied from the store as recorded, and the audit log's redaction policy doesn't cover them. Use `--redact <regex>` (repeatable; `redact: [...]` over HTTP) to replace matches with `[REDACTED]` in both the input and the reference. Two things follow:
+- **The replayed question changes.** A redacted input is what the topology is asked next time. Redact identifiers the answer doesn't depend on, such as account numbers, codes and names, not the subject of the question.
+- **The judge is told what `[REDACTED]` means.** It's a removed value that matches whatever the new answer gives there, so a redacted reference isn't failed for differing on it.
+
 ## In the portal
 
 The portal's **Evals** page (swarmkit-webui 0.30.0+) reads the same routes:

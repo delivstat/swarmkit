@@ -454,4 +454,14 @@ def test_only_the_human_tier_routes_write_eval_sets() -> None:
         for path in SRC.rglob("*.py")
         if any(w in path.read_text(encoding="utf-8") for w in writers)
     )
-    assert callers == ["server/_routes_evals.py", "server/_services.py"]
+    # eval/_capture.py calls them only inside CaptureService.write, which takes the writer as an
+    # argument (eval-capture.md: "Capture adds no second writer under evals/").
+    assert callers == ["eval/_capture.py", "server/_routes_evals.py", "server/_services.py"]
+    # ...and that write is reached from two doors only: `POST /api/evals/capture` (admin) and
+    # `swarmkit eval-capture --write`, a human's CLI. No MCP door, skill or agent-facing tool.
+    capture_writers = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in SRC.rglob("*.py")
+        if "service.write(proposal" in path.read_text(encoding="utf-8")
+    )
+    assert capture_writers == ["cli/_cmd_eval.py", "server/_routes_evals.py"]

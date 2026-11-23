@@ -76,3 +76,10 @@ async def test_a_reference_that_tries_to_instruct_the_judge_does_not_change_the_
 async def test_an_unparseable_reply_is_not_a_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch(monkeypatch, "I think they're about the same?")
     assert (await _judge("a", "b")).verdict != "pass"
+
+
+def test_the_judge_is_told_a_redacted_value_is_not_a_difference() -> None:
+    """Capture redacts identifiers from the reference (eval-capture.md §4). Without this, a judge
+    saw `DC-14` in the new output and `[REDACTED]` in the reference and called it a regression."""
+    assert "[REDACTED]" in _REFERENCE_JUDGE_SYSTEM
+    assert "never a difference by itself" in _REFERENCE_JUDGE_SYSTEM
