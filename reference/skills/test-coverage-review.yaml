@@ -32,7 +32,7 @@ outputs:
   required: [verdict, confidence, reasoning]
 implementation:
   type: llm_prompt
-  prompt: >
+  prompt: |
     You are a QA analyst. Evaluate the provided code diff for test coverage:
     1. Are new code paths tested?
     2. Are edge cases covered?
