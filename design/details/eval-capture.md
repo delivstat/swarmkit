@@ -213,6 +213,15 @@ Four PRs, each reviewable against a merged baseline. (The first draft had five, 
 5. Change the fake harness so one answer differs, then run again. The diff names the case as regressed.
 6. `swarmkit eval-capture --run <id>` on the CLI against the same store gives the same YAML.
 
+## As built: PR 2 (runtime 1.270.0)
+
+- **`CaptureService`** (`eval/_capture.py`): `select`, `propose` and `write`. `write` takes the front door's writer, which is `ArtifactService` on both doors, so the eval package doesn't import the server. `test_eval_routes.py`'s source scan now asserts that only `POST /api/evals/capture` and `swarmkit eval-capture --write` reach it.
+- **`Store.list_jobs_filtered`:** SQL filters on topology, status, source and the `created_at` range, newest first. The labels column is opaque JSON, so the label filter runs in Python over at most 5,000 SQL-filtered rows.
+- **Two routes, the design's fallback.** The tier mapping goes by path and method, and a handler can't see the caller's scopes. So `POST /evals/capture` is the preview, explicitly `read`, and `POST /api/evals/capture` is the write, `admin` like every `/api/` write.
+- **`topology_version`** is recorded only when the job row carries one. A guess from the current registry could name a version that never ran.
+- **A redacted reference.** The reference judge's fixed system prompt now says `[REDACTED]` marks a removed value that matches any value. In the demo, a judge without that instruction failed an unchanged answer for containing `DC-14` where the reference had `[REDACTED]`. It did so on one run and passed the same pair on another.
+- **The demo** (`just demo-eval-capture`) uses a real judge model, like `demo-eval-reference`. The topology runs on a fake harness, so the six judge calls are its only model calls. The mock provider can't be scripted to return verdicts, so the design's "stub judge, no key" plan wasn't possible as written.
+
 ## Decisions
 
 Resolved in review on #1114, as proposed:

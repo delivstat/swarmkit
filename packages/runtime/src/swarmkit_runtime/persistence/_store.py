@@ -168,6 +168,10 @@ def make_engine(
     return engine
 
 
+#: The most rows a label-filtered job listing scans (see ``Store.list_jobs_filtered``).
+_FILTER_SCAN = 5000
+
+
 @dataclass
 class JobRow:
     """A persisted job."""
@@ -539,6 +543,45 @@ class Store(EvalRunStoreMixin):
                 conn.execute(stmt.order_by(jobs.c.created_at.desc()).limit(limit)).mappings().all()
             )
         return [self._row_to_job(r) for r in rows]
+
+    def list_jobs_filtered(
+        self,
+        *,
+        topology: str | None = None,
+        status: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        labels: dict[str, str] | None = None,
+        source: str | None = None,
+        limit: int = 50,
+    ) -> list[JobRow]:
+        """Jobs matching every given filter, newest first — the selection eval capture reads.
+
+        ``since`` / ``until`` are ISO-8601 bounds on ``created_at``. ``labels`` must all match. The
+        labels column is opaque JSON, so that filter runs here over the SQL-filtered rows, scanning
+        at most ``_FILTER_SCAN`` of them: a capture is a handful of runs, and an unbounded scan of
+        a busy store to find them would be the wrong trade.
+        """
+        stmt = select(jobs)
+        if topology is not None:
+            stmt = stmt.where(jobs.c.topology == topology)
+        if status is not None:
+            stmt = stmt.where(jobs.c.status == status)
+        if source is not None:
+            stmt = stmt.where(jobs.c.source == source)
+        if since is not None:
+            stmt = stmt.where(jobs.c.created_at >= since)
+        if until is not None:
+            stmt = stmt.where(jobs.c.created_at <= until)
+        scan = limit if not labels else _FILTER_SCAN
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(stmt.order_by(jobs.c.created_at.desc()).limit(scan)).mappings().all()
+            )
+        out = [self._row_to_job(r) for r in rows]
+        if labels:
+            out = [j for j in out if all(j.labels.get(k) == v for k, v in labels.items())]
+        return out[:limit]
 
     @staticmethod
     def _row_to_job(row: RowMapping) -> JobRow:

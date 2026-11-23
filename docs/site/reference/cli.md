@@ -3,7 +3,7 @@
 ## Every command
 
 <!-- BEGIN GENERATED: commands -->
-76 commands, from the CLI itself (`swarmkit <command> --help` for the options).
+77 commands, from the CLI itself (`swarmkit <command> --help` for the options).
 
 | Command | What it does |
 |---|---|
@@ -30,6 +30,7 @@
 | `swarmkit docs-reader` | Launch the Document Reader MCP Server (stdio). |
 | `swarmkit edit` | Edit an existing workspace through conversation (M7 Skill Authoring Swarm). |
 | `swarmkit eval` | Run an eval-set and score the topology (design §M15). |
+| `swarmkit eval-capture` | Turn recorded runs into eval cases: input, used skills, and the output as a reference. |
 | `swarmkit eval-runs list` | Recent eval runs, newest first — from the CLI and serve alike. |
 | `swarmkit eval-runs resume` | Continue an interrupted or stopped eval run — only the cases that have no result yet. |
 | `swarmkit eval-runs show` | One eval run: status, every recorded case with its failing checks, the diff and the cost. |

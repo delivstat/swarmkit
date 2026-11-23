@@ -412,6 +412,11 @@ demo-eval-reference:
 demo-harness-system-prompt:
     @uv run python examples/harness-system-prompt/demo.py
 
+# Recorded runs become eval cases over serve, then catch a regression (eval-capture.md). The topology
+# is a fake harness; the reference check's judge is a real model, so this needs one provider key.
+demo-eval-capture:
+    @uv run python examples/eval-capture/demo.py
+
 # Eval sets edited, run, interrupted, resumed and diffed over serve's HTTP API (eval-on-serve.md).
 demo-eval-serve:
     @uv run python examples/eval-serve/demo.py

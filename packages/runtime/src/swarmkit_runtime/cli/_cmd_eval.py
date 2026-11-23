@@ -292,3 +292,125 @@ def eval_runs_stop(
         _stderr(f"error: eval run {eval_run_id!r} is not running.")
         raise typer.Exit(_EXIT_USAGE)
     typer.echo(f"stop requested: {eval_run_id} stops after the case it is on.")
+
+
+# ---- eval-capture --------------------------------------------------------------------------------
+
+
+@app.command(name="eval-capture")
+def eval_capture(
+    workspace_path: Annotated[Path, _WORKSPACE_ARG],
+    into: Annotated[
+        str, typer.Option("--into", help="The eval set to add cases to; created if it is new.")
+    ],
+    run: Annotated[
+        list[str] | None,
+        typer.Option("--run", help="A job id to capture. Repeatable. Overrides the filters."),
+    ] = None,
+    topology: Annotated[
+        str | None, typer.Option("--topology", help="Capture recent runs of this topology.")
+    ] = None,
+    since: Annotated[
+        str | None, typer.Option("--since", help="Runs since: 7d, 24h, 30m, or an ISO date.")
+    ] = None,
+    status: Annotated[
+        str, typer.Option("--status", help="Run status to select (with --topology).")
+    ] = "completed",
+    label: Annotated[
+        list[str] | None, typer.Option("--label", help="Only runs with this key=value label.")
+    ] = None,
+    source: Annotated[
+        str | None, typer.Option("--source", help="Only runs from this front door: cli, serve…")
+    ] = None,
+    limit: Annotated[
+        int, typer.Option("--limit", "-n", help="At most this many runs (≤200).")
+    ] = 50,
+    redact: Annotated[
+        list[str] | None,
+        typer.Option("--redact", help="A regex replaced with [REDACTED] in inputs and references."),
+    ] = None,
+    no_used_skills: Annotated[
+        bool, typer.Option("--no-used-skills", help="Do not require the skills the run used.")
+    ] = False,
+    write: Annotated[
+        bool, typer.Option("--write", help="Write the cases. Without it, only show them.")
+    ] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="Machine-readable output.")] = False,
+) -> None:
+    """Turn recorded runs into eval cases: input, used skills, and the output as a reference.
+
+    A preview unless --write. Inputs and outputs are copied as recorded: use --redact for secrets.
+    """
+    from swarmkit_runtime.eval import CaptureError, CaptureService  # noqa: PLC0415
+    from swarmkit_runtime.eval._capture import parse_since  # noqa: PLC0415
+    from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
+    from swarmkit_runtime.resolver import resolve_workspace  # noqa: PLC0415
+    from swarmkit_runtime.server._services import (  # noqa: PLC0415
+        ArtifactService,
+        InvalidArtifactError,
+    )
+
+    ws_root = workspace_path.resolve()
+    try:
+        topologies = resolve_workspace(ws_root).topologies
+    except ResolutionErrors as exc:
+        _emit_errors(list(exc.errors), json_mode=as_json, workspace_root=ws_root, color=False)
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    labels: dict[str, str] = {}
+    for item in label or []:
+        key, sep, value = item.partition("=")
+        if not sep or not key:
+            _stderr(f"error: --label wants key=value, got {item!r}")
+            raise typer.Exit(_EXIT_USAGE)
+        labels[key] = value
+
+    service = CaptureService(
+        _store(ws_root), storage_for_workspace(ws_root).audit_provider(), ws_root, topologies
+    )
+    try:
+        jobs, missing = service.select(
+            run_ids=list(run or []),
+            topology=topology,
+            since=parse_since(since),
+            status=status,
+            labels=labels,
+            source=source,
+            limit=limit,
+        )
+        proposal = asyncio.run(
+            service.propose(
+                jobs,
+                into=into,
+                explicit=bool(run),
+                redact=list(redact or []),
+                used_skills=not no_used_skills,
+                missing=missing,
+            )
+        )
+        result = service.write(proposal, ArtifactService(ws_root)) if write else None
+    except CaptureError as exc:
+        _stderr(f"error: {exc}")
+        raise typer.Exit(_EXIT_USAGE) from exc
+    except InvalidArtifactError as exc:
+        _stderr(f"error: the set would not validate, so nothing was written: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    if as_json:
+        typer.echo(json.dumps({**proposal.to_dict(), **({"result": result} if result else {})}))
+        return
+    if not write:
+        typer.echo(proposal.yaml.rstrip())
+        typer.echo("")
+    verb = "created" if proposal.created else "updated"
+    added = ", ".join(proposal.added) or "none"
+    typer.echo(f"{into}: {len(proposal.added)} case(s) to add — {added}")
+    for note in proposal.flagged:
+        typer.echo(f"  flagged  {note.run_id}  {note.reason}  {note.detail}".rstrip())
+    for note in proposal.skipped:
+        typer.echo(f"  skipped  {note.run_id}  {note.reason}  {note.detail}".rstrip())
+    if write and proposal.written:
+        typer.echo(f"wrote evals/{into}.yaml ({verb}). Run it: swarmkit eval {ws_root} {into}")
+    elif write:
+        typer.echo("nothing new to write.")
+    else:
+        typer.echo("preview only — add --write to write these cases.")
