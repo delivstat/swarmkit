@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { sourceLabel } from "@/lib/dashboard";
+import { captureHref } from "@/lib/evals";
 import {
 	type ToolDetail,
 	executorBadge,
@@ -489,6 +490,23 @@ function Field({
  * resume — both are parked mid-flight with their state on the checkpoint, and only the reason
  * differs.
  */
+/** A finished run can be proposed as an eval case (eval-capture.md §5); the view previews first. */
+function CaptureLink({ job }: { job: JobResponse }) {
+	if (job.status !== "completed" && job.status !== "failed") return null;
+	return (
+		<Button
+			asChild
+			size="sm"
+			variant="outline"
+			title="Propose this run as an eval case: its input, the skills it used and its answer as the reference. Previewed before anything is written."
+		>
+			<Link href={captureHref({ runs: [job.job_id] })}>
+				Capture as eval case
+			</Link>
+		</Button>
+	);
+}
+
 function RunControls({
 	job,
 	onDone,
@@ -590,7 +608,10 @@ function JobDetail() {
 						<CardTitle>Status</CardTitle>
 						<div className="flex items-center justify-between gap-4">
 							<StatusBadge status={job.status} />
-							<RunControls job={job} onDone={refetch} />
+							<div className="flex items-center gap-2">
+								<RunControls job={job} onDone={refetch} />
+								<CaptureLink job={job} />
+							</div>
 						</div>
 					</Card>
 

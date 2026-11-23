@@ -48,6 +48,9 @@ import type {
 } from "./types";
 
 import type {
+	EvalCaptureProposal,
+	EvalCaptureRequest,
+	EvalCaptureResult,
 	EvalRunDetail,
 	EvalRunSummary,
 	EvalSet,
@@ -149,6 +152,38 @@ async function evalAction<T>(path: string): Promise<T> {
 		throw new Error(await refusal(res));
 	}
 	return res.json() as Promise<T>;
+}
+
+/**
+ * Capture recorded runs as eval cases. A 422 is an answer — `{code, detail}` saying why the
+ * capture could not be proposed (no runs, two topologies, a bad pattern) — so it comes back as a
+ * result rather than a thrown string; anything else non-2xx throws.
+ */
+async function capture(
+	path: string,
+	body: EvalCaptureRequest,
+): Promise<EvalCaptureResult> {
+	const res = await fetch(`${BASE}${path}`, {
+		method: "POST",
+		headers: authHeaders({ "Content-Type": "application/json" }),
+		body: JSON.stringify(body),
+	});
+	if (res.ok) {
+		return { ok: true, proposal: (await res.json()) as EvalCaptureProposal };
+	}
+	if (res.status === 422) {
+		const detail = (await res.json()) as { code?: string; detail?: unknown };
+		return {
+			ok: false,
+			code: detail.code ?? "invalid",
+			detail:
+				typeof detail.detail === "string"
+					? detail.detail
+					: JSON.stringify(detail.detail),
+		};
+	}
+	on401(res.status);
+	throw new Error(await refusal(res));
 }
 
 const post = <T>(path: string, body?: unknown) => send<T>("POST", path, body);
@@ -497,6 +532,12 @@ export const api = {
 		evalAction<{ eval_run_id: string; stop_requested: boolean }>(
 			`/evals/runs/${encodeURIComponent(id)}/stop`,
 		),
+	/** What capturing these runs would add — writes nothing (the `read` tier). */
+	previewEvalCapture: (body: EvalCaptureRequest) =>
+		capture("/evals/capture", body),
+	/** Capture and write the set, through the validated eval-set write (`admin`). */
+	writeEvalCapture: (body: EvalCaptureRequest) =>
+		capture("/api/evals/capture", body),
 	/** Continues on the same row from the cases with no result, against the set as first run. */
 	resumeEvalRun: (id: string) =>
 		evalAction<{ eval_run_id: string; status: string; eval_set_id: string }>(

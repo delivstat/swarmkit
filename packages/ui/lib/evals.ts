@@ -333,3 +333,95 @@ export async function followEvalRun(
 		await sleep(interval);
 	}
 }
+
+// ---- capture: recorded runs become cases (design/details/eval-capture.md) ------------------------
+
+/** A run left out of a capture, or taken as less than a full case. */
+export interface EvalCaptureNote {
+	run_id: string;
+	reason: string;
+	detail?: string;
+}
+
+/** What `POST /evals/capture` proposes and `POST /api/evals/capture` writes. */
+export interface EvalCaptureProposal {
+	set_id: string;
+	target: string;
+	created: boolean;
+	added: string[];
+	skipped: EvalCaptureNote[];
+	flagged: EvalCaptureNote[];
+	/** the whole file as it would be written */
+	yaml: string;
+	written: boolean;
+}
+
+/** The selection and options a capture is asked for — the same body both routes take. */
+export interface EvalCaptureRequest {
+	into: string;
+	run_ids?: string[];
+	topology?: string;
+	since?: string;
+	limit?: number;
+	redact?: string[];
+	used_skills?: boolean;
+}
+
+/** Serve's answer to a capture: the proposal, or why it could not be made (422 `{code, detail}`). */
+export type EvalCaptureResult =
+	| { ok: true; proposal: EvalCaptureProposal }
+	| { ok: false; code: string; detail: string };
+
+/** What each skip reason means, in words a reviewer reads before writing a set. */
+export const CAPTURE_REASONS: Record<string, string> = {
+	attachments: "had attachments, which a case input can't carry",
+	"empty-output": "answered nothing",
+	"output-too-long": "answer is over 20,000 characters (never truncated)",
+	"not-completed": "didn't complete",
+	duplicate: "same input as another run or an existing case",
+	"wrong-target": "is of another topology than the set's",
+	"redacted-to-empty": "nothing left of the input after redaction",
+	"not-found": "no such run",
+	"smoke-only": "failed, so it re-runs the input with no reference",
+};
+
+export function captureReason(note: EvalCaptureNote): string {
+	const words = CAPTURE_REASONS[note.reason] ?? note.reason;
+	return note.detail ? `${words} (${note.detail})` : words;
+}
+
+/** The capture view: into a set (`set`), from named runs (`runs`), or a new set from a topology. */
+export function captureHref(
+	opts: { set?: string; runs?: string[] } = {},
+): string {
+	const q = new URLSearchParams({ capture: "1" });
+	if (opts.set) q.set("set", opts.set);
+	if (opts.runs?.length) q.set("runs", opts.runs.join(","));
+	return `/evals/?${q}`;
+}
+
+/** The capture body from the view's fields: blank fields are left out, redact is one per line. */
+export function captureRequest(fields: {
+	into: string;
+	runIds: string[];
+	topology: string;
+	since: string;
+	limit: string;
+	redact: string;
+	usedSkills: boolean;
+}): EvalCaptureRequest {
+	const body: EvalCaptureRequest = { into: fields.into.trim() };
+	if (fields.runIds.length) body.run_ids = fields.runIds;
+	else if (fields.topology) body.topology = fields.topology;
+	if (!fields.runIds.length && fields.since) body.since = fields.since;
+	const limit = Number.parseInt(fields.limit, 10);
+	if (!fields.runIds.length && Number.isFinite(limit) && limit > 0)
+		body.limit = limit;
+	const redact = fields.redact
+		.split("\n")
+		.map((l) => l.trim())
+		.filter(Boolean);
+	if (redact.length) body.redact = redact;
+	if (!fields.usedSkills) body.used_skills = false;
+	return body;
+}
