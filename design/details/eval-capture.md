@@ -2,14 +2,14 @@
 title: Eval capture — recorded runs become regression cases, on the CLI and on serve
 description: One CaptureService reads finished job rows and their audit events from the store and proposes an eval set — the input, the skills the run used, and the recorded output as a reference the new output is judged against. A preview by default, written through ArtifactService, from `swarmkit eval-capture` and `POST /evals/capture` alike.
 tags: [eval, serve, service-layer, storage, schema]
-status: accepted
+status: implemented
 ---
 
 # Eval capture
 
 **Scope:** `packages/schema` (one additive `expect` key), `packages/runtime` (eval, persistence, server, CLI), `packages/ui` (a capture dialog, last)
 **Design reference:** [[eval-on-serve]] (the baseline: `EvalService`, `eval_runs`, `/api/evals`, the Evals page), [[eval-harness]], CLAUDE.md invariant 9, `docs/notes/service-layer-discipline.md`, `docs/notes/schema-change-discipline.md`
-**Status:** accepted (design review on #1114, 2026-11-05; the open questions resolved as proposed, see Decisions). Second half of #1105. #1106 (labels from gate decisions) builds on the service this adds.
+**Status:** implemented. Accepted in design review on #1114 (2026-11-05), with the open questions resolved as proposed (see Decisions); built in PRs #1115, #1129, #1131 and the portal PR. Second half of #1105. #1106 (labels from gate decisions) builds on the service this adds.
 
 ## Goal
 
@@ -227,6 +227,14 @@ Four PRs, each reviewable against a merged baseline. (The first draft had five, 
 - **`evals.capture.redact: [regex]`** is a new optional `evals` block in `workspace.schema.json`, where #1106's `evals.candidates` will also live.
 - **Compiled at load:** `resolve_workspace` reports a pattern that doesn't compile as `evals.redact-invalid`, with the pattern quoted as written and its pointer (`/evals/capture/redact/<i>`).
 - **Applied first:** `CaptureService(default_redact=...)` applies the workspace's patterns before a request's own. Both front doors read the patterns from the resolved workspace, so a request can add patterns but never drop the workspace's.
+
+## As built: PR 4 (swarmkit-webui 0.32.0, runtime 1.272.0 for the `[ui]` floor)
+
+- **One capture view** on the Evals page: `/evals/?capture=1`, with `&set=<id>` to capture into a set, or `&runs=<id,…>` for named runs.
+- **Three entry points open it:** "Capture runs" on the Evals list and on a set's page, and "Capture as eval case" on a finished job's page.
+  - The design said "selected rows on the Jobs page". The Jobs list has no row selection, so the job page carries the action instead. The capture view accepts any number of named runs, so a multi-select can be added later without changing it.
+- **Preview, then write.** Every number, reason and the file come from `POST /evals/capture` and `POST /api/evals/capture`. A 422 is shown as serve's reason, not thrown.
+- **Screenshots** come from `packages/ui/demos/screenshot_eval_capture.mjs`, run against a real serve seeded by `seed_eval_workspace.py`, which now also records four runs.
 
 ## Decisions
 

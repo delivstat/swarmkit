@@ -4,8 +4,8 @@
 
 Builds a throwaway workspace with a four-case eval set against a one-node harness topology, starts
 `swarmkit serve` on it, and runs the set once over HTTP so the page opens with a baseline run
-(4/4). Then it prints one JSON line — `{"base", "hang", "break"}` — and keeps serve up until it is
-interrupted.
+(4/4). Then it records four runs of the topology for the capture screens, prints one JSON line —
+`{"base", "hang", "break", "jobs"}` — and keeps serve up until it is interrupted.
 
 The harness is a fake `claude` on PATH, steered by two files the capture script touches:
 
@@ -91,6 +91,33 @@ def _call(base: str, method: str, path: str) -> Any:
         return json.loads(resp.read() or b"null")
 
 
+def _post(base: str, path: str, body: Any) -> Any:
+    req = urllib.request.Request(
+        f"{base}{path}",
+        data=json.dumps(body).encode(),
+        method="POST",
+        headers={"content-type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return json.loads(resp.read() or b"null")
+
+
+#: Recorded runs for the capture screens: one repeated input (a `duplicate`) and one with a
+#: warehouse code for the redaction field to remove.
+_RUNS = ["do case-one again", "returns open at DC-14", "do case-one again", "do case-four now"]
+
+
+def _record_runs(base: str) -> list[str]:
+    """Run each of `_RUNS` over `POST /run` and wait for it, so capture has history to read."""
+    jobs = []
+    for text in _RUNS:
+        job_id = _post(base, "/run/change", {"input": text})["job_id"]
+        while _call(base, "GET", f"/jobs/{job_id}")["status"] not in ("completed", "failed"):
+            time.sleep(0.2)
+        jobs.append(str(job_id))
+    return jobs
+
+
 def _exit(signum: int, _frame: object) -> None:
     raise KeyboardInterrupt
 
@@ -152,7 +179,8 @@ def main() -> None:
         while _call(base, "GET", f"/evals/runs/{baseline}")["status"] == "running":
             time.sleep(0.3)
 
-        print(json.dumps({"base": base, "hang": str(hang), "break": str(brk)}), flush=True)
+        seed = {"base": base, "hang": str(hang), "break": str(brk), "jobs": _record_runs(base)}
+        print(json.dumps(seed), flush=True)
         # Both signals end it the same way, through the `finally` that takes serve down with it. A
         # seed started in the background of a script has SIGINT ignored, so SIGTERM must work too.
         for sig in (signal.SIGINT, signal.SIGTERM):

@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	type CaseHistory,
+	type EvalCaptureProposal,
 	type EvalCaseResult,
 	type EvalRunDetail,
 	type EvalRunSummary,
@@ -22,6 +23,7 @@ import {
 	type EvalSetListItem,
 	canResumeEval,
 	canStopEval,
+	captureReason,
 	expectLines,
 	passRate,
 	progressLabel,
@@ -427,6 +429,88 @@ export function RunReport({ run }: { run: EvalRunDetail }) {
 					</li>
 				))}
 			</ul>
+		</Card>
+	);
+}
+
+/**
+ * A capture proposal, as serve returned it: the cases it would add, the runs it took as less than
+ * a full case, the runs it left out and why, and the file. Nothing here is computed — the reasons
+ * are serve's, so the CLI and the portal say the same thing about the same runs.
+ */
+export function CaptureProposalView({
+	proposal,
+}: {
+	proposal: EvalCaptureProposal;
+}) {
+	const [showYaml, setShowYaml] = useState(true);
+	const verb = proposal.created ? "a new set" : "the set";
+	return (
+		<Card>
+			<CardTitle>
+				{proposal.added.length} case{proposal.added.length === 1 ? "" : "s"} to
+				add to {verb} <span className="font-mono">{proposal.set_id}</span>{" "}
+				<span className="text-muted-foreground">
+					· target <span className="font-mono">{proposal.target}</span>
+				</span>
+				{proposal.written ? (
+					<Badge variant="outline" className="ml-2 text-success">
+						written
+					</Badge>
+				) : null}
+			</CardTitle>
+			<div className="space-y-1" data-capture="added">
+				{proposal.added.map((id) => (
+					<div key={id} className="font-mono text-xs">
+						+ {id}
+					</div>
+				))}
+			</div>
+			{proposal.flagged.length > 0 && (
+				<div className="mt-3 space-y-1" data-capture="flagged">
+					<div className="text-xs font-medium text-warning">
+						Taken as less than a full case
+					</div>
+					{proposal.flagged.map((n) => (
+						<div key={n.run_id} className="text-xs">
+							<span className="font-mono">{n.run_id.slice(0, 8)}</span>{" "}
+							{captureReason(n)}
+						</div>
+					))}
+				</div>
+			)}
+			{proposal.skipped.length > 0 && (
+				<div className="mt-3 space-y-1" data-capture="skipped">
+					<div className="text-xs font-medium text-muted-foreground">
+						Skipped
+					</div>
+					{proposal.skipped.map((n) => (
+						<div
+							key={`${n.run_id}-${n.reason}`}
+							className="text-xs"
+							data-reason={n.reason}
+						>
+							<span className="font-mono">{n.run_id.slice(0, 8)}</span>{" "}
+							{captureReason(n)}
+						</div>
+					))}
+				</div>
+			)}
+			<div className="mt-3">
+				<Button
+					type="button"
+					size="sm"
+					variant="ghost"
+					onClick={() => setShowYaml((v) => !v)}
+				>
+					{showYaml ? "Hide the file" : "Show the file"}
+				</Button>
+				{showYaml && (
+					<pre className="mt-2 max-h-96 overflow-auto rounded border bg-muted/40 p-3 font-mono text-xs">
+						{proposal.yaml}
+					</pre>
+				)}
+			</div>
 		</Card>
 	);
 }

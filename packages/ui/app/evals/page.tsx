@@ -10,19 +10,22 @@
  *   /evals?set=<id>&edit=1 the editor — SchemaForm or YAML, saved through PUT /api/evals/<id>
  *   /evals?new=1           a new set, POST /api/evals
  *   /evals?run=<id>        one run: polled while running, stop / resume, diff and report
+ *   /evals?capture=1[&set=<id>][&runs=<id,…>]
+ *                          recorded runs as cases (eval-capture.md): preview, then write
  *
  * Everything goes through the serve routes, which go through EvalService and ArtifactService —
  * the same as `swarmkit eval` — so a run started here lists on the CLI and the reverse.
  */
 
 import { dump, load } from "js-yaml";
-import { Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Download, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Card, CardTitle } from "@/components/card";
 import {
+	CaptureProposalView,
 	CaseReview,
 	DiffCard,
 	EvalRunTable,
@@ -34,13 +37,25 @@ import {
 } from "@/components/evals";
 import { SchemaForm } from "@/components/schema-form";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import {
+	type EvalCaptureProposal,
 	type EvalRunDetail,
 	type EvalRunSummary,
 	type EvalSet,
 	type EvalSetListItem,
+	captureHref,
+	captureRequest,
 	caseHistory,
 	fieldErrors,
 	followEvalRun,
@@ -67,11 +82,18 @@ function ListView() {
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
 				<h2 className="text-xl font-bold">Evals</h2>
-				<Button asChild size="sm">
-					<Link href="/evals/?new=1">
-						<Plus size={12} /> New eval set
-					</Link>
-				</Button>
+				<div className="flex gap-2">
+					<Button asChild size="sm" variant="outline">
+						<Link href={captureHref()}>
+							<Download size={12} /> Capture runs
+						</Link>
+					</Button>
+					<Button asChild size="sm">
+						<Link href="/evals/?new=1">
+							<Plus size={12} /> New eval set
+						</Link>
+					</Button>
+				</div>
 			</div>
 			<Card>
 				<CardTitle>Eval sets</CardTitle>
@@ -174,6 +196,11 @@ function SetView({ setId }: { setId: string }) {
 				<span className="text-muted-foreground">/</span>
 				<h2 className="text-xl font-bold">{setId}</h2>
 				<div className="ml-auto flex gap-2">
+					<Button asChild size="sm" variant="outline">
+						<Link href={captureHref({ set: setId })}>
+							<Download size={12} /> Capture runs
+						</Link>
+					</Button>
 					<Button asChild size="sm" variant="outline">
 						<Link href={`${setHref(setId)}&edit=1`}>
 							<Pencil size={12} /> Edit
@@ -475,10 +502,228 @@ function RunView({ runId }: { runId: string }) {
 	);
 }
 
+const SINCE = [
+	{ value: "24h", label: "the last 24 hours" },
+	{ value: "7d", label: "the last 7 days" },
+	{ value: "30d", label: "the last 30 days" },
+	{ value: "any", label: "any time" },
+];
+
+/**
+ * Recorded runs become eval cases (design/details/eval-capture.md §5). Preview first — what would
+ * be added, what was skipped and why, and the file — then write. Both calls go to the same serve
+ * routes as `swarmkit eval-capture`; nothing is computed here.
+ */
+function CaptureView({
+	setId,
+	runIds,
+}: {
+	setId: string | null;
+	runIds: string[];
+}) {
+	const [into, setInto] = useState(setId ?? "");
+	const [topology, setTopology] = useState("");
+	const [topologies, setTopologies] = useState<string[]>([]);
+	const [since, setSince] = useState("7d");
+	const [limit, setLimit] = useState("50");
+	const [redact, setRedact] = useState("");
+	const [usedSkills, setUsedSkills] = useState(true);
+	const [proposal, setProposal] = useState<EvalCaptureProposal | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [busy, setBusy] = useState(false);
+
+	useEffect(() => {
+		api
+			.topologies()
+			.then(setTopologies)
+			.catch(() => setTopologies([]));
+		if (setId)
+			api
+				.evalSet(setId)
+				.then((s) => setTopology(s.target.split("@")[0] ?? s.target))
+				.catch(() => undefined);
+	}, [setId]);
+
+	const body = () =>
+		captureRequest({
+			into,
+			runIds,
+			topology,
+			since: since === "any" ? "" : since,
+			limit,
+			redact,
+			usedSkills,
+		});
+	const call = async (write: boolean) => {
+		setBusy(true);
+		setError(null);
+		try {
+			const res = write
+				? await api.writeEvalCapture(body())
+				: await api.previewEvalCapture(body());
+			if (res.ok) setProposal(res.proposal);
+			else {
+				setProposal(null);
+				setError(res.detail);
+			}
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const fromRuns = runIds.length > 0;
+	const canPreview = Boolean(into.trim()) && (fromRuns || Boolean(topology));
+	const canWrite =
+		proposal !== null && !proposal.written && proposal.added.length > 0;
+	return (
+		<div className="space-y-4">
+			<div className="flex items-center gap-3">
+				<Link
+					href="/evals/"
+					className="text-sm text-muted-foreground hover:underline"
+				>
+					Evals
+				</Link>
+				<span className="text-muted-foreground">/</span>
+				<h2 className="text-xl font-bold">Capture runs as cases</h2>
+			</div>
+			<Card>
+				<CardTitle>
+					{fromRuns
+						? `${runIds.length} named run${runIds.length === 1 ? "" : "s"}`
+						: "Recent runs of a topology"}
+				</CardTitle>
+				<div className="grid gap-3 sm:grid-cols-2">
+					<label className="space-y-1 text-sm">
+						<span className="text-muted-foreground">Into the eval set</span>
+						<Input
+							value={into}
+							onChange={(e) => setInto(e.target.value)}
+							placeholder="triage-regressions"
+							disabled={Boolean(setId)}
+						/>
+					</label>
+					{!fromRuns && (
+						<label className="space-y-1 text-sm">
+							<span className="text-muted-foreground">Topology</span>
+							<Select
+								value={topology}
+								onValueChange={setTopology}
+								disabled={Boolean(setId)}
+							>
+								<SelectTrigger id="capture-topology">
+									<SelectValue placeholder="Select topology…" />
+								</SelectTrigger>
+								<SelectContent>
+									{topologies.map((t) => (
+										<SelectItem key={t} value={t}>
+											{t}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</label>
+					)}
+					{!fromRuns && (
+						<label className="space-y-1 text-sm">
+							<span className="text-muted-foreground">Completed in</span>
+							<Select value={since} onValueChange={setSince}>
+								<SelectTrigger id="capture-since">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{SINCE.map((o) => (
+										<SelectItem key={o.value} value={o.value}>
+											{o.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</label>
+					)}
+					{!fromRuns && (
+						<label className="space-y-1 text-sm">
+							<span className="text-muted-foreground">At most (≤ 200)</span>
+							<Input
+								value={limit}
+								onChange={(e) => setLimit(e.target.value)}
+								inputMode="numeric"
+							/>
+						</label>
+					)}
+					<label className="space-y-1 text-sm sm:col-span-2">
+						<span className="text-muted-foreground">
+							Redact (one regular expression per line, added to the workspace's
+							own)
+						</span>
+						<Textarea
+							value={redact}
+							onChange={(e) => setRedact(e.target.value)}
+							placeholder={"DC-\\d+"}
+							className="min-h-16 font-mono"
+						/>
+					</label>
+					<label className="flex items-center gap-2 text-sm sm:col-span-2">
+						<Checkbox
+							checked={usedSkills}
+							onCheckedChange={(c) => setUsedSkills(c === true)}
+						/>
+						Require the skills each run used
+					</label>
+				</div>
+				<p className="mt-3 text-xs text-muted-foreground">
+					Inputs and answers are copied as they were recorded. Check the preview
+					before writing.
+				</p>
+				<div className="mt-3 flex gap-2">
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						disabled={busy || !canPreview}
+						onClick={() => call(false)}
+					>
+						Preview
+					</Button>
+					<Button
+						type="button"
+						size="sm"
+						disabled={busy || !canWrite}
+						onClick={() => call(true)}
+					>
+						Write {proposal?.added.length ?? 0} case
+						{proposal?.added.length === 1 ? "" : "s"}
+					</Button>
+					{proposal?.written && (
+						<Button asChild size="sm" variant="outline">
+							<Link href={setHref(proposal.set_id)}>Open the set</Link>
+						</Button>
+					)}
+				</div>
+			</Card>
+			{error && (
+				<p className="text-sm text-destructive" role="alert">
+					{error}
+				</p>
+			)}
+			{proposal && <CaptureProposalView proposal={proposal} />}
+		</div>
+	);
+}
+
 function EvalsInner() {
 	const params = useSearchParams();
 	const runId = params.get("run");
 	const setId = params.get("set");
+	if (params.get("capture"))
+		return (
+			<CaptureView
+				setId={setId}
+				runIds={(params.get("runs") ?? "").split(",").filter(Boolean)}
+			/>
+		);
 	if (runId) return <RunView runId={runId} />;
 	if (params.get("new")) return <EditView setId={null} />;
 	if (setId && params.get("edit"))
