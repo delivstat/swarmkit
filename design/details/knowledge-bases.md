@@ -53,7 +53,7 @@ A person or an agent creates a knowledge base in a few steps, from the CLI, the 
 
 | `kind` | What it is | Built by |
 |---|---|---|
-| `rag` | **Search my documents.** One `type: Source` concept per source, plus the index. No LLM to build. | the deterministic pass |
+| `rag` | **Search my documents.** Every source fully converted and indexed: one concept per small source, a tree of section concepts per large one (§2), plus the index. No LLM to build. | the deterministic pass |
 | `okf` | **Curated knowledge.** A `rag` base plus synthesized concepts (`Playbook`, `Metric`, `Reference`, …) that cite Source concepts in footnotes. | the deterministic pass + the `knowledge-builder` topology |
 | `import` | **An existing OKF bundle**, from a directory, git URL or archive. Read v0.1–v0.3 leniently. | indexing only |
 | `gbrain`, `graphiti`, `basic-memory`, `qdrant`, `memory`, `mcp` | **An external store,** through an adapter (§9). | the store itself |
@@ -74,7 +74,25 @@ Every kind answers the same read contract (§8). `rag` and `okf` are the same bu
   - `x-swarmkit-source: {kind, hash, fetched_at}` holds the ingest ledger.
 - **`AGENTS.md`** at the bundle root carries the base's schema and conventions for agents. It isn't a concept by OKF's rules.
 
-**How much source text the bundle holds.** A Source concept's body is the converted Markdown when it's under **200 KB**. Above that, the body is a heading outline plus a link, and only the index holds the full text. The threshold is a config value and gets measured on the Sterling corpus in phase 1.
+**Size never limits what's indexed.** Every source is converted and indexed in full, whatever its size; the only limits are the upload limits (§7). Size decides how a source is laid out as concepts.
+
+**Small sources** (converted text up to `section_kb`, 60 KB by default, about 15 pages) become one `type: Source` concept, with the full converted text as its body.
+
+**Large sources, such as a product manual PDF, become a tree of concepts:**
+- **Why a directory:** OKF v0.3 defines parent and child only by the directory tree, so a large document gets its own directory, `sources/<document-slug>/`.
+- **`overview.md`:** the document's own concept (`type: Source`). It holds the title, the original's `sources[].resource`, page count and the heading outline.
+- **One concept per section** (`type: Source Section`), named in reading order (`010-installation.md`, `020-configuration.md`, …), each with its section's full converted text. The service-written `index.md` lists them in order.
+- **How it splits:** at the shallowest heading level whose sections fit `section_kb`, going one level deeper for any section that doesn't fit. A document with no usable headings (common in PDFs) is split into page windows, 10 pages by default.
+- **Page numbers are kept,** so a citation points at the page: `sources[].resource: upload://<sha256>/manual.pdf#page=42` (the standard PDF fragment), and `x-swarmkit-pages: [42, 51]`.
+
+**Why sections and not one big concept:**
+- `fetch` returns a whole concept, and a 2 MB concept would flood an agent's context.
+- A 60 KB section fits in about 15k tokens.
+- A section is also the right unit to cite, review and verify. A person verifies "Installation", not a 500-page manual.
+
+**The bundle holds the full converted text by default (`materialize: full`).** Converted text is a small fraction of a PDF's size: a 500-page manual is typically 1–3 MB of Markdown. So even large documentation sets suit git.
+- **For very large corpora,** where repository size matters (thousands of documents), `materialize: outline` keeps only each document's `overview.md` and section titles in the bundle. The section text then lives in the index and the stored originals.
+- **Search and `fetch` are identical in both modes.** `fetch` reads the section text from the index when the bundle holds only the outline.
 
 **Uploaded originals** go in the artifacts store, keyed by SHA-256 and named in the bundle as `upload://<sha256>/<filename>`. They're kept after conversion, so a converter upgrade can rebuild from them. Uploads count toward the base's storage figure in `knowledge show`. Deleting a base deletes its uploads after a 7-day grace period, which `knowledge restore` can undo.
 
@@ -104,6 +122,7 @@ knowledge:
         - skill: confluence-export
           args: { space: PAY }
       refresh: { every: 6h, prune: 7d }
+      layout: { section_kb: 60, page_window: 10, materialize: full }   # full | outline
       redact: ['\bACCT-\d+\b']
       screen: auto             # off | auto (web, crawl and skill sources) | all
       enrich: { model: default, on: build }   # okf only: build | manual | off
@@ -143,7 +162,7 @@ knowledge:
 3. **Convert.** Markdown and text pass through. With `[knowledge]` installed, MarkItDown handles Office, PDF and HTML; Docling (an opt-in extra) handles scanned PDFs. A converter can also be any skill that returns Markdown.
 4. **Redact.** Apply the base's `redact` patterns and the workspace's `knowledge.defaults.redact`.
 5. **Screen,** when `screen` applies. A decision skill (`knowledge-ingest-screen`, bundled) flags text addressed to an AI. A flagged source is held as `quarantined` until a person releases it.
-6. **Write.** Write or update the Source concept, with `generated` stamped and `status: draft`. The runtime only ever writes a deterministic concept. Agents never do.
+6. **Write.** Write or update the Source concept, or the document's directory of section concepts for a large source (§2), with `generated` stamped and `status: draft`. Unchanged sections keep their revision, so a small edit to a manual doesn't reset the review status of every section. The runtime only ever writes a deterministic concept. Agents never do.
 7. **Chunk.** Split on headings recursively, about 512 tokens with about 12% overlap, keeping the heading path.
 8. **Index.** Update the full-text tables, and the vectors when embeddings are on.
 9. **Finish.** Rewrite `index.md`, append to `log.md`, and record a `knowledge.built` audit event.
@@ -207,8 +226,9 @@ Its rules come from OKF's own `okf-generate` skill (never self-verify, never inf
 | `POST /knowledge/preview-source` (a crawl or git preview: what would be fetched, sizes) | read |
 
 Upload limits live in `server.knowledge`, with these defaults:
-- `max_file_mb: 50`
-- `max_request_mb: 500`
+- `max_file_mb: 200` (a large product manual, with images)
+- `max_request_mb: 2048`
+- uploads are chunked and resumable, so a large file survives a dropped connection
 - `allowed: [md, txt, html, pdf, docx, pptx, xlsx, csv, json, zip, tar.gz]`
 
 The limits are shown before a user uploads.
@@ -338,7 +358,10 @@ Each phase gets its own issue under #1127. Phases 1 and 2 bump `swarmkit-schema`
 
 - **Schema:** valid and invalid `knowledge` blocks (unknown key, non-kebab id, missing description, a source with two keys). Codegen drift is clean.
 - **Build:**
-  - A folder of Markdown and text gives one Source concept per file, `index.md` and `log.md`, and a conformant bundle by SwarmKit's validator and OKF's conformance rules.
+  - A folder of Markdown and text gives one Source concept per small file, `index.md` and `log.md`, and a conformant bundle by SwarmKit's validator and OKF's conformance rules.
+  - A large document becomes a directory: an overview concept plus section concepts split at headings, each within `section_kb`. A document with no headings is split into page windows, and section citations carry page numbers.
+  - Every word of a large source is searchable, in both `materialize` modes.
+  - Editing one section of a large document re-indexes that section only, and the other sections keep their revision and any verification.
   - Unchanged sources are skipped on refresh; a changed one is re-indexed.
   - A deleted source is deprecated after the prune window, not removed.
   - An unsupported file is reported as `unsupported`, and the build continues.
@@ -372,6 +395,6 @@ Each phase gets its own issue under #1127. Phases 1 and 2 bump `swarmkit-schema`
 ## Open questions (with the proposals above as the defaults)
 
 1. **Hybrid search by default,** despite a 67 MB download on the first build with `[knowledge]`? Proposed: on with the extra, off in the base install.
-2. **The 200 KB threshold for keeping source text in the bundle.** Proposed: measure on Sterling in phase 1.
+2. **Section size and the page-window fallback.** Proposed: `section_kb: 60` and 10-page windows, measured on Sterling's PDFs and one public product manual in phase 1.
 3. **Connector sources in phase 2 vs phase 1.** Proposed: phase 2, because they need the screening default.
 4. **Whether `direct` writes should exist at all.** Proposed: yes, for scratch bases, always unverified and audited.
