@@ -318,8 +318,14 @@ def _register_eval_routes(app: FastAPI, workspace_path: Path, artifacts: Artifac
         if not isinstance(body, dict):
             raise HTTPException(status_code=422, detail="the body is a JSON object")
         runtime = _get_runtime(request)
+        from swarmkit_runtime.resolver import capture_redact_patterns  # noqa: PLC0415
+
         service = CaptureService(
-            store, runtime.audit_provider, workspace_path, _topologies(request)
+            store,
+            runtime.audit_provider,
+            workspace_path,
+            _topologies(request),
+            default_redact=capture_redact_patterns(runtime.workspace.raw.model_dump(mode="json")),
         )
         run_ids = [str(r) for r in body.get("run_ids") or []]
         try:

@@ -217,7 +217,20 @@ swarmkit eval-capture ./workspace --run <job-id> --run <job-id> --into triage-re
 - **The write is the same validated write as a portal edit.** A new set is created with the runs' topology as its target, and runs of several topologies can't start one set. An existing set gets its new cases appended, and its existing cases are kept.
 - **Capturing the same runs again writes nothing.** `--no-used-skills` (or `used_skills: false` over HTTP) drops the skill requirement, for a topology that legitimately varies which skills it calls.
 
-**Redaction.** Inputs and outputs are copied from the store as recorded, and the audit log's redaction policy doesn't cover them. Use `--redact <regex>` (repeatable; `redact: [...]` over HTTP) to replace matches with `[REDACTED]` in both the input and the reference. Two things follow:
+**Redaction.** Inputs and outputs are copied from the store as recorded, and the audit log's redaction policy doesn't cover them. Use `--redact <regex>` (repeatable; `redact: [...]` over HTTP) to replace matches with `[REDACTED]` in both the input and the reference.
+
+From runtime 1.271.0, a workspace can set patterns that apply to **every** capture, so nobody has to remember the flag:
+
+```yaml
+# workspace.yaml
+evals:
+  capture:
+    redact:
+      - 'DC-\d+'                       # warehouse codes
+      - '[\w.+-]+@[\w-]+\.[\w.]+'      # email addresses
+```
+
+A request's own patterns are added to these, and can never remove them. The patterns are compiled when the workspace loads, so one that doesn't compile is a load error naming it. Either way, two things follow:
 - **The replayed question changes.** A redacted input is what the topology is asked next time. Redact identifiers the answer doesn't depend on, such as account numbers, codes and names, not the subject of the question.
 - **The judge is told what `[REDACTED]` means.** It's a removed value that matches whatever the new answer gives there, so a redacted reference isn't failed for differing on it.
 

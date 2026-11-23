@@ -222,6 +222,12 @@ Four PRs, each reviewable against a merged baseline. (The first draft had five, 
 - **A redacted reference.** The reference judge's fixed system prompt now says `[REDACTED]` marks a removed value that matches any value. In the demo, a judge without that instruction failed an unchanged answer for containing `DC-14` where the reference had `[REDACTED]`. It did so on one run and passed the same pair on another.
 - **The demo** (`just demo-eval-capture`) uses a real judge model, like `demo-eval-reference`. The topology runs on a fake harness, so the six judge calls are its only model calls. The mock provider can't be scripted to return verdicts, so the design's "stub judge, no key" plan wasn't possible as written.
 
+## As built: PR 3 (runtime 1.271.0, schema 1.54.0)
+
+- **`evals.capture.redact: [regex]`** is a new optional `evals` block in `workspace.schema.json`, where #1106's `evals.candidates` will also live.
+- **Compiled at load:** `resolve_workspace` reports a pattern that doesn't compile as `evals.redact-invalid`, with the pattern quoted as written and its pointer (`/evals/capture/redact/<i>`).
+- **Applied first:** `CaptureService(default_redact=...)` applies the workspace's patterns before a request's own. Both front doors read the patterns from the resolved workspace, so a request can add patterns but never drop the workspace's.
+
 ## Decisions
 
 Resolved in review on #1114, as proposed:

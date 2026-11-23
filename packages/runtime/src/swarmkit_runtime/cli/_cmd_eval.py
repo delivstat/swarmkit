@@ -352,7 +352,7 @@ def eval_capture(
 
     ws_root = workspace_path.resolve()
     try:
-        topologies = resolve_workspace(ws_root).topologies
+        workspace = resolve_workspace(ws_root)
     except ResolutionErrors as exc:
         _emit_errors(list(exc.errors), json_mode=as_json, workspace_root=ws_root, color=False)
         raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
@@ -364,8 +364,14 @@ def eval_capture(
             raise typer.Exit(_EXIT_USAGE)
         labels[key] = value
 
+    from swarmkit_runtime.resolver import capture_redact_patterns  # noqa: PLC0415
+
     service = CaptureService(
-        _store(ws_root), storage_for_workspace(ws_root).audit_provider(), ws_root, topologies
+        _store(ws_root),
+        storage_for_workspace(ws_root).audit_provider(),
+        ws_root,
+        workspace.topologies,
+        default_redact=capture_redact_patterns(workspace.raw.model_dump(mode="json")),
     )
     try:
         jobs, missing = service.select(

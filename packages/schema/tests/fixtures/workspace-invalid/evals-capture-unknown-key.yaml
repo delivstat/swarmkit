@@ -1,0 +1,6 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata: {id: bad, name: bad}
+evals:
+  capture:
+    redact_patterns: ['DC-\d+']

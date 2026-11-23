@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import Enum, StrEnum
 from typing import Any, Literal
 
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, RootModel
 
 
 class Authoring(BaseModel):
@@ -25,6 +25,42 @@ class Authoring(BaseModel):
     expose: bool | None = Field(
         False,
         description="When true, GET /topologies lists swarmkit:author:topology, :skill, :archetype, :mcp-server and :init alongside the workspace's own topologies, and AG-UI run requests for those ids are accepted. The SWARMKIT_AUTHOR_EXPOSE env var overrides to true for all workspaces (useful for a dev loop).",
+    )
+
+
+class RedactItem(RootModel[str]):
+    root: str = Field(..., min_length=1)
+
+
+class Capture(BaseModel):
+    """
+    How recorded runs are captured as eval cases by `swarmkit eval-capture` and `POST /evals/capture`.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    redact: list[RedactItem] | None = Field(
+        None,
+        description="Python regular expressions replaced with [REDACTED] in every captured case's input and reference, before a capture is shown or written. A request's own patterns are added to these, never replace them. Compiled when the workspace loads, so a pattern that does not compile is a load error naming it. Inputs and outputs are stored as given, and the audit redaction policy does not cover them, so this is what keeps an identifier out of an eval set committed to git.",
+        title="Redact",
+    )
+
+
+class Evals(BaseModel):
+    """
+    Workspace-wide eval settings (design/details/eval-capture.md).
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    capture: Capture | None = Field(
+        None,
+        description="How recorded runs are captured as eval cases by `swarmkit eval-capture` and `POST /evals/capture`.",
+        title="Capture",
     )
 
 
@@ -1149,6 +1185,11 @@ class SwarmKitWorkspace(BaseModel):
     authoring: Authoring | None = Field(
         None,
         description="Controls whether the bundled swarmkit:author:* topologies are exposed by `swarmkit serve` for this workspace. Default: not exposed. An exposed authoring topology lets any chat client that can reach the serve process propose writes to this workspace via the IAM-scoped write-file skill — operators opt in explicitly. See design/details/author-bundled-workspace.md.",
+    )
+    evals: Evals | None = Field(
+        None,
+        description="Workspace-wide eval settings (design/details/eval-capture.md).",
+        title="Evals",
     )
     memory: Memory | None = Field(
         None,

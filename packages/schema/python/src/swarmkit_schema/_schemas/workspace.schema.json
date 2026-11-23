@@ -41,6 +41,28 @@
         }
       }
     },
+    "evals": {
+      "type": "object",
+      "additionalProperties": false,
+      "title": "Evals",
+      "description": "Workspace-wide eval settings (design/details/eval-capture.md).",
+      "properties": {
+        "capture": {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Capture",
+          "description": "How recorded runs are captured as eval cases by `swarmkit eval-capture` and `POST /evals/capture`.",
+          "properties": {
+            "redact": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "title": "Redact",
+              "description": "Python regular expressions replaced with [REDACTED] in every captured case's input and reference, before a capture is shown or written. A request's own patterns are added to these, never replace them. Compiled when the workspace loads, so a pattern that does not compile is a load error naming it. Inputs and outputs are stored as given, and the audit redaction policy does not cover them, so this is what keeps an identifier out of an eval set committed to git."
+            }
+          }
+        }
+      }
+    },
     "memory": {
       "type": "object",
       "description": "Workspace memory (design/details/memory-by-default.md). Absent means enabled with defaults: memory-reader runs before every agent and memory-writer after, and the governed-memory / memory-reconcile skills are bundled so curated memory exists. A memory-reader or memory-writer bound explicitly under governance.decision_skills is used as written. enabled: false switches off everything automatic (no auto-bindings, no bundled skills); what the workspace wires explicitly still works, and an explicit memory-reader/-writer binding next to enabled: false is a resolution error.",
