@@ -165,13 +165,13 @@ it.
 
 ## The other direction: an assistant that writes workspaces
 
-`swarmkit knowledge-server` (Level 10) is an MCP server over **SwarmKit's own** corpus — schemas,
+`swarmkit docs-server` (Level 10) is an MCP server over **SwarmKit's own** corpus — schemas,
 design notes, reference skills, `validate_workspace`, `read_workspace_file`,
 `write_workspace_file`. Point Claude Code or Cursor at it and the assistant helping you author a
 workspace can look up the topology schema, check a file, and validate what it wrote:
 
 ```bash
-claude mcp add swarmkit-knowledge -- swarmkit knowledge-server
+claude mcp add swarmkit-knowledge -- swarmkit docs-server
 ```
 
 It runs from a SwarmKit source checkout today (it finds the corpus by walking up to the

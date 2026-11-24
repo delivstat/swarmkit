@@ -41,7 +41,7 @@ export OPENROUTER_API_KEY=your-key-here
 | 18 | [Funnels & approval](18-funnels-approval.md) | validate → judge → approve, role registry, quorum, `--require-verified`, `cited-change`, `stop` |
 | 19 | [Command packs & attachments](19-command-packs-attachments.md) | A binary as a skill, `pack:` grants, a file beside the input |
 | 20 | [Agents calling agents](20-agents-calling-agents.md) | `agent` skills, `pack:workspace`, A2A server + client, the portal's remote agents |
-| 21 | [Providers, storage & operations](21-providers-storage-operations.md) | Declarative providers, storage status/migrate, `system`, `eval`, `knowledge-pack` |
+| 21 | [Providers, storage & operations](21-providers-storage-operations.md) | Declarative providers, storage status/migrate, `system`, `eval`, `docs-pack` |
 | 22 | [Running a fleet](22-fleet.md) | Control plane, enrolment (Mode A / B), adopt → deploy → drift, a gate from the panel, gap mining, telemetry — with a walkthrough video |
 
 ## How to use

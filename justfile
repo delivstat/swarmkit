@@ -381,12 +381,12 @@ demo-resolver:
 # Show the size and the first 60 lines of the knowledge pack against the
 # hello-swarm example. Confirms task #24 end-to-end without dumping the
 # full ~350 KB pack to the terminal.
-demo-knowledge-pack:
+demo-docs-pack:
     @echo "── pack size (valid workspace overlay) ──"
-    @uv run swarmkit knowledge-pack examples/hello-swarm/workspace | wc -c
+    @uv run swarmkit docs-pack examples/hello-swarm/workspace | wc -c
     @echo ""
     @echo "── pack head (broken workspace overlay) ──"
-    @uv run swarmkit knowledge-pack examples/hello-swarm/workspace-broken | head -60
+    @uv run swarmkit docs-pack examples/hello-swarm/workspace-broken | head -60
 
 # Command packs — local commands as a skill implementation type. Demonstrates the
 # five claims that matter, against the real runtime: a command runs; a hostile

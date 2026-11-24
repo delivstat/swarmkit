@@ -255,7 +255,7 @@ SWARMKIT_PROVIDER=ollama SWARMKIT_MODEL=kimi-k2.6:cloud \
   --input "your task here"
 
 # Bundle knowledge pack
-uv run swarmkit knowledge-pack ./my-workspace -o pack.md
+uv run swarmkit docs-pack ./my-workspace -o pack.md
 
 # List review items
 uv run swarmkit review list ./my-workspace

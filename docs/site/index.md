@@ -266,7 +266,7 @@ You keep LangGraph underneath — checkpointing, streaming, state — without wr
 
 ## Built to be read by machines too
 
-Docs are consumed by LLMs as much as by people. **[`/llms.txt`](llms.txt)** is the compact index; **[`/llms-full.txt`](llms-full.txt)** inlines the whole corpus. `swarmkit knowledge-server` serves the same corpus to Claude Code or Cursor over MCP, and `swarmkit mcp-serve` turns any workspace into tools an assistant can call.
+Docs are consumed by LLMs as much as by people. **[`/llms.txt`](llms.txt)** is the compact index; **[`/llms-full.txt`](llms-full.txt)** inlines the whole corpus. `swarmkit docs-server` serves the same corpus to Claude Code or Cursor over MCP, and `swarmkit mcp-serve` turns any workspace into tools an assistant can call.
 
 [The complete playbook →](guides/building-swarms.md){ .md-button } [Reference →](reference/cli.md){ .md-button } [Design notes →](architecture/design-overview.md){ .md-button }
 

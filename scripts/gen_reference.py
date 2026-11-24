@@ -69,6 +69,10 @@ def cli_table() -> str:
     rows: list[tuple[str, str]] = []
 
     def walk(cmd: object, prefix: str) -> None:
+        # A hidden command is a deprecated alias (`knowledge-pack` for `docs-pack`, #1134): it still
+        # runs, but the reference names the command to use.
+        if getattr(cmd, "hidden", False):
+            return
         subs = getattr(cmd, "commands", None)
         if subs:
             for name, sub in sorted(subs.items()):
