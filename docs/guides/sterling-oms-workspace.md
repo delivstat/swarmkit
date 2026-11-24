@@ -1360,7 +1360,7 @@ swarmkit ask "Which agent took the longest and why?" -w .
 
 If the responses are too generic (not referencing your project):
 - **Check the knowledge base** — are the files being indexed?
-  Test with `swarmkit knowledge-server` and call `list_sources`.
+  Test with `swarmkit docs-server` and call `list_sources`.
 - **Refine the prompts** — add more project-specific context to
   the archetype system prompts (your org's naming conventions,
   specific Sterling version, known constraints).

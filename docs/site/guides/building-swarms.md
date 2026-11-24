@@ -153,7 +153,7 @@ agents:
 
 ## Step 4 — real tools via MCP
 
-Agents get tools by connecting to **MCP servers** (stdio or Streamable HTTP), configured in the workspace — never coded per-vendor. Every tool call routes through governance, so an agent can only invoke tools its scopes allow. SwarmKit ships its own servers too (`swarmkit knowledge-server`, `swarmkit docs-reader`).
+Agents get tools by connecting to **MCP servers** (stdio or Streamable HTTP), configured in the workspace — never coded per-vendor. Every tool call routes through governance, so an agent can only invoke tools its scopes allow. SwarmKit ships its own servers too (`swarmkit docs-server`, `swarmkit docs-reader`).
 
 → [MCP client](../design-notes/mcp-client.md) · [MCP discovery pattern](../design-notes/mcp-discovery-pattern.md) · [Tutorial 5: MCP Tools](../tutorials/05-mcp-tools.md)
 

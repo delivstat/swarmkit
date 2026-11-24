@@ -4,6 +4,9 @@ sub-command groups. Command modules import these and attach handlers via decorat
 
 from __future__ import annotations
 
+import functools
+from typing import Any
+
 import typer
 
 app = typer.Typer(
@@ -39,3 +42,22 @@ app.add_typer(trust_app, name="trust")
 app.add_typer(memory_app, name="memory")
 app.add_typer(artifacts_app, name="artifacts")
 app.add_typer(skill_app, name="skill")
+
+
+def deprecated_alias(old: str, new: str, command: Any) -> None:
+    """Keep ``swarmkit <old>`` working as a hidden alias of ``swarmkit <new>``, saying so once.
+
+    Scripts and MCP client configs that name the old command keep running; the note on stderr
+    leaves stdout (an MCP stdio stream, a pack being redirected) untouched.
+    """
+
+    @functools.wraps(command)
+    def alias(*args: Any, **kwargs: Any) -> Any:
+        typer.echo(
+            f"note: `swarmkit {old}` is now `swarmkit {new}`; the old name will be removed in a "
+            "later release.",
+            err=True,
+        )
+        return command(*args, **kwargs)
+
+    app.command(name=old, hidden=True)(alias)

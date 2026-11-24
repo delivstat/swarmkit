@@ -10,13 +10,15 @@ if TYPE_CHECKING:
 
 import typer
 
-from ._app import app
+from ._app import app, deprecated_alias
 
-# ---- knowledge-server ----------------------------------------------------
+# ---- docs-server (was knowledge-server) -----------------------------------
+# Renamed in 1.273.0 (#1134): this serves SwarmKit's OWN docs, and `swarmkit knowledge` is for
+# the user's knowledge bases (#1127). The old name stays as a hidden alias that says so.
 
 
-@app.command(name="knowledge-server")
-def knowledge_server(
+@app.command(name="docs-server")
+def docs_server(
     repo: Annotated[
         Path | None,
         typer.Option(
@@ -26,10 +28,13 @@ def knowledge_server(
         ),
     ] = None,
 ) -> None:
-    """Launch the SwarmKit Knowledge MCP Server (stdio)."""
+    """Launch an MCP server (stdio) over SwarmKit's own docs, design notes and schemas."""
     from swarmkit_runtime.knowledge._server import run_server  # noqa: PLC0415
 
     run_server(repo_root=repo.resolve() if repo else None)
+
+
+deprecated_alias("knowledge-server", "docs-server", docs_server)
 
 
 # ---- docs-reader ---------------------------------------------------------

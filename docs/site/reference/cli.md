@@ -27,7 +27,9 @@
 | `swarmkit connect` | Run the Mode B poll connector for a NAT'd / edge instance (design §13). |
 | `swarmkit conversations` | List saved conversations. Use --pick to resume one interactively. |
 | `swarmkit debug` | Retrieve LLM prompts and responses from the local ring buffer. |
+| `swarmkit docs-pack` | Bundle SwarmKit docs + schemas + workspace state into a paste-ready prompt. |
 | `swarmkit docs-reader` | Launch the Document Reader MCP Server (stdio). |
+| `swarmkit docs-server` | Launch an MCP server (stdio) over SwarmKit's own docs, design notes and schemas. |
 | `swarmkit edit` | Edit an existing workspace through conversation (M7 Skill Authoring Swarm). |
 | `swarmkit eval` | Run an eval-set and score the topology (design §M15). |
 | `swarmkit eval-capture` | Turn recorded runs into eval cases: input, used skills, and the output as a reference. |
@@ -40,8 +42,6 @@
 | `swarmkit gaps` | List recorded skill gaps. |
 | `swarmkit init` | Create a new SwarmKit workspace through conversation. |
 | `swarmkit install` | Install a SwarmKit expertise package. |
-| `swarmkit knowledge-pack` | Bundle SwarmKit docs + schemas + workspace state into a paste-ready prompt. |
-| `swarmkit knowledge-server` | Launch the SwarmKit Knowledge MCP Server (stdio). |
 | `swarmkit logs` | Show events from recent topology runs. |
 | `swarmkit mcp-serve` | Expose workspace topologies as MCP tools on stdio. |
 | `swarmkit memory add` | Write a fact into governed memory, through the same path an agent writes through. |
@@ -191,8 +191,8 @@ Redacted fields appear as `[REDACTED]` in all outputs. Summary mode truncates lo
 
 | Command | Description |
 |---|---|
-| `swarmkit knowledge-pack [--lean] [-o file]` | Bundle the corpus for an LLM: `--lean` (~190k tokens: overview, generated CLI/HTTP reference, schemas, design doc, guides) or full (~610k tokens: plus every design note, historical ones last under a banner) |
-| `swarmkit knowledge-server` | Launch Knowledge MCP Server (stdio, for Claude Code / Cursor) |
+| `swarmkit docs-pack [--lean] [-o file]` | Bundle the corpus for an LLM: `--lean` (~190k tokens: overview, generated CLI/HTTP reference, schemas, design doc, guides) or full (~610k tokens: plus every design note, historical ones last under a banner) |
+| `swarmkit docs-server` | Launch an MCP server (stdio, for Claude Code / Cursor) over SwarmKit's own docs |
 
 ## Runtime behaviour
 

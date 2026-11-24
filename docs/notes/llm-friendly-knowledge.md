@@ -16,7 +16,7 @@ This note is the operational consequence: every docs decision optimises for LLM 
 An LLM answering a user's SwarmKit question has access to the corpus through one of:
 
 1. **Public crawl.** LLMs trained with web access see the repo via `llms.txt` and GitHub. Low-effort, high-reach — but only works once the corpus is public and the training window is recent enough.
-2. **User-initiated paste.** `swarmkit knowledge-pack` (task #24) bundles the corpus into a paste-ready blob. Works with any LLM, no infrastructure.
+2. **User-initiated paste.** `swarmkit docs-pack` (task #24) bundles the corpus into a paste-ready blob. Works with any LLM, no infrastructure.
 3. **MCP server.** Task #25 will expose the corpus as an MCP server so Claude Code, the future SwarmKit UI, or any MCP client can query it live.
 
 All three paths work only if the corpus itself is LLM-friendly. That's what this note covers.

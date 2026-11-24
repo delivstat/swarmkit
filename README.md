@@ -710,9 +710,9 @@ to fix.
 SwarmKit docs are designed for LLM consumption. The repo ships [`llms.txt`](./llms.txt) at the root (the short, current summary) and [`llms-full.txt`](https://delivstat.github.io/swarmkit/llms-full.txt) (the whole doc site in one file):
 
 ```bash
-swarmkit knowledge-pack --lean -o pack.md   # ~190k tokens: overview, generated CLI/HTTP reference, schemas, design doc, guides
-swarmkit knowledge-pack -o pack.md          # ~610k tokens: the above plus every design note, the roadmap and schema fixtures
-swarmkit knowledge-server                   # live MCP server for Claude Code / Cursor
+swarmkit docs-pack --lean -o pack.md   # ~190k tokens: overview, generated CLI/HTTP reference, schemas, design doc, guides
+swarmkit docs-pack -o pack.md          # ~610k tokens: the above plus every design note, the roadmap and schema fixtures
+swarmkit docs-server                   # live MCP server for Claude Code / Cursor
 ```
 
 The pack orders its sections by trust — the generated reference first, design notes last, and notes about removed features under a separate "historical" banner — so a model that reads only the first half has read only things that exist.

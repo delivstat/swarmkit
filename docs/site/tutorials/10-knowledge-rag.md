@@ -364,7 +364,7 @@ claims listed. A for loop, not a judge — deterministic, free, and on every wor
 
 ### 9. The built-in knowledge server is something else
 
-`swarmkit knowledge-server` is also an MCP server, but its corpus is **SwarmKit itself** — the
+`swarmkit docs-server` is also an MCP server, but its corpus is **SwarmKit itself** — the
 design notes, schemas and reference skills — for an AI assistant that is helping you write
 workspaces: `search_docs`, `get_schema`, `list_schemas`, `get_design_note`,
 `list_reference_skills`, `validate_workspace`, `get_error_reference`, `read_workspace_file`. It is

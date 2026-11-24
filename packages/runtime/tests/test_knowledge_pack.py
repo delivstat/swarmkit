@@ -1,4 +1,4 @@
-"""Tests for ``swarmkit knowledge-pack`` (M1, task #24).
+"""Tests for ``swarmkit docs-pack`` (was ``knowledge-pack``; M1, task #24, renamed in #1134).
 
 See ``design/details/knowledge-pack-cli.md``.
 """
@@ -221,7 +221,7 @@ def test_find_repo_root_returns_none_when_markers_missing(tmp_path: Path) -> Non
 
 
 def test_cli_emits_pack_to_stdout() -> None:
-    result = runner.invoke(app, ["knowledge-pack", str(EXAMPLE / "workspace")])
+    result = runner.invoke(app, ["docs-pack", str(EXAMPLE / "workspace")])
     assert result.exit_code == 0
     assert "# SwarmKit Knowledge Pack" in result.stdout
     assert "## Current workspace" in result.stdout
@@ -229,7 +229,7 @@ def test_cli_emits_pack_to_stdout() -> None:
 
 def test_cli_output_file(tmp_path: Path) -> None:
     out = tmp_path / "pack.md"
-    result = runner.invoke(app, ["knowledge-pack", "-o", str(out)])
+    result = runner.invoke(app, ["docs-pack", "-o", str(out)])
     assert result.exit_code == 0
     # Nothing on stdout when -o is used.
     assert result.stdout == ""
@@ -237,7 +237,7 @@ def test_cli_output_file(tmp_path: Path) -> None:
 
 
 def test_cli_missing_workspace_path_exits_usage(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["knowledge-pack", str(tmp_path / "nope")])
+    result = runner.invoke(app, ["docs-pack", str(tmp_path / "nope")])
     assert result.exit_code == 2
     combined = (result.stdout or "") + (result.stderr or "")
     assert "not found" in combined
@@ -246,14 +246,14 @@ def test_cli_missing_workspace_path_exits_usage(tmp_path: Path) -> None:
 def test_cli_broken_workspace_still_exits_zero() -> None:
     # Knowledge-pack is not validation — an invalid workspace is part of
     # the "I'm stuck, help me" flow and must not fail the pack itself.
-    result = runner.invoke(app, ["knowledge-pack", str(EXAMPLE / "workspace-broken")])
+    result = runner.invoke(app, ["docs-pack", str(EXAMPLE / "workspace-broken")])
     assert result.exit_code == 0
     assert "agent.unknown-archetype" in result.stdout
 
 
 def test_cli_no_fixtures_flag_shrinks_pack() -> None:
-    with_fixtures = runner.invoke(app, ["knowledge-pack"])
-    without_fixtures = runner.invoke(app, ["knowledge-pack", "--no-fixtures"])
+    with_fixtures = runner.invoke(app, ["docs-pack"])
+    without_fixtures = runner.invoke(app, ["docs-pack", "--no-fixtures"])
     assert with_fixtures.exit_code == 0
     assert without_fixtures.exit_code == 0
     assert len(without_fixtures.stdout) < len(with_fixtures.stdout)
@@ -270,7 +270,20 @@ def test_cli_errors_when_not_in_source_checkout(
     # Simulate "not in a source checkout" by making the resolver return
     # None even though the tests themselves run from inside the repo.
     monkeypatch.setattr(cli_module, "find_repo_root", lambda: None)
-    result = runner.invoke(app, ["knowledge-pack"])
+    result = runner.invoke(app, ["docs-pack"])
     assert result.exit_code == 2
     combined = (result.stdout or "") + (result.stderr or "")
     assert "source checkout" in combined
+
+
+def test_the_old_name_still_works_and_says_it_moved() -> None:
+    """`knowledge-pack` is a hidden alias of `docs-pack` (#1134): the same pack on stdout, one
+    note on stderr, so a script redirecting the pack is not broken by the rename."""
+    from swarmkit_runtime.cli import app as cli  # noqa: PLC0415
+
+    new = runner.invoke(cli, ["docs-pack", "--lean"])
+    old = runner.invoke(cli, ["knowledge-pack", "--lean"])
+    assert old.exit_code == 0 and new.exit_code == 0
+    assert "is now `swarmkit docs-pack`" in old.stderr
+    assert old.stdout.split("\n", 3)[3] == new.stdout.split("\n", 3)[3]  # past the timestamp line
+    assert "knowledge-pack" not in runner.invoke(cli, ["--help"]).stdout
