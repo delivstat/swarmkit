@@ -623,7 +623,7 @@ export interface KnowledgeSource {
      */
     exclude?: string[];
     /**
-     * Workspace-relative glob, for example `docs/**/*.md`. Reads are confined to the workspace.
+     * Workspace-relative glob, for example `docs/**\/*.md`. Reads are confined to the workspace.
      */
     path?: string;
     /**

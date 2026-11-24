@@ -62,7 +62,16 @@ const HEADER = `/* eslint-disable */
 
 async function generateOne(artifact, rootName) {
   const schemaPath = resolve(SCHEMAS_DIR, `${artifact}.schema.json`);
-  const schemaSource = readFileSync(schemaPath, "utf-8");
+  // A description is emitted inside a /** … */ comment, so a literal "*/" in it — a glob such as
+  // `docs/**/*.md` is enough — closes the comment and breaks the generated file. Escape it in
+  // every description and title before generation; the schema itself stays as written.
+  const schemaSource = JSON.stringify(
+    JSON.parse(readFileSync(schemaPath, "utf-8"), (key, value) =>
+      (key === "description" || key === "title") && typeof value === "string"
+        ? value.replaceAll("*/", "*\\/")
+        : value,
+    ),
+  );
 
   const schemaInput = new JSONSchemaInput(new FetchingJSONSchemaStore());
   await schemaInput.addSource({ name: rootName, schema: schemaSource });
