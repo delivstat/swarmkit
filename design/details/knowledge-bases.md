@@ -126,6 +126,26 @@ Every kind answers the same read contract (§8). `rag` and `okf` are the same bu
 
 Both are noted for phase 5. Captions, OCR and descriptions cover the common case, and they keep everything inspectable as text.
 
+**Archives.** Documentation often arrives packed: a product's docs bundle, an exported help site, a Confluence or Notion space export, a vendor's PDF set. An archive is one source, and its contents are treated as if the folder had been uploaded.
+
+- **Formats:** `.zip`, `.tar`, `.tar.gz` / `.tgz`, `.tar.bz2`, `.tar.xz`, and single-file `.gz`, all with the Python standard library. `.7z` and `.rar` need extra tools, so they're refused with a message saying to repack as `.zip`. They can be added later as optional converters.
+- **Structure is kept.** The archive's folders become the bundle's folders (`sources/<archive-slug>/…`), so `index.md` shows the documentation the way it was organised. A single top-level folder, as most exports have, is flattened away.
+- **Every member goes through the normal pipeline.** It's converted, split into sections if large, has its figures extracted, and is indexed. Members that can't be read (binaries, executables, fonts, unsupported formats) are listed as `unsupported` in the build, not silently ignored.
+- **Exported sites work as sites.** An archive of HTML pages (a built MkDocs, Sphinx or Docusaurus site, a Confluence or Notion HTML export) keeps its internal links. A relative link from one page to another becomes an OKF link between their concepts, so the graph and `links` reflect the documentation's own cross-references.
+  - Images referenced by the pages are taken from the archive.
+  - Navigation chrome repeated on every page (menus, footers) is stripped by the HTML converter's main-content extraction.
+  - `index.html` / `README` at the root becomes the archive's overview concept.
+- **Nested archives** are expanded up to 2 levels deep. Deeper nesting is refused and named.
+- **Updating is incremental.** Uploading a new version of the same archive to the same source compares its members by content hash: new and changed members are indexed, unchanged ones are skipped, and removed ones are deprecated after the prune window. Re-uploading a 2 GB docs bundle with three changed pages re-indexes three pages, and every other section keeps its review state.
+- **Safety, checked before and during extraction:**
+  - Paths are confined: absolute paths, `..` segments and symlinks or hardlinks pointing outside the archive are refused.
+  - Device files are skipped.
+  - **Decompression bombs** are caught: the total uncompressed size (default 4 GB), the member count (default 50,000), and the per-member compression ratio (default 200:1) are all capped, and extraction streams with the limits enforced as it goes, not trusting the archive's own header.
+  - Encrypted members are skipped with `encrypted`.
+  - Hidden files and OS clutter (`__MACOSX/`, `.DS_Store`, `Thumbs.db`) are skipped.
+- **The original archive** is kept in the artifacts store like any upload, so a converter upgrade can rebuild from it.
+- **On the CLI,** `swarmkit knowledge add handbook ./docs-export.zip` works the same way, and so does a source `url:` that points at an archive.
+
 **Uploaded originals** go in the artifacts store, keyed by SHA-256 and named in the bundle as `upload://<sha256>/<filename>`. They're kept after conversion, so a converter upgrade can rebuild from them. Uploads count toward the base's storage figure in `knowledge show`. Deleting a base deletes its uploads after a 7-day grace period, which `knowledge restore` can undo.
 
 **The index** is a cache at `.swarmkit/knowledge/<id>/index.sqlite`, gitignored, and always rebuildable from the bundle and sources:
@@ -262,7 +282,8 @@ Upload limits live in `server.knowledge`, with these defaults:
 - `max_file_mb: 200` (a large product manual, with images)
 - `max_request_mb: 2048`
 - uploads are chunked and resumable, so a large file survives a dropped connection
-- `allowed: [md, txt, html, pdf, docx, pptx, xlsx, csv, json, zip, tar.gz]`
+- `allowed: [md, txt, html, pdf, docx, pptx, xlsx, csv, json, zip, tar, tar.gz, tgz, tar.bz2, tar.xz, gz]`
+- archives: `max_uncompressed_gb: 4`, `max_members: 50000`, `max_ratio: 200`, `max_nesting: 2`
 
 The limits are shown before a user uploads.
 
@@ -417,7 +438,14 @@ Each phase gets its own issue under #1127. Phases 1 and 2 bump `swarmkit-schema`
   - `knowledge-propose` is never carried by `pack:`.
 - **Doors:** the CLI, serve, the MCP server and `swarmkit ask --knowledge` give the same results from the same base.
 - **Boundary:** the service-layer boundary test finds no knowledge path around `KnowledgeService`.
-- **Uploads:** limits are enforced with a 413 naming the limit; a re-uploaded unchanged file is a no-op; an archive is expanded with path traversal refused.
+- **Uploads:** limits are enforced with a 413 naming the limit; a re-uploaded unchanged file is a no-op.
+- **Archives:**
+  - `.zip` and `.tar.*` expand with their folder structure kept;
+  - an HTML site export's relative links become concept links;
+  - a re-uploaded archive with three changed members re-indexes three;
+  - path traversal, links pointing outside the archive, and a crafted decompression bomb (over the size, count or ratio caps) are each refused with a named reason, and nothing is written outside the base;
+  - `.7z` is refused with the "repack as .zip" message;
+  - nested archives deeper than 2 levels are refused.
 
 ## Demo plan (phase 1)
 
