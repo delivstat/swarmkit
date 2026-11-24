@@ -31,7 +31,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     deterministically without touching a real LLM."""
     src = Path(__file__).resolve().parents[3] / "examples" / "hello-swarm" / "workspace"
     ws = tmp_path / "workspace"
-    shutil.copytree(src, ws)
+    shutil.copytree(src, ws, ignore=shutil.ignore_patterns(".swarmkit", "__pycache__"))
     with TestClient(create_app(ws)) as c:
         yield c
 
