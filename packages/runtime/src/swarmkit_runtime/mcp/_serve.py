@@ -155,17 +155,28 @@ def _build_handlers(
                         },
                     )
                 )
-            if rt._mcp_manager is not None:
+            candidates = search_skills(rt)
+            if rt._mcp_manager is not None and candidates:
+                properties: dict[str, Any] = {
+                    "query": {"type": "string", "description": "Search query."},
+                }
+                if len(candidates) > 1:
+                    properties["skill"] = {
+                        "type": "string",
+                        "enum": [s.id for s in candidates],
+                        "description": "Which search skill to use (required when several).",
+                    }
                 tools.append(
                     Tool(
                         name=search_name_fn(ws_id),
-                        description=f"[{ws_id}] Search the workspace knowledge base.",
+                        description=(
+                            f"[{ws_id}] Search the workspace knowledge base "
+                            f"({', '.join(s.id for s in candidates)})."
+                        ),
                         inputSchema={
                             "type": "object",
                             "required": ["query"],
-                            "properties": {
-                                "query": {"type": "string", "description": "Search query."},
-                            },
+                            "properties": properties,
                         },
                     )
                 )
@@ -286,22 +297,82 @@ async def _run_topology(
         await rt.end_session()
 
 
+def search_skills(rt: Any) -> list[Any]:
+    """The workspace's own search skills: `mcp_tool` skills whose tool is a search tool, by id.
+
+    Chosen from what the workspace declares rather than from whatever MCP tool happens to be
+    listed first, so the answer does not depend on which server started first (#1133).
+    """
+    from swarmkit_runtime.skills import impl_get  # noqa: PLC0415
+
+    skills = getattr(getattr(rt, "workspace", None), "skills", None) or {}
+    found = [
+        s
+        for s in skills.values()
+        if impl_get(s.raw.implementation, "type") == "mcp_tool"
+        and "search" in str(impl_get(s.raw.implementation, "tool") or "").lower()
+    ]
+    return sorted(found, key=lambda s: s.id)
+
+
+def _choose_search_skill(candidates: list[Any], wanted: Any) -> tuple[Any, str]:
+    """The skill a search uses, or ``(None, why not)``: none configured, an unknown name, or
+    several to choose from with no ``skill`` argument."""
+    names = ", ".join(s.id for s in candidates)
+    if not candidates:
+        return None, "No knowledge search is configured in this workspace."
+    if wanted:
+        chosen = next((s for s in candidates if s.id == wanted), None)
+        return chosen, "" if chosen else f"Unknown search skill {wanted!r}. Use one of: {names}."
+    if len(candidates) == 1:
+        return candidates[0], ""
+    return None, f"This workspace has several search skills ({names}); pass `skill` to pick one."
+
+
 async def _search(
     rt: Any,
     arguments: dict[str, Any],
     TextContent: type,
 ) -> list[Any]:
-    query = arguments.get("query", "")
+    """Run one of the workspace's search skills through the governed call path.
+
+    It used to call ``call_tool(tool.name, {"query": ...})`` on the first tool whose name had
+    "search" in it: the arguments were in the wrong places (the signature is
+    ``call_tool(server_id, tool_name, arguments)``), so every query failed, and the call skipped
+    ``governed_mcp_call``, so a fixed version would have reached a workspace tool with no policy
+    check and no audit (#1133). It now goes through the same gate as every other door.
+    """
+    from swarmkit_runtime.mcp._governed import MCPCallDenied, governed_mcp_call  # noqa: PLC0415
+    from swarmkit_runtime.skills import impl_get  # noqa: PLC0415
+
+    query = str(arguments.get("query", "") or "")
     if rt._mcp_manager is None:
         return [TextContent(type="text", text="No MCP servers configured.")]
+    chosen, refusal = _choose_search_skill(search_skills(rt), arguments.get("skill"))
+    if chosen is None:
+        return [TextContent(type="text", text=refusal)]
+    impl = chosen.raw.implementation
+    iam = getattr(chosen.raw, "iam", None)
+    scopes = (
+        frozenset(getattr(iam, "required_scopes", None) or []) if iam is not None else frozenset()
+    )
     try:
         await rt._mcp_manager.start_all()
-        tools = await rt._mcp_manager.list_tools()
-        search_tools = [t for t in tools if "search" in t.name.lower()]
-        if not search_tools:
-            return [TextContent(type="text", text="No search tools available.")]
-        tool = search_tools[0]
-        result = await rt._mcp_manager.call_tool(tool.name, {"query": query})
-        return [TextContent(type="text", text=str(result))]
+        response = await governed_mcp_call(
+            rt._mcp_manager,
+            rt.governance,
+            agent_id="mcp-serve",
+            server_id=str(impl_get(impl, "server")),
+            tool_name=str(impl_get(impl, "tool")),
+            arguments={"query": query},
+            scopes=scopes,
+            skill_id=chosen.id,
+        )
+    except MCPCallDenied as exc:
+        return [TextContent(type="text", text=f"Search denied by policy: {exc}")]
     except Exception as e:
         return [TextContent(type="text", text=f"Search error: {e}")]
+    text = "\n".join(
+        str(getattr(b, "text", "")) for b in getattr(response.data, "content", []) or []
+    )
+    return [TextContent(type="text", text=text or "(no results)")]
