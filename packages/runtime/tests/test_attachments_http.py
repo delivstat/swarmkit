@@ -37,7 +37,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     """
     src = Path(__file__).resolve().parents[3] / "examples" / "hello-swarm" / "workspace"
     ws = tmp_path / "workspace"
-    shutil.copytree(src, ws)
+    shutil.copytree(src, ws, ignore=shutil.ignore_patterns(".swarmkit", "__pycache__"))
     (ws / "shots").mkdir()
     (ws / "shots" / "gate.png").write_bytes(PNG)
     (ws / "notes.pdf").write_bytes(b"%PDF-1.7\n" + b"\x00" * 16)
