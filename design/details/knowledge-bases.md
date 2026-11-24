@@ -94,6 +94,38 @@ Every kind answers the same read contract (§8). `rag` and `okf` are the same bu
 - **For very large corpora,** where repository size matters (thousands of documents), `materialize: outline` keeps only each document's `overview.md` and section titles in the bundle. The section text then lives in the index and the stored originals.
 - **Search and `fetch` are identical in both modes.** `fetch` reads the section text from the index when the bundle holds only the outline.
 
+**Images and figures.** Product documentation carries much of its meaning in screenshots, diagrams and photos, and a text-only pipeline drops them silently. MarkItDown, the base converter, keeps a PDF's text and loses its images. So images are handled explicitly, at every stage:
+
+1. **Extract.** Every embedded image is pulled out with where it sits and what describes it: its page, the section it belongs to, its caption, alt text and the text around it. That covers PDF figures, Word and PowerPoint media, a web page's `<img>` and `<figure>`, and standalone image files.
+   - Docling (the `[docs]` extra) extracts PDF figures with captions and positions.
+   - Office media and HTML images come from the files themselves.
+   - Draw.io and SVG diagrams reuse docs-reader's existing text extraction.
+2. **Filter out decoration.** Very small images (under 64 px on the short side, by default) and images repeated on many pages, such as logos and icons found by content hash, aren't kept as figures.
+3. **Store.** Kept images are content-addressed assets: `asset://<sha256>.<ext>`, in the artifacts store with the uploaded originals.
+   - EXIF metadata, including GPS position, is stripped on ingest.
+   - In the bundle, the section that contains a figure gets a Markdown image in place: `![Figure 3: Replication topology](asset://9f2c….png)`, followed by its caption.
+   - `assets: bundle` copies the images into the bundle's `assets/` directory instead. OKF treats non-`.md` files as assets. That's for small, image-light bases; large image sets belong outside git, or in Git LFS.
+4. **Make them searchable, in three tiers:**
+   - **Always, at no cost:** the caption, the alt text and the surrounding paragraph are indexed with the figure, so "the replication diagram" finds it.
+   - **OCR, opt-in (`images: {ocr: true}`, with the `[docs]` extra):** text inside screenshots and diagrams, such as menu labels, error dialogs and box labels, is read and indexed under the figure. Scanned PDFs, where every page is an image, take the same path and are OCR'd whenever the extra is installed.
+   - **Description, opt-in (`images: {describe: true, model: …}`):** a vision model writes a short factual description of each kept figure: what the diagram shows, which screen the screenshot is. It goes through `ModelProvider`, so it can be local (Ollama with a vision model) or a cloud model, and the build shows its estimated cost before it runs. Descriptions are cached by image hash, so a refresh doesn't pay for the same image twice. A description is stored under the figure as machine-generated text, labelled with the model that wrote it, so its trust is visible.
+5. **Show them to agents and people.**
+   - `fetch` returns a section's text with its figures as references: id, caption, page, description.
+   - A new read tool, `kb_asset(id)`, returns the image itself as MCP image content, so an agent with vision can look at a screenshot rather than read about it.
+   - `search` results say when a hit came from a figure's OCR text or description (`matched_in: figure`).
+   - The portal shows figures inline in Browse, and a citation can point at a figure: "Figure 3, p. 42".
+
+**Safety:** text read from an image is untrusted like any other source text.
+- OCR output and descriptions go through the same ingest screening (§4).
+- The description prompt treats the image as data to describe, never as instructions. An image can contain written instructions aimed at an AI, and the describing model is told to report them, not follow them.
+- Per-image size and per-document image-count limits keep one huge PDF from swamping a build.
+
+**What doesn't come in v1:**
+- **Image search by visual similarity** (CLIP-style embeddings).
+- **Page-image retrieval for visually dense documents** (the ColPali family, where each page is embedded as a picture).
+
+Both are noted for phase 5. Captions, OCR and descriptions cover the common case, and they keep everything inspectable as text.
+
 **Uploaded originals** go in the artifacts store, keyed by SHA-256 and named in the bundle as `upload://<sha256>/<filename>`. They're kept after conversion, so a converter upgrade can rebuild from them. Uploads count toward the base's storage figure in `knowledge show`. Deleting a base deletes its uploads after a 7-day grace period, which `knowledge restore` can undo.
 
 **The index** is a cache at `.swarmkit/knowledge/<id>/index.sqlite`, gitignored, and always rebuildable from the bundle and sources:
@@ -123,6 +155,7 @@ knowledge:
           args: { space: PAY }
       refresh: { every: 6h, prune: 7d }
       layout: { section_kb: 60, page_window: 10, materialize: full }   # full | outline
+      images: { keep: true, ocr: false, describe: false, model: default, assets: store }   # assets: store | bundle
       redact: ['\bACCT-\d+\b']
       screen: auto             # off | auto (web, crawl and skill sources) | all
       enrich: { model: default, on: build }   # okf only: build | manual | off
@@ -264,6 +297,7 @@ The `knowledge` MCP server (stdio through `swarmkit knowledge mcp`, and over ser
 | `search(query, kb?, filters?, current_only?, limit?)` | **ChatGPT's `search` shape:** `{results: [{id, title, url}]}`, extended per result with `kb`, `concept_id`, `heading_path`, `snippet`, `trust_tier`, `status`, `stale`, `score`. `url` is a portal permalink, so citations work. |
 | `fetch(id)` | **ChatGPT's `fetch` shape:** `{id, title, text, url, metadata}`. `metadata` carries type, sources, `generated`, `verified`, tier, status, freshness and links. |
 | `kb_index(kb, path?)` | That level's `index.md`, for progressive disclosure |
+| `kb_asset(id)` | A figure or other asset, as MCP image content (with its caption, page and description), for agents with vision |
 | `links(id, direction)` | Forward links and backlinks, typed when `x-swarmkit-relations` says so |
 | `propose(kb, changes, rationale, sources)`, `proposal_status(id)` | Writes, when the base allows them. `propose` returns `resultType: "input_required"` (MCP 2026-07-28, SEP-2322) only when the client supports it; otherwise it returns `{proposal_id, status: "pending"}`. |
 
@@ -346,9 +380,9 @@ spec:
 | Phase | PRs | Exit demo |
 |---|---|---|
 | **0. Design and cleanup** | This note. #1133: `search_knowledge` through `governed_mcp_call`, test first. #1134: `docs-server` / `docs-pack`, with aliases. | Design merged |
-| **1. Read-only RAG MVP** | 1a schema (`knowledge` block, schema minor). 1b `KnowledgeService`, `knowledge_builds`, the deterministic pass (Markdown and text), FTS5 index, CLI `create / add / refresh / search / show / import / doctor`. 1c the `knowledge` MCP server (read tools), `pack:knowledge` and `knowledge:<id>`, `swarmkit ask --knowledge`, OKF checks in `validate`. 1d MarkItDown under `[knowledge]`, uploads, URL and git sources. 1e serve routes and the portal (list, creation flow for uploads, URL, git and folder, build progress, Browse, Search). | `just demo-knowledge`: a folder to a cited answer in three commands, and the same base queried from Claude Code over MCP; portal screenshots of creating a base from uploads |
+| **1. Read-only RAG MVP** | 1a schema (`knowledge` block, schema minor). 1b `KnowledgeService`, `knowledge_builds`, the deterministic pass (Markdown and text), FTS5 index, CLI `create / add / refresh / search / show / import / doctor`. 1c the `knowledge` MCP server (read tools), `pack:knowledge` and `knowledge:<id>`, `swarmkit ask --knowledge`, OKF checks in `validate`. 1d MarkItDown under `[knowledge]`, uploads, URL and git sources; figures extracted, stored and indexed by caption and alt text, shown in Browse, returned by `fetch` and `kb_asset`. 1e serve routes and the portal (list, creation flow for uploads, URL, git and folder, build progress, Browse, Search). | `just demo-knowledge`: a folder to a cited answer in three commands, and the same base queried from Claude Code over MCP; portal screenshots of creating a base from uploads |
 | **2. Governed writes and curated bases** | Proposals, review, revert; the `knowledge:verify` reserved scope; stamping; `log.md` and audit; portal Review, Activity, Graph, editing; `knowledge-builder` and `knowledge-answer`; crawl, sitemap and connector sources; ingest screening. | An agent proposes, a person approves and verifies in the portal, and an agent rewrite drops the tier to unverified |
-| **3. Retrieval quality** | `ModelProvider.embed()` and consolidation; fastembed + sqlite-vec + pgvector, RRF; rerank; Docling; contextual retrieval; `--explain`; "never reached" warnings; knowledge eval cases through eval capture. | The tutorial's paraphrase question answered; keyword vs hybrid compared on captured eval cases |
+| **3. Retrieval quality** | `ModelProvider.embed()` and consolidation; fastembed + sqlite-vec + pgvector, RRF; rerank; Docling, with figure OCR and opt-in vision descriptions; contextual retrieval; `--explain`; "never reached" warnings; knowledge eval cases through eval capture. | The tutorial's paraphrase question answered; keyword vs hybrid compared on captured eval cases |
 | **4. Other stores and exposure** | The adapter library and governed write proxy; "connect an existing store" in the portal; A2A `kb-<id>-qa`; `export --llms-txt --skill`; OpenAI-compatible search; the Connect tab; fleet distribution. | The Sterling workspace on `knowledge:` with far fewer hand-written lines; ChatGPT citing portal permalinks |
 | **5. Later** | Memory facts proposed into a base; Attested Computations; per-folder ACLs; signed bundles. | Separate notes |
 
@@ -361,6 +395,8 @@ Each phase gets its own issue under #1127. Phases 1 and 2 bump `swarmkit-schema`
   - A folder of Markdown and text gives one Source concept per small file, `index.md` and `log.md`, and a conformant bundle by SwarmKit's validator and OKF's conformance rules.
   - A large document becomes a directory: an overview concept plus section concepts split at headings, each within `section_kb`. A document with no headings is split into page windows, and section citations carry page numbers.
   - Every word of a large source is searchable, in both `materialize` modes.
+  - Figures in a PDF, a Word file and a web page are extracted with captions, pages and sections. Decorative and repeated images are dropped. EXIF metadata is stripped.
+  - A figure is found by its caption, and by its OCR text when OCR is on. `kb_asset` returns the image. A described image carries its describing model's name.
   - Editing one section of a large document re-indexes that section only, and the other sections keep their revision and any verification.
   - Unchanged sources are skipped on refresh; a changed one is re-indexed.
   - A deleted source is deprecated after the prune window, not removed.
