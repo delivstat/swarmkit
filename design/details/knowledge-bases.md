@@ -11,7 +11,7 @@ status: proposed
 **Issue:** #1127 (the umbrella, with the full feature request and the research evidence). Phase 0 also covers #1133 (`mcp-serve` `search_knowledge`) and #1134 (renaming `knowledge-server` and `knowledge-pack`).
 **Supersedes:** `user-knowledge-server.md` (generated Python per workspace, which conflicts with "artifacts are data") and the vector-first parts of `knowledge-curator.md`. `knowledge-curator-topology.md`'s Karpathy-style wiki is the precedent this note follows; OKF standardises its shape.
 **Design reference:** invariants 2 (skills), 4 (`ModelProvider`), 6 (human-only scopes), 8 (the portal ships with the runtime) and 9 (every interface through the same services); [[governed-memory]] (quarantine and review); [[eval-capture]] (data-not-instructions judging); [[serve-hosted-webui]].
-**Revised by:** `knowledge-service.md` (#1140). The service moves out of the runtime into a standalone `swarmkit-knowledge` package with SwarmKit as its engine, so §4, §5, §7 and the phase plan are amended there. Where the two notes disagree, `knowledge-service.md` wins.
+**Revised by:** `knowledge-service.md` (#1140). The service moves out of the runtime into `swarmkit-knowledge`, a standalone package in its own repository, with SwarmKit as its client and engine. §4, §5, §7 and the phase plan are amended there. Where the two notes disagree, `knowledge-service.md` wins.
 **Research:** a survey of OKF and LLM wikis, 12 turnkey knowledge-base builders, graph RAG and agent memory, ingestion and local storage, exposure standards, and SwarmKit's current state. The evidence is summarised in #1127.
 
 ## Goal
@@ -20,7 +20,7 @@ A person or an agent creates a knowledge base in a few steps, from the CLI, the 
 
 ## Non-goals
 
-- **Hosting in this repository.** Bases stay files plus a rebuildable index, served by the open `swarmkit-knowledge` package (`knowledge-service.md`). A hosted service, if any, lives elsewhere.
+- **Hosting in this repository.** Bases stay files plus a rebuildable index, served by the open `swarmkit-knowledge` package, in its own repository (`knowledge-service.md`). A hosted service, if any, lives elsewhere.
 - **A native graph-RAG engine.** Independently measured, graph RAG gains about 3 points on multi-hop questions, costs 40–57x more to build, and answers 19% of unanswerable questions correctly against 96% for plain RAG. Graphs come in as adapters, or as an enrichment skill whose output is reviewable proposals.
 - **Replacing governed memory.** Memory holds what agents learn during runs; a base holds what people curate. A one-way bridge (reinforced memory facts proposed into a base) is phase 5.
 - **Per-concept access control in v1.** Access is per base. Per-folder ACLs come later.
