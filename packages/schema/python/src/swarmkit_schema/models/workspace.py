@@ -119,6 +119,40 @@ class Memory(BaseModel):
     )
 
 
+class Search(StrEnum):
+    """
+    `auto`: hybrid when the `[knowledge]` extra is installed, keyword otherwise.
+    """
+
+    bm25 = "bm25"
+    hybrid = "hybrid"
+    auto = "auto"
+
+
+class AgentWrites(StrEnum):
+    readonly = "readonly"
+    review = "review"
+    direct = "direct"
+
+
+class Defaults(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    search: Search | None = Field(
+        "auto",
+        description="`auto`: hybrid when the `[knowledge]` extra is installed, keyword otherwise.",
+        title="Search",
+    )
+    writes: AgentWrites | None = Field("review", title="Agent writes")
+    redact: list[RedactItem] | None = Field(
+        None,
+        description="Applied to every base, before a base's own patterns.",
+        title="Redact",
+    )
+
+
 class Gates(BaseModel):
     """
     How the runtime behaves when a gate is satisfied. See design/details/extracting-the-channels.md.
@@ -483,7 +517,7 @@ class DefaultBackend(StrEnum):
     postgres = "postgres"
 
 
-class KnowledgeBases(BaseModel):
+class KnowledgeBases1(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         populate_by_name=True,
@@ -512,7 +546,7 @@ class Storage(BaseModel):
         None,
         description="Backend for jobs, conversations, usage, pipeline sagas, artifacts, fleet enrollment and governed memory. Every other storage block inherits this one unless it overrides it. Defaults to sqlite at .swarmkit/store.sqlite.",
     )
-    knowledge_bases: KnowledgeBases | None = None
+    knowledge_bases: KnowledgeBases1 | None = None
 
 
 class CompressionBackend(StrEnum):
@@ -749,6 +783,53 @@ class A2a(BaseModel):
     )
 
 
+class AllowedFileType(RootModel[str]):
+    root: str = Field(..., min_length=1)
+
+
+class AllowedGitHost(RootModel[str]):
+    root: str = Field(..., min_length=1)
+
+
+class ArchiveLimits(BaseModel):
+    """
+    Decompression-bomb caps, enforced while extracting.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    max_uncompressed_gb: int | None = Field(4, ge=1)
+    max_members: int | None = Field(50000, ge=1)
+    max_ratio: int | None = Field(200, ge=1)
+    max_nesting: int | None = Field(2, ge=0, le=5)
+
+
+class KnowledgeUploads(BaseModel):
+    """
+    Upload and archive limits for knowledge bases, shown to users before they upload.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    max_file_mb: int | None = Field(200, ge=1, title="Max file size (MB)")
+    max_request_mb: int | None = Field(2048, ge=1, title="Max upload size (MB)")
+    allowed: list[AllowedFileType] | None = Field(None, title="Allowed file types")
+    allowed_git_hosts: list[AllowedGitHost] | None = Field(
+        None,
+        description="When set, git sources must use one of these hosts.",
+        title="Allowed git hosts",
+    )
+    archives: ArchiveLimits | None = Field(
+        None,
+        description="Decompression-bomb caps, enforced while extracting.",
+        title="Archive limits",
+    )
+
+
 class Provider2(StrEnum):
     """
     none: open access (default; only safe on loopback). api_key: bearer tokens from a static key registry. jwt: OIDC-compliant JWT bearer tokens (RS256/ES256 + JWKS).
@@ -978,6 +1059,423 @@ class EventSink(BaseModel):
     )
 
 
+class ExcludeItem(RootModel[str]):
+    root: str = Field(..., min_length=1)
+
+
+class FilesInTheWorkspace(BaseModel):
+    """
+    Where a knowledge base's content comes from. One key per source.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    path: str = Field(
+        ...,
+        description="Workspace-relative glob, for example `docs/**/*.md`. Reads are confined to the workspace.",
+        min_length=1,
+        title="Path",
+    )
+    exclude: list[ExcludeItem] | None = Field(
+        None, description="Globs to leave out.", title="Exclude"
+    )
+
+
+class UploadedFiles(BaseModel):
+    """
+    Where a knowledge base's content comes from. One key per source.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    upload: str = Field(
+        ...,
+        description="A folder of files uploaded through serve or `swarmkit knowledge add`. Archives are expanded, keeping their structure.",
+        min_length=1,
+        title="Upload folder",
+    )
+
+
+class AWebPage(BaseModel):
+    """
+    Where a knowledge base's content comes from. One key per source.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    url: AnyUrl = Field(
+        ...,
+        description="One page, fetched and converted. A URL that points at an archive is expanded.",
+        title="URL",
+    )
+
+
+class IncludePath(RootModel[str]):
+    root: str = Field(..., min_length=1)
+
+
+class ExcludePath(RootModel[str]):
+    root: str = Field(..., min_length=1)
+
+
+class Crawl(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    url: AnyUrl = Field(..., title="Start URL")
+    depth: int | None = Field(2, ge=0, le=10, title="Depth")
+    max_pages: int | None = Field(200, ge=1, le=10000, title="Max pages")
+    include: list[IncludePath] | None = Field(
+        None,
+        description="Path patterns to follow, for example `/guides/*`.",
+        title="Include paths",
+    )
+    exclude: list[ExcludePath] | None = Field(None, title="Exclude paths")
+    same_site: bool | None = Field(True, title="Same site only")
+    render_js: bool | None = Field(
+        False, description="Needs the browser extra.", title="Render JavaScript"
+    )
+    allow_private: bool | None = Field(
+        False,
+        description="Off by default: private and loopback addresses are refused, against SSRF.",
+        title="Allow private addresses",
+    )
+
+
+class CrawlASite(BaseModel):
+    """
+    robots.txt is respected.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    crawl: Crawl = Field(..., title="Crawl")
+
+
+class ASitemapOrLlmsTxt(BaseModel):
+    """
+    Where a knowledge base's content comes from. One key per source.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    sitemap: AnyUrl = Field(..., title="Sitemap or llms.txt URL")
+
+
+class Path1(RootModel[str]):
+    root: str = Field(..., min_length=1)
+
+
+class GitRepository(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    url: str = Field(..., min_length=1, title="Repository URL")
+    ref: str | None = Field(
+        None,
+        description="Defaults to the repository's default branch.",
+        min_length=1,
+        title="Branch or tag",
+    )
+    paths: list[Path1] | None = Field(
+        None,
+        description="Globs inside the repository. Defaults to Markdown, text and docs folders.",
+        title="Paths",
+    )
+    credential: str | None = Field(
+        None,
+        description="A name from the workspace `credentials` block, for private repositories.",
+        min_length=1,
+        title="Credential",
+    )
+
+
+class AGitRepository(BaseModel):
+    """
+    Where a knowledge base's content comes from. One key per source.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    git: GitRepository = Field(..., title="Git repository")
+
+
+class AConnectorSkill(BaseModel):
+    """
+    Where a knowledge base's content comes from. One key per source.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    skill: str = Field(
+        ...,
+        description="Any skill that returns documents, for example a Confluence or Google Drive export.",
+        pattern="^[a-z][a-z0-9-]*$",
+        title="Skill",
+    )
+    args: dict[str, Any] | None = Field(
+        None, description="Passed to the skill.", title="Arguments"
+    )
+
+
+class Kind(StrEnum):
+    """
+    `rag`: search documents. `okf`: curated knowledge (rag plus enrichment). `import`: an existing OKF bundle. The rest connect an external store through an adapter and need `server`.
+    """
+
+    rag = "rag"
+    okf = "okf"
+    import_ = "import"
+    gbrain = "gbrain"
+    graphiti = "graphiti"
+    basic_memory = "basic-memory"
+    qdrant = "qdrant"
+    memory = "memory"
+    mcp = "mcp"
+
+
+class Refresh(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    every: str | None = Field(
+        None,
+        description="For example `6h`. Runs on serve's scheduler.",
+        pattern="^[1-9][0-9]*[mhdw]$",
+        title="Every",
+    )
+    prune: str | None = Field(
+        None,
+        description="A source gone this long is deprecated, not deleted.",
+        pattern="^[1-9][0-9]*[mhdw]$",
+        title="Prune after",
+    )
+
+
+class Materialize(StrEnum):
+    """
+    `full` keeps converted text in the bundle; `outline` keeps only outlines, for very large corpora.
+    """
+
+    full = "full"
+    outline = "outline"
+
+
+class Layout(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    section_kb: int | None = Field(
+        60,
+        description="Large documents are split into section concepts of about this much text.",
+        ge=4,
+        le=2048,
+        title="Section size (KB)",
+    )
+    page_window: int | None = Field(
+        10,
+        description="Pages per section for a PDF with no usable headings.",
+        ge=1,
+        le=200,
+        title="Page window",
+    )
+    materialize: Materialize | None = Field(
+        "full",
+        description="`full` keeps converted text in the bundle; `outline` keeps only outlines, for very large corpora.",
+        title="Materialize",
+    )
+
+
+class WhereImagesLive(StrEnum):
+    store = "store"
+    bundle = "bundle"
+
+
+class Images(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    keep: bool | None = Field(True, title="Keep figures")
+    ocr: bool | None = Field(False, title="OCR figures")
+    describe: bool | None = Field(
+        False,
+        description="A vision model writes a description of each figure. Costs a model call per new image.",
+        title="Describe figures",
+    )
+    model: str | None = Field(None, min_length=1, title="Vision model")
+    assets: WhereImagesLive | None = Field("store", title="Where images live")
+
+
+class ScreenSources(StrEnum):
+    """
+    Flag text addressed to an AI before indexing. `auto`: web, crawl and connector sources.
+    """
+
+    off = "off"
+    auto = "auto"
+    all = "all"
+
+
+class When(StrEnum):
+    """
+    `build`: after every build. `manual`: only when asked. `off`: never. (Named `when`, not `on`: YAML 1.1 reads a bare `on` key as `true`.)
+    """
+
+    build = "build"
+    manual = "manual"
+    off = "off"
+
+
+class Enrichment(BaseModel):
+    """
+    For `okf` bases: when the knowledge-builder topology runs.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    model: str | None = Field(None, min_length=1, title="Model")
+    when: When | None = Field(
+        "build",
+        description="`build`: after every build. `manual`: only when asked. `off`: never. (Named `when`, not `on`: YAML 1.1 reads a bare `on` key as `true`.)",
+        title="When",
+    )
+
+
+class AgentWrites1(StrEnum):
+    """
+    Defaults to `knowledge.defaults.writes`.
+    """
+
+    readonly = "readonly"
+    review = "review"
+    direct = "direct"
+
+
+class Exposure(BaseModel):
+    """
+    This workspace's own agents always have access through grants; these open the base to others.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    mcp: bool | None = Field(False, title="MCP for external agents")
+    a2a: bool | None = Field(False, title="A2A")
+    llms_txt: bool | None = Field(False, title="llms.txt")
+    openai_search: bool | None = Field(False, title="OpenAI-compatible search")
+
+
+class KnowledgeBase(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: str = Field(
+        ...,
+        description="Lowercase-kebab. Grants name it as `knowledge:<id>`.",
+        pattern="^[a-z][a-z0-9-]*$",
+        title="Id",
+    )
+    kind: Kind = Field(
+        ...,
+        description="`rag`: search documents. `okf`: curated knowledge (rag plus enrichment). `import`: an existing OKF bundle. The rest connect an external store through an adapter and need `server`.",
+        title="Kind",
+    )
+    description: str = Field(
+        ...,
+        description="What the base holds. Agents read this to decide whether to search it.",
+        min_length=1,
+        title="Description",
+    )
+    path: str | None = Field(
+        None,
+        description="Where the OKF bundle lives in the workspace. Defaults to `knowledge/<id>`.",
+        min_length=1,
+        title="Bundle path",
+    )
+    server: str | None = Field(
+        None,
+        description="For an adapter kind: the `mcp_servers` entry that provides the store.",
+        pattern="^[a-z][a-z0-9-]*$",
+        title="MCP server",
+    )
+    sources: (
+        list[
+            FilesInTheWorkspace
+            | UploadedFiles
+            | AWebPage
+            | CrawlASite
+            | ASitemapOrLlmsTxt
+            | AGitRepository
+            | AConnectorSkill
+        ]
+        | None
+    ) = Field(None, title="Sources")
+    refresh: Refresh | None = Field(None, title="Refresh")
+    layout: Layout | None = Field(None, title="Layout")
+    images: Images | None = Field(None, title="Images")
+    redact: list[RedactItem] | None = Field(
+        None,
+        description="Regular expressions replaced with [REDACTED] on ingest.",
+        title="Redact",
+    )
+    screen: ScreenSources | None = Field(
+        "auto",
+        description="Flag text addressed to an AI before indexing. `auto`: web, crawl and connector sources.",
+        title="Screen sources",
+    )
+    enrich: Enrichment | None = Field(
+        None,
+        description="For `okf` bases: when the knowledge-builder topology runs.",
+        title="Enrichment",
+    )
+    writes: AgentWrites1 | None = Field(
+        None,
+        description="Defaults to `knowledge.defaults.writes`.",
+        title="Agent writes",
+    )
+    expose: Exposure | None = Field(
+        None,
+        description="This workspace's own agents always have access through grants; these open the base to others.",
+        title="Exposure",
+    )
+
+
+class KnowledgeBases(BaseModel):
+    """
+    Knowledge bases agents can search and propose to (design/details/knowledge-bases.md). Each base is an OKF bundle plus a rebuildable index, or an external store through an adapter.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    defaults: Defaults | None = Field(None, title="Defaults")
+    bases: list[KnowledgeBase] | None = Field(None, title="Bases")
+
+
 class Governance(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1165,6 +1663,11 @@ class ServerConfig(BaseModel):
         description="Canary deployment configuration. Routes traffic between topology versions by weight with optional auto-promotion. See design/details/canary-deployments.md.",
     )
     auth: ServerAuth | None = None
+    knowledge: KnowledgeUploads | None = Field(
+        None,
+        description="Upload and archive limits for knowledge bases, shown to users before they upload.",
+        title="Knowledge uploads",
+    )
 
 
 class SwarmKitWorkspace(BaseModel):
@@ -1194,6 +1697,11 @@ class SwarmKitWorkspace(BaseModel):
     memory: Memory | None = Field(
         None,
         description="Workspace memory (design/details/memory-by-default.md). Absent means enabled with defaults: memory-reader runs before every agent and memory-writer after, and the governed-memory / memory-reconcile skills are bundled so curated memory exists. A memory-reader or memory-writer bound explicitly under governance.decision_skills is used as written. enabled: false switches off everything automatic (no auto-bindings, no bundled skills); what the workspace wires explicitly still works, and an explicit memory-reader/-writer binding next to enabled: false is a resolution error.",
+    )
+    knowledge: KnowledgeBases | None = Field(
+        None,
+        description="Knowledge bases agents can search and propose to (design/details/knowledge-bases.md). Each base is an OKF bundle plus a rebuildable index, or an external store through an adapter.",
+        title="Knowledge bases",
     )
     identity: Identity | None = None
     model_providers: list[ModelProviderRegistration] | None = None

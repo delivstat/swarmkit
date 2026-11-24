@@ -1,0 +1,4 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata: {id: bad, name: bad}
+knowledge: {bases: [{id: handbook, kind: rag, description: x, refresh: {every: "6 hours"}}]}

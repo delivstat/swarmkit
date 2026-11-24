@@ -178,7 +178,7 @@ knowledge:
       images: { keep: true, ocr: false, describe: false, model: default, assets: store }   # assets: store | bundle
       redact: ['\bACCT-\d+\b']
       screen: auto             # off | auto (web, crawl and skill sources) | all
-      enrich: { model: default, on: build }   # okf only: build | manual | off
+      enrich: { model: default, when: build }   # okf only: build | manual | off
       writes: review           # readonly | review | direct
       expose: { mcp: false, a2a: false, llms_txt: false, openai_search: false }
 ```

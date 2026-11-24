@@ -58,6 +58,9 @@ SHAPE_ONLY_INVALID: set[tuple[str, str]] = {
     ("skill-invalid", "decision-missing-reasoning.yaml"),
     ("skill-invalid", "decision-reasoning-wrong-type.yaml"),
     ("workspace-invalid", "credential-plugin-missing-provider-id.yaml"),
+    # An adapter kind (gbrain, graphiti, ...) needs `server`: an allOf/if-then on `kind`, which the
+    # generated models do not carry. The JSON Schema rejects it (knowledge-bases.md §3).
+    ("workspace-invalid", "knowledge-adapter-without-server.yaml"),
     # `identity: per-user` derives the owner from the run's authenticated caller, so a literal
     # `config.owner` contradicts it. That is an if-then rule, and `config` is an open object the
     # codegen types as a plain dict — so the pair is rejected by `validate()` and accepted by the

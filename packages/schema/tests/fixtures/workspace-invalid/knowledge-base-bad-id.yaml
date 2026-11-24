@@ -1,0 +1,4 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata: {id: bad, name: bad}
+knowledge: {bases: [{id: Hand_Book, kind: rag, description: x}]}

@@ -36,10 +36,16 @@ export interface SwarmKitWorkspace {
      * How the runtime behaves when a gate is satisfied. See
      * design/details/extracting-the-channels.md.
      */
-    gates?:       Gates;
-    governance?:  Governance;
-    identity?:    SwarmKitWorkspaceIdentity;
-    kind:         Kind;
+    gates?:      Gates;
+    governance?: Governance;
+    identity?:   SwarmKitWorkspaceIdentity;
+    kind:        Kind;
+    /**
+     * Knowledge bases agents can search and propose to (design/details/knowledge-bases.md).
+     * Each base is an OKF bundle plus a rebuildable index, or an external store through an
+     * adapter.
+     */
+    knowledge?:   KnowledgeBases;
     mcp_servers?: MCPServerElement[];
     /**
      * Workspace memory (design/details/memory-by-default.md). Absent means enabled with
@@ -459,6 +465,247 @@ export type IdentityProvider = "builtin" | "auth0" | "okta" | "google" | "azure-
 
 export type Kind = "Workspace";
 
+/**
+ * Knowledge bases agents can search and propose to (design/details/knowledge-bases.md).
+ * Each base is an OKF bundle plus a rebuildable index, or an external store through an
+ * adapter.
+ */
+export interface KnowledgeBases {
+    bases?:    KnowledgeBase[];
+    defaults?: Defaults;
+}
+
+export interface KnowledgeBase {
+    /**
+     * What the base holds. Agents read this to decide whether to search it.
+     */
+    description: string;
+    /**
+     * For `okf` bases: when the knowledge-builder topology runs.
+     */
+    enrich?: Enrichment;
+    /**
+     * This workspace's own agents always have access through grants; these open the base to
+     * others.
+     */
+    expose?: Exposure;
+    /**
+     * Lowercase-kebab. Grants name it as `knowledge:<id>`.
+     */
+    id:      string;
+    images?: Images;
+    /**
+     * `rag`: search documents. `okf`: curated knowledge (rag plus enrichment). `import`: an
+     * existing OKF bundle. The rest connect an external store through an adapter and need
+     * `server`.
+     */
+    kind:    BaseKind;
+    layout?: Layout;
+    /**
+     * Where the OKF bundle lives in the workspace. Defaults to `knowledge/<id>`.
+     */
+    path?: string;
+    /**
+     * Regular expressions replaced with [REDACTED] on ingest.
+     */
+    redact?:  string[];
+    refresh?: Refresh;
+    /**
+     * Flag text addressed to an AI before indexing. `auto`: web, crawl and connector sources.
+     */
+    screen?: ScreenSources;
+    /**
+     * For an adapter kind: the `mcp_servers` entry that provides the store.
+     */
+    server?:  string;
+    sources?: KnowledgeSource[];
+    /**
+     * Defaults to `knowledge.defaults.writes`.
+     */
+    writes?: AgentWrites;
+}
+
+/**
+ * For `okf` bases: when the knowledge-builder topology runs.
+ */
+export interface Enrichment {
+    model?: string;
+    /**
+     * `build`: after every build. `manual`: only when asked. `off`: never. (Named `when`, not
+     * `on`: YAML 1.1 reads a bare `on` key as `true`.)
+     */
+    when?: When;
+}
+
+/**
+ * `build`: after every build. `manual`: only when asked. `off`: never. (Named `when`, not
+ * `on`: YAML 1.1 reads a bare `on` key as `true`.)
+ */
+export type When = "build" | "manual" | "off";
+
+/**
+ * This workspace's own agents always have access through grants; these open the base to
+ * others.
+ */
+export interface Exposure {
+    a2a?:           boolean;
+    llms_txt?:      boolean;
+    mcp?:           boolean;
+    openai_search?: boolean;
+}
+
+export interface Images {
+    assets?: WhereImagesLive;
+    /**
+     * A vision model writes a description of each figure. Costs a model call per new image.
+     */
+    describe?: boolean;
+    keep?:     boolean;
+    model?:    string;
+    ocr?:      boolean;
+}
+
+export type WhereImagesLive = "store" | "bundle";
+
+/**
+ * `rag`: search documents. `okf`: curated knowledge (rag plus enrichment). `import`: an
+ * existing OKF bundle. The rest connect an external store through an adapter and need
+ * `server`.
+ */
+export type BaseKind = "rag" | "okf" | "import" | "gbrain" | "graphiti" | "basic-memory" | "qdrant" | "memory" | "mcp";
+
+export interface Layout {
+    /**
+     * `full` keeps converted text in the bundle; `outline` keeps only outlines, for very large
+     * corpora.
+     */
+    materialize?: Materialize;
+    /**
+     * Pages per section for a PDF with no usable headings.
+     */
+    page_window?: number;
+    /**
+     * Large documents are split into section concepts of about this much text.
+     */
+    section_kb?: number;
+}
+
+/**
+ * `full` keeps converted text in the bundle; `outline` keeps only outlines, for very large
+ * corpora.
+ */
+export type Materialize = "full" | "outline";
+
+export interface Refresh {
+    /**
+     * For example `6h`. Runs on serve's scheduler.
+     */
+    every?: string;
+    /**
+     * A source gone this long is deprecated, not deleted.
+     */
+    prune?: string;
+}
+
+/**
+ * Flag text addressed to an AI before indexing. `auto`: web, crawl and connector sources.
+ */
+export type ScreenSources = "off" | "auto" | "all";
+
+/**
+ * Where a knowledge base's content comes from. One key per source.
+ *
+ * robots.txt is respected.
+ */
+export interface KnowledgeSource {
+    /**
+     * Globs to leave out.
+     */
+    exclude?: string[];
+    /**
+     * Workspace-relative glob, for example `docs/**/*.md`. Reads are confined to the workspace.
+     */
+    path?: string;
+    /**
+     * A folder of files uploaded through serve or `swarmkit knowledge add`. Archives are
+     * expanded, keeping their structure.
+     */
+    upload?: string;
+    /**
+     * One page, fetched and converted. A URL that points at an archive is expanded.
+     */
+    url?:     string;
+    crawl?:   Crawl;
+    sitemap?: string;
+    git?:     GitRepository;
+    /**
+     * Passed to the skill.
+     */
+    args?: { [key: string]: any };
+    /**
+     * Any skill that returns documents, for example a Confluence or Google Drive export.
+     */
+    skill?: string;
+}
+
+export interface Crawl {
+    /**
+     * Off by default: private and loopback addresses are refused, against SSRF.
+     */
+    allow_private?: boolean;
+    depth?:         number;
+    exclude?:       string[];
+    /**
+     * Path patterns to follow, for example `/guides/*`.
+     */
+    include?:   string[];
+    max_pages?: number;
+    /**
+     * Needs the browser extra.
+     */
+    render_js?: boolean;
+    same_site?: boolean;
+    url:        string;
+}
+
+export interface GitRepository {
+    /**
+     * A name from the workspace `credentials` block, for private repositories.
+     */
+    credential?: string;
+    /**
+     * Globs inside the repository. Defaults to Markdown, text and docs folders.
+     */
+    paths?: string[];
+    /**
+     * Defaults to the repository's default branch.
+     */
+    ref?: string;
+    url:  string;
+}
+
+/**
+ * Defaults to `knowledge.defaults.writes`.
+ */
+export type AgentWrites = "readonly" | "review" | "direct";
+
+export interface Defaults {
+    /**
+     * Applied to every base, before a base's own patterns.
+     */
+    redact?: string[];
+    /**
+     * `auto`: hybrid when the `[knowledge]` extra is installed, keyword otherwise.
+     */
+    search?: Search;
+    writes?: AgentWrites;
+}
+
+/**
+ * `auto`: hybrid when the `[knowledge]` extra is installed, keyword otherwise.
+ */
+export type Search = "bm25" | "hybrid" | "auto";
+
 export interface MCPServerElement {
     /**
      * Required when transport=stdio.
@@ -649,7 +896,11 @@ export interface Server {
      */
     canary?: Canary;
     jobs?:   Jobs;
-    mcp?:    MCP;
+    /**
+     * Upload and archive limits for knowledge bases, shown to users before they upload.
+     */
+    knowledge?: KnowledgeUploads;
+    mcp?:       MCP;
 }
 
 /**
@@ -888,6 +1139,33 @@ export interface Jobs {
     timeout_seconds?: number;
 }
 
+/**
+ * Upload and archive limits for knowledge bases, shown to users before they upload.
+ */
+export interface KnowledgeUploads {
+    allowed?: string[];
+    /**
+     * When set, git sources must use one of these hosts.
+     */
+    allowed_git_hosts?: string[];
+    /**
+     * Decompression-bomb caps, enforced while extracting.
+     */
+    archives?:       ArchiveLimits;
+    max_file_mb?:    number;
+    max_request_mb?: number;
+}
+
+/**
+ * Decompression-bomb caps, enforced while extracting.
+ */
+export interface ArchiveLimits {
+    max_members?:         number;
+    max_nesting?:         number;
+    max_ratio?:           number;
+    max_uncompressed_gb?: number;
+}
+
 export interface MCP {
     /**
      * Whether to start MCP servers at boot in serve mode.
@@ -912,7 +1190,7 @@ export interface Storage {
      * than implied.
      */
     checkpoints?:     Checkpoints;
-    knowledge_bases?: KnowledgeBases;
+    knowledge_bases?: KnowledgeBasesClass;
     /**
      * Backend for jobs, conversations, usage, pipeline sagas, artifacts, fleet enrollment and
      * governed memory. Every other storage block inherits this one unless it overrides it.
@@ -993,7 +1271,7 @@ export interface Checkpoints {
     url?: string;
 }
 
-export interface KnowledgeBases {
+export interface KnowledgeBasesClass {
     default_backend?: DefaultBackendEnum;
 }
 

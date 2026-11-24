@@ -774,11 +774,12 @@ class WorkspaceRuntime:
             WiringLedger,
             compute_reachability,
             declarations_for_bindings,
+            declarations_for_knowledge,
             declarations_for_topology,
         )
 
         ledger = WiringLedger()
-        declarations: list[Declaration] = []
+        declarations: list[Declaration] = declarations_for_knowledge(self._workspace.raw)
         for name in sorted(self._workspace.topologies):
             bindings = self._resolve_decision_bindings(name)
             declarations.extend(declarations_for_bindings(bindings, name))
