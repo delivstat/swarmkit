@@ -55,7 +55,10 @@
           "properties": {
             "redact": {
               "type": "array",
-              "items": { "type": "string", "minLength": 1 },
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
               "title": "Redact",
               "description": "Python regular expressions replaced with [REDACTED] in every captured case's input and reference, before a capture is shown or written. A request's own patterns are added to these, never replace them. Compiled when the workspace loads, so a pattern that does not compile is a load error naming it. Inputs and outputs are stored as given, and the audit redaction policy does not cover them, so this is what keeps an identifier out of an eval set committed to git."
             }
@@ -111,6 +114,56 @@
               "default": 100
             }
           }
+        }
+      }
+    },
+    "knowledge": {
+      "type": "object",
+      "additionalProperties": false,
+      "title": "Knowledge bases",
+      "description": "Knowledge bases agents can search and propose to (design/details/knowledge-bases.md). Each base is an OKF bundle plus a rebuildable index, or an external store through an adapter.",
+      "properties": {
+        "defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Defaults",
+          "properties": {
+            "search": {
+              "enum": [
+                "bm25",
+                "hybrid",
+                "auto"
+              ],
+              "default": "auto",
+              "title": "Search",
+              "description": "`auto`: hybrid when the `[knowledge]` extra is installed, keyword otherwise."
+            },
+            "writes": {
+              "enum": [
+                "readonly",
+                "review",
+                "direct"
+              ],
+              "default": "review",
+              "title": "Agent writes"
+            },
+            "redact": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": "Redact",
+              "description": "Applied to every base, before a base's own patterns."
+            }
+          }
+        },
+        "bases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/knowledge_base"
+          },
+          "title": "Bases"
         }
       }
     },
@@ -950,6 +1003,72 @@
         },
         "auth": {
           "$ref": "#/$defs/server_auth"
+        },
+        "knowledge": {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Knowledge uploads",
+          "description": "Upload and archive limits for knowledge bases, shown to users before they upload.",
+          "properties": {
+            "max_file_mb": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 200,
+              "title": "Max file size (MB)"
+            },
+            "max_request_mb": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 2048,
+              "title": "Max upload size (MB)"
+            },
+            "allowed": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": "Allowed file types"
+            },
+            "allowed_git_hosts": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": "Allowed git hosts",
+              "description": "When set, git sources must use one of these hosts."
+            },
+            "archives": {
+              "type": "object",
+              "additionalProperties": false,
+              "title": "Archive limits",
+              "description": "Decompression-bomb caps, enforced while extracting.",
+              "properties": {
+                "max_uncompressed_gb": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 4
+                },
+                "max_members": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 50000
+                },
+                "max_ratio": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 200
+                },
+                "max_nesting": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 5,
+                  "default": 2
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1398,6 +1517,472 @@
           "then": {
             "required": [
               "url"
+            ]
+          }
+        }
+      ]
+    },
+    "knowledge_source": {
+      "title": "Knowledge source",
+      "description": "Where a knowledge base's content comes from. One key per source.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Files in the workspace",
+          "required": [
+            "path"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Path",
+              "description": "Workspace-relative glob, for example `docs/**/*.md`. Reads are confined to the workspace."
+            },
+            "exclude": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": "Exclude",
+              "description": "Globs to leave out."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Uploaded files",
+          "required": [
+            "upload"
+          ],
+          "properties": {
+            "upload": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Upload folder",
+              "description": "A folder of files uploaded through serve or `swarmkit knowledge add`. Archives are expanded, keeping their structure."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "A web page",
+          "required": [
+            "url"
+          ],
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "title": "URL",
+              "description": "One page, fetched and converted. A URL that points at an archive is expanded."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Crawl a site",
+          "description": "robots.txt is respected.",
+          "required": [
+            "crawl"
+          ],
+          "properties": {
+            "crawl": {
+              "type": "object",
+              "additionalProperties": false,
+              "title": "Crawl",
+              "required": [
+                "url"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "title": "Start URL"
+                },
+                "depth": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10,
+                  "default": 2,
+                  "title": "Depth"
+                },
+                "max_pages": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000,
+                  "default": 200,
+                  "title": "Max pages"
+                },
+                "include": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "title": "Include paths",
+                  "description": "Path patterns to follow, for example `/guides/*`."
+                },
+                "exclude": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "title": "Exclude paths"
+                },
+                "same_site": {
+                  "type": "boolean",
+                  "default": true,
+                  "title": "Same site only"
+                },
+                "render_js": {
+                  "type": "boolean",
+                  "default": false,
+                  "title": "Render JavaScript",
+                  "description": "Needs the browser extra."
+                },
+                "allow_private": {
+                  "type": "boolean",
+                  "default": false,
+                  "title": "Allow private addresses",
+                  "description": "Off by default: private and loopback addresses are refused, against SSRF."
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "A sitemap or llms.txt",
+          "required": [
+            "sitemap"
+          ],
+          "properties": {
+            "sitemap": {
+              "type": "string",
+              "format": "uri",
+              "title": "Sitemap or llms.txt URL"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "A git repository",
+          "required": [
+            "git"
+          ],
+          "properties": {
+            "git": {
+              "type": "object",
+              "additionalProperties": false,
+              "title": "Git repository",
+              "required": [
+                "url"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "minLength": 1,
+                  "title": "Repository URL"
+                },
+                "ref": {
+                  "type": "string",
+                  "minLength": 1,
+                  "title": "Branch or tag",
+                  "description": "Defaults to the repository's default branch."
+                },
+                "paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "title": "Paths",
+                  "description": "Globs inside the repository. Defaults to Markdown, text and docs folders."
+                },
+                "credential": {
+                  "type": "string",
+                  "minLength": 1,
+                  "title": "Credential",
+                  "description": "A name from the workspace `credentials` block, for private repositories."
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "A connector skill",
+          "required": [
+            "skill"
+          ],
+          "properties": {
+            "skill": {
+              "$ref": "#/$defs/identifier",
+              "title": "Skill",
+              "description": "Any skill that returns documents, for example a Confluence or Google Drive export."
+            },
+            "args": {
+              "type": "object",
+              "title": "Arguments",
+              "description": "Passed to the skill."
+            }
+          }
+        }
+      ]
+    },
+    "knowledge_base": {
+      "type": "object",
+      "additionalProperties": false,
+      "title": "Knowledge base",
+      "required": [
+        "id",
+        "kind",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "title": "Id",
+          "description": "Lowercase-kebab. Grants name it as `knowledge:<id>`."
+        },
+        "kind": {
+          "enum": [
+            "rag",
+            "okf",
+            "import",
+            "gbrain",
+            "graphiti",
+            "basic-memory",
+            "qdrant",
+            "memory",
+            "mcp"
+          ],
+          "title": "Kind",
+          "description": "`rag`: search documents. `okf`: curated knowledge (rag plus enrichment). `import`: an existing OKF bundle. The rest connect an external store through an adapter and need `server`."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "title": "Description",
+          "description": "What the base holds. Agents read this to decide whether to search it."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "title": "Bundle path",
+          "description": "Where the OKF bundle lives in the workspace. Defaults to `knowledge/<id>`."
+        },
+        "server": {
+          "$ref": "#/$defs/identifier",
+          "title": "MCP server",
+          "description": "For an adapter kind: the `mcp_servers` entry that provides the store."
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/knowledge_source"
+          },
+          "title": "Sources"
+        },
+        "refresh": {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Refresh",
+          "properties": {
+            "every": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*[mhdw]$",
+              "title": "Every",
+              "description": "For example `6h`. Runs on serve's scheduler."
+            },
+            "prune": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*[mhdw]$",
+              "title": "Prune after",
+              "description": "A source gone this long is deprecated, not deleted."
+            }
+          }
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Layout",
+          "properties": {
+            "section_kb": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 2048,
+              "default": 60,
+              "title": "Section size (KB)",
+              "description": "Large documents are split into section concepts of about this much text."
+            },
+            "page_window": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 10,
+              "title": "Page window",
+              "description": "Pages per section for a PDF with no usable headings."
+            },
+            "materialize": {
+              "enum": [
+                "full",
+                "outline"
+              ],
+              "default": "full",
+              "title": "Materialize",
+              "description": "`full` keeps converted text in the bundle; `outline` keeps only outlines, for very large corpora."
+            }
+          }
+        },
+        "images": {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Images",
+          "properties": {
+            "keep": {
+              "type": "boolean",
+              "default": true,
+              "title": "Keep figures"
+            },
+            "ocr": {
+              "type": "boolean",
+              "default": false,
+              "title": "OCR figures"
+            },
+            "describe": {
+              "type": "boolean",
+              "default": false,
+              "title": "Describe figures",
+              "description": "A vision model writes a description of each figure. Costs a model call per new image."
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Vision model"
+            },
+            "assets": {
+              "enum": [
+                "store",
+                "bundle"
+              ],
+              "default": "store",
+              "title": "Where images live"
+            }
+          }
+        },
+        "redact": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": "Redact",
+          "description": "Regular expressions replaced with [REDACTED] on ingest."
+        },
+        "screen": {
+          "enum": [
+            "off",
+            "auto",
+            "all"
+          ],
+          "default": "auto",
+          "title": "Screen sources",
+          "description": "Flag text addressed to an AI before indexing. `auto`: web, crawl and connector sources."
+        },
+        "enrich": {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Enrichment",
+          "description": "For `okf` bases: when the knowledge-builder topology runs.",
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Model"
+            },
+            "when": {
+              "enum": [
+                "build",
+                "manual",
+                "off"
+              ],
+              "default": "build",
+              "title": "When",
+              "description": "`build`: after every build. `manual`: only when asked. `off`: never. (Named `when`, not `on`: YAML 1.1 reads a bare `on` key as `true`.)"
+            }
+          }
+        },
+        "writes": {
+          "enum": [
+            "readonly",
+            "review",
+            "direct"
+          ],
+          "title": "Agent writes",
+          "description": "Defaults to `knowledge.defaults.writes`."
+        },
+        "expose": {
+          "type": "object",
+          "additionalProperties": false,
+          "title": "Exposure",
+          "description": "This workspace's own agents always have access through grants; these open the base to others.",
+          "properties": {
+            "mcp": {
+              "type": "boolean",
+              "default": false,
+              "title": "MCP for external agents"
+            },
+            "a2a": {
+              "type": "boolean",
+              "default": false,
+              "title": "A2A"
+            },
+            "llms_txt": {
+              "type": "boolean",
+              "default": false,
+              "title": "llms.txt"
+            },
+            "openai_search": {
+              "type": "boolean",
+              "default": false,
+              "title": "OpenAI-compatible search"
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "gbrain",
+                  "graphiti",
+                  "basic-memory",
+                  "qdrant",
+                  "memory",
+                  "mcp"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "server"
             ]
           }
         }

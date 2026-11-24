@@ -57,7 +57,7 @@ class Declaration:
     without either side knowing the other's internals.
     """
 
-    kind: str  # "decision_skill" | "funnel" | "funnel_layer"
+    kind: str  # "decision_skill" | "funnel" | "funnel_layer" | "knowledge_base"
     key: str
     #: where an operator would go to change it — a topology id, an agent id, a funnel id
     declared_on: str
@@ -189,6 +189,32 @@ def declarations_for_topology(workspace: ResolvedWorkspace, topology_id: str) ->
             )
             for layer in FUNNEL_LAYERS
             if layer in spec
+        )
+    return out
+
+
+def declarations_for_knowledge(raw_workspace: Any) -> list[Declaration]:
+    """Every knowledge base `workspace.yaml` declares (design/details/knowledge-bases.md).
+
+    Declared from the schema on; built only once `KnowledgeService` lands (#1138, PR 1b). Until
+    a code path records `ledger.wired("knowledge_base", id)`, each base is reported as reached by
+    nothing, so a declared base is never accepted and silently ignored.
+    """
+    knowledge = getattr(raw_workspace, "knowledge", None)
+    bases = getattr(knowledge, "bases", None) or []
+    out = []
+    for base in bases:
+        kind = getattr(base, "kind", None)
+        kind = str(getattr(kind, "value", kind))
+        base_id = str(getattr(base, "id", "") or "")
+        base_id = str(getattr(base_id, "root", base_id))
+        out.append(
+            Declaration(
+                kind="knowledge_base",
+                key=base_id,
+                declared_on="workspace knowledge",
+                detail=f"the {kind} knowledge base, which this runtime does not build yet (#1138)",
+            )
         )
     return out
 

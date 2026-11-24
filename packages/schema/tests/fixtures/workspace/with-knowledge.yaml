@@ -1,0 +1,36 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata: {id: with-knowledge, name: With knowledge}
+knowledge:
+  defaults: {search: auto, writes: review, redact: ['\bACCT-\d+\b']}
+  bases:
+    - id: handbook
+      kind: okf
+      description: On-call, escalation and release policy for the payments team.
+      sources:
+        - path: docs/**/*.md
+          exclude: [docs/drafts/**]
+        - upload: product-manuals
+        - url: https://intranet.example/runbook
+        - crawl: {url: https://docs.example.com/, depth: 2, max_pages: 200, include: ["/guides/*"]}
+        - sitemap: https://docs.example.com/sitemap.xml
+        - git: {url: https://github.com/acme/handbook, ref: main, paths: ["**/*.md"], credential: github}
+        - skill: confluence-export
+          args: {space: PAY}
+      refresh: {every: 6h, prune: 7d}
+      layout: {section_kb: 60, page_window: 10, materialize: full}
+      images: {keep: true, ocr: false, describe: false, assets: store}
+      screen: auto
+      enrich: {when: build}
+      writes: review
+      expose: {mcp: true, a2a: false, llms_txt: true, openai_search: false}
+    - id: brain
+      kind: gbrain
+      description: The team's GBrain notes.
+      server: gbrain
+server:
+  knowledge:
+    max_file_mb: 200
+    max_request_mb: 2048
+    allowed_git_hosts: [github.com]
+    archives: {max_uncompressed_gb: 4, max_members: 50000, max_ratio: 200, max_nesting: 2}
